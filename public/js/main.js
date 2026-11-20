@@ -1259,12 +1259,17 @@ function updateCamera(dt, now) {
 // ================================================================ remote update
 // ---- network clock: place snapshots on the server's own clock (ms), not on arrival time,
 // so bursty internet connections don't make other players skip back and forth.
-const net = { off: null, jitter: 0, lastK: -1 };
+// Remote players' updates are kept in their buffers on the SERVER's clock and converted with the current
+// offset only when drawn, so a re-estimate of the offset after a connection hiccup can never make fresh
+// updates look "older than what we have" and get thrown away (that froze everyone for seconds).
+const net = { off: null, jitter: 0, lastK: -1, srv: false };
 function netClock(k, now) {
   if (typeof k !== 'number' || window.__netOld) return now; // older server (or A/B test of the old behaviour)
+  net.srv = true;
   const st = k;
   const target = now - st;
-  if (net.off === null || k < net.lastK || Math.abs(target - net.off) > 1500) { net.off = target; net.jitter = 0; }
+  // re-base only for a server restart or a very long stall; ordinary late packets are what the min-tracking absorbs
+  if (net.off === null || k < net.lastK || target - net.off > 5000) { net.off = target; net.jitter = 0; }
   else if (target < net.off) net.off = target;            // a packet arrived quicker: tighten
   else net.off += (target - net.off) * 0.01;              // otherwise drift slowly
   net.jitter = net.jitter * 0.95 + Math.abs(target - net.off) * 0.05;
@@ -1273,10 +1278,11 @@ function netClock(k, now) {
 }
 function updateRemotes(dt, now) {
   const baseJit = net.jitter;
+  const off = net.srv && !window.__netOld && net.off !== null ? net.off : 0; // buffers are on the server clock
   for (const r of remotes.values()) {
     // bigger buffer on bumpier connections: ours from the server, plus that player's upload to the server
     const delay = window.__netOld ? 110 : clamp(80 + (baseJit + (r.jit || 0)) * 2.5, 80, 400);
-    const renderT = now - delay;
+    const renderT = now - off - delay;
     const b = r.buf;
     if (!b.length) { r.model.visible = false; continue; }
     let a = b[0], c = b[0], ext = 0;
@@ -1500,21 +1506,19 @@ function handle(m) {
         const r = remotes.get(id); if (!r) continue;
         if (r.alive || alive) {
           // the in-between updates of a burst, so their movement is replayed in full rather than cut corners
-          if (Array.isArray(hist) && typeof m.k === 'number' && !window.__netOld) for (const [ht, hx, hy, hz, hry, hrx, hc] of hist) {
-            const t = st + (ht - m.k);
-            if (r.buf.length && t <= r.buf[r.buf.length - 1].t) continue;
-            r.buf.push({ t, x: hx, y: hy, z: hz, ry: hry, rx: hrx, c: hc }); if (r.buf.length > 40) r.buf.shift();
-          }
+          const srv = typeof m.k === 'number' && !window.__netOld; // times below are on the server's clock
+          // add one update; same time = nothing new; clearly older = that player's clock was re-based, so start over
+          const add = (t, e) => {
+            const lastT = r.buf.length ? r.buf[r.buf.length - 1].t : -Infinity;
+            if (t === lastT) return;
+            if (t < lastT) { if (lastT - t > 300) r.buf.length = 0; else return; }
+            e.t = t; r.buf.push(e); if (r.buf.length > 40) r.buf.shift();
+          };
+          if (Array.isArray(hist) && srv) for (const [ht, hx, hy, hz, hry, hrx, hc] of hist) add(ht, { x: hx, y: hy, z: hz, ry: hry, rx: hrx, c: hc });
           // newer servers say when the player was really at this spot (their send time), so a burst of late
           // updates from a laggy player plays back at the right pace instead of freeze → jump
-          const t = typeof pt === 'number' && typeof m.k === 'number' && !window.__netOld ? st + (pt - m.k) : st;
           r.jit = typeof jit === 'number' ? jit : 0;
-          const lastT = r.buf.length ? r.buf[r.buf.length - 1].t : -Infinity;
-          if (t <= lastT) {
-            if (lastT - t > 1000) r.buf.length = 0; // clock reset (new match)
-            else { r.alive = !!alive; setRemoteGun(r, w); continue; } // nothing new from this player yet
-          }
-          r.buf.push({ t, x, y, z, ry, rx, c }); if (r.buf.length > 40) r.buf.shift();
+          add(srv ? (typeof pt === 'number' ? pt : m.k) : st, { x, y, z, ry, rx, c });
         }
         r.alive = !!alive; setRemoteGun(r, w);
       }
@@ -1564,7 +1568,8 @@ function handle(m) {
         $('deathscreen').classList.add('hidden');
       } else {
         const r = remotes.get(m.id);
-        if (r) { r.buf = [{ t: now - 200, x: m.p[0], y: m.p[1], z: m.p[2], ry: m.ry, rx: 0, c: 0 }]; r.alive = true; r.deathT = 0; r.prev = null; }
+        const off = net.srv && !window.__netOld && net.off !== null ? net.off : 0; // buffers are on the server clock
+        if (r) { r.buf = [{ t: now - off - 200, x: m.p[0], y: m.p[1], z: m.p[2], ry: m.ry, rx: 0, c: 0 }]; r.alive = true; r.deathT = 0; r.prev = null; }
       }
       break;
     case 'fx': {
