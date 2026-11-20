@@ -79,7 +79,10 @@ function downtown() {
   for (let i = 0; i < 18; i++) {
     const s = pk([-30, 0, 30]), t = ri(-52, 52), side = pk([-2.6, 2.6]);
     if ([-30, 0, 30].some(q => Math.abs(q - t) < 6)) continue;
-    if (rnd() < 0.5) car(c, t, s + side, 1, pk(['car_red', 'car_blue'])); else car(c, s + side, t, 0, pk(['car_red', 'car_blue']));
+    const along = rnd() < 0.5, col = pk(['car_red', 'car_blue']);
+    const [cx, cz, hw, hd] = along ? [t, s + side, 2.15, 1.0] : [s + side, t, 1.0, 2.15];
+    if ((c.doorways || []).some(([a0, b0, a1, b1]) => cx + hw > a0 && cx - hw < a1 && cz + hd > b0 && cz - hd < b1)) continue; // don't park across a doorway
+    car(c, cx, cz, along ? 1 : 0, col);
   }
   for (const s of [-30, 30]) for (const t of [-45, -15, 15, 45]) { lamp(c, s - 3.7, t + 4); lamp(c, t + 4, s + 3.7); }
   // bus

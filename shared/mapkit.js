@@ -37,6 +37,7 @@ function wallRun(c, axis, a0, a1, fixed, y0, h, ops, m, t = WT, trim = 'trim') {
     seg(cur, o.a, y0, y0 + h);
     seg(o.a, o.b, y0, y0 + o.y0);
     seg(o.a, o.b, y0 + o.y1, y0 + h);
+    if (o.y0 === 0 && globalThis.__STRIKELINE_DOOR_PROBE) seg(o.a, o.b, y0, y0 + Math.min(o.y1, h), '__door', t, c.deco); // marker for the door-blockage checker (tools only)
     if (trim) {
       if (o.y0 > 0) seg(o.a - 0.1, o.b + 0.1, y0 + o.y0 - 0.08, y0 + o.y0 + 0.02, trim, t + 0.16, c.deco); // sill
       seg(o.a - 0.1, o.b + 0.1, y0 + o.y1 - 0.02, y0 + o.y1 + 0.12, trim, t + 0.1, c.deco);              // lintel
@@ -98,10 +99,32 @@ function building(c, o) {
   }
 
   const [wy0, wy1] = o.winY || [1.0, 2.2];
-  const doorOps = side => (o.doors?.[side] || []).map(dd => {
-    const dc = typeof dd === 'number' ? dd : dd.c, dw = dd.w || 1.4, dh = dd.h || 2.4;
-    return { c: dc, a: dc - dw / 2, b: dc + dw / 2, y0: 0, y1: dh };
-  });
+  // Doors (offsets from the centre of each wall). The stairs fill the inside of the north wall from the
+  // west wall to the last step, so a north door there would open onto the steps: slide it east onto the
+  // landing, or move it to a side wall (in front of the stairs) when the building is too narrow.
+  const doorList = { s: [], n: [], e: [], w: [] };
+  for (const side of ['s', 'n', 'e', 'w']) for (const dd of o.doors?.[side] || [])
+    doorList[side].push({ c: typeof dd === 'number' ? dd : dd.c, w: dd.w || 1.4, h: dd.h || 2.4 });
+  if (flights > 0 && o.walls !== false) {
+    const stairEnd = sx + run + 0.25;
+    for (const dd of [...doorList.n]) {
+      if (x + dd.c - dd.w / 2 > stairEnd) continue;
+      const nc = stairEnd + dd.w / 2 - x;
+      if (x + nc + dd.w / 2 <= ix1 - 0.15 && !doorList.n.some(q => q !== dd && Math.abs(q.c - nc) < (q.w + dd.w) / 2 + 0.3)) { dd.c = nc; continue; }
+      doorList.n.splice(doorList.n.indexOf(dd), 1);
+      if (o.sideDoors === false) continue; // (houses: just drop the back door, the side yards are too tight)
+      const zc = Math.min(0, (iz1 - 2.7 - dd.w / 2) - z); // side-wall door clear of the stair lanes
+      const side = ['e', 'w'].find(sd => !doorList[sd].some(q => Math.abs(q.c - zc) < (q.w + dd.w) / 2 + 0.3)) || 'e';
+      doorList[side].push({ ...dd, c: zc });
+    }
+  }
+  c.doorways = c.doorways || [];
+  for (const side of ['s', 'n', 'e', 'w']) for (const dd of doorList[side]) {
+    const hw = dd.w / 2 + 0.3, out = 1.8;
+    if (side === 's' || side === 'n') { const zw = side === 's' ? z0 : z1; c.doorways.push([x + dd.c - hw, zw - out, x + dd.c + hw, zw + out]); }
+    else { const xw = side === 'w' ? x0 : x1; c.doorways.push([xw - out, z + dd.c - hw, xw + out, z + dd.c + hw]); }
+  }
+  const doorOps = side => doorList[side].map(dd => ({ c: dd.c, a: dd.c - dd.w / 2, b: dd.c + dd.w / 2, y0: 0, y1: dd.h }));
   const winOps = (len, avoid) => {
     if (o.windows === false) return [];
     const n = Math.max(0, Math.floor((len - 1.0) / (o.winGap || 2.8)));
@@ -174,7 +197,7 @@ function building(c, o) {
     push(c.boxes, B(ix1 - 1.0, iz0 + 1.0, 1.0, 1.0, 0.8, 'metal', top)); // AC unit
     push(c.deco, B(ix1 - 1.0, iz0 + 1.53, 0.7, 0.06, 0.6, 'metal_dark', top + 0.1));
   }
-  return { x0, z0, x1, z1, top };
+  return { x0, z0, x1, z1, top, doors: doorList };
 }
 
 // ================================================================ props
@@ -333,7 +356,7 @@ function house(c, x, z, rot, o = {}) {
   const w = o.w || 9, d = o.d || 8, floors = o.floors || 1, m = o.m || 'siding_white', rm = o.roofM || 'roof_red';
   placeRot(c, x, z, rot, (t) => {
     const px = o.doorX ?? -w / 4;
-    building(t, { x: 0, z: 0, w, d, floors, m, roof: false, floorM: 'floor_wood', roofM: 'roof', doors: { s: [px], n: o.backDoor === false ? [] : [w / 4] }, partition: floors > 1 || w >= 10 ? 0.6 : undefined, winGap: 2.6 });
+    const bd = building(t, { x: 0, z: 0, w, d, floors, m, roof: false, floorM: 'floor_wood', roofM: 'roof', doors: { s: [px], n: o.backDoor === false ? [] : [w / 4] }, sideDoors: false, partition: floors > 1 || w >= 10 ? 0.6 : undefined, winGap: 2.6 }).doors;
     const top = floors * FH;
     gableRoof(t, -w / 2, -d / 2, w / 2, d / 2, top, rm, true);
     push(t.boxes, B(w / 2 - 1.4, d / 4, 0.9, 0.9, 3.0, 'brick', top)); push(t.deco, B(w / 2 - 1.4, d / 4, 1.05, 1.05, 0.12, 'stone', top + 3.0)); // chimney
@@ -343,14 +366,16 @@ function house(c, x, z, rot, o = {}) {
     push(t.deco, R(px - 1.95, 2.8, -d / 2 - 1.95, px + 1.95, 2.95, -d / 2, rm));
     // plinth: a strip just outside the walls (not a slab over the whole footprint: that covered the floor indoors)
     const pw = 0.12, hw = w / 2, hd = d / 2;
-    const strip = (zA, zB, doorC) => { // along x, broken where a door is
-      const segs = doorC === null ? [[-hw - pw, hw + pw]] : [[-hw - pw, doorC - 0.75], [doorC + 0.75, hw + pw]];
-      for (const [a, b] of segs) push(t.deco, R(a, 0, zA, b, 0.35, zB, 'stone'));
+    const strip = (ax, fixA, fixB, lo, hi, doors) => { // plinth along one wall, broken where its doors are
+      let cur = lo;
+      for (const dd of [...doors].sort((p, q) => p.c - q.c)) { seg(cur, dd.c - dd.w / 2 - 0.05); cur = dd.c + dd.w / 2 + 0.05; }
+      seg(cur, hi);
+      function seg(a, b) { if (b > a) push(t.deco, ax === 'x' ? R(a, 0, fixA, b, 0.35, fixB, 'stone') : R(fixA, 0, a, fixB, 0.35, b, 'stone')); }
     };
-    strip(-hd - pw, -hd, px);
-    strip(hd, hd + pw, o.backDoor === false ? null : w / 4);
-    push(t.deco, R(-hw - pw, 0, -hd, -hw, 0.35, hd, 'stone'));
-    push(t.deco, R(hw, 0, -hd, hw + pw, 0.35, hd, 'stone'));
+    strip('x', -hd - pw, -hd, -hw - pw, hw + pw, bd.s);
+    strip('x', hd, hd + pw, -hw - pw, hw + pw, bd.n);
+    strip('z', -hw - pw, -hw, -hd, hd, bd.w);
+    strip('z', hw, hw + pw, -hd, hd, bd.e);
   });
 }
 // Low fence/wall along a straight line with optional gaps (centres along the line, 1.6 m wide).
@@ -369,7 +394,7 @@ function pool(c, x, z, w, d) {
   push(c.deco, R(x0 + t, 0, z0 + t, x1 - t, 0.03, z1 - t, 'pool_tile'));
   push(c.deco, R(x0 + t, 0.03, z0 + t, x1 - t, 0.34, z1 - t, 'water'));
   push(c.deco, R(x1 - t - 0.5, 0.2, z1 - t - 0.06, x1 - t - 0.44, 1.2, z1 - t, 'metal')); push(c.deco, R(x1 - t - 1.06, 0.2, z1 - t - 0.06, x1 - t - 1.0, 1.2, z1 - t, 'metal'));
-  push(c.boxes, R(x - 0.3, h, z0 - 0.4, x + 0.3, h + 0.12, z0 + 1.4, 'trim'));
+  push(c.boxes, R(x - 0.3, h - 0.02, z0 - 0.4, x + 0.3, h + 0.08, z0 + 1.4, 'trim'));
 }
 // Natural rock wall along a line: segments of varying height with inset strata and outcrops.
 function cliff(c, x0, z0, x1, z1, h, rnd, m = 'rock', segLen = 4.5, band = m === 'rock' ? 'rock_dark' : m) {

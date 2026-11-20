@@ -244,9 +244,26 @@ async function remoteLobbies() { // latest announcement from every other game, i
   })();
   return relayPending;
 }
+// Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
+const aliveCache = new Map(); // url -> { at, ok }
+async function gameAlive(u, maxAge = 0) {
+  const k = aliveCache.get(u);
+  if (k && Date.now() - k.at < maxAge) return k.ok;
+  let ok = false;
+  for (let i = 0; i < 2 && !ok; i++) {
+    ok = await fetch(`${u}/info`, { signal: AbortSignal.timeout(5000) }).then(r => r.ok && r.json()).then(j => !!j && typeof j.port === 'number').catch(() => false);
+  }
+  aliveCache.set(u, { at: Date.now(), ok });
+  if (aliveCache.size > 50) aliveCache.delete(aliveCache.keys().next().value);
+  return ok;
+}
 async function sendLobbies(c) {
   sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size });
-  const remote = (await remoteLobbies()).filter(l => !l.private);
+  let remote = (await remoteLobbies()).filter(l => !l.private);
+  // hide lobbies in games that have closed since they last announced (checked at most once a minute per game)
+  const urls = [...new Set(remote.map(l => l.url))];
+  const alive = new Set((await Promise.all(urls.map(async u => (await gameAlive(u, 60000)) ? u : null))).filter(Boolean));
+  remote = remote.filter(l => alive.has(l.url));
   if (remote.length && clients.has(c.id) && !c.room) sendTo(c, { t: 'lobbies', list: lobbyList(), remote, online: clients.size });
 }
 
@@ -1066,9 +1083,12 @@ wss.on('connection', ws => {
         if (target) { joinRoom(c, target); break; }
         if (!code) { sendTo(c, { t: 'err', m: 'That lobby no longer exists.' }); break; }
         // not in this game: look for it in friends' games
-        remoteLobbies().then(list => {
+        remoteLobbies().then(async list => {
           const hit = list.find(l => l.code === code);
-          if (hit) sendTo(c, { t: 'goto', url: hit.url, code });
+          // the relay can still list a game that just closed (or whose tunnel changed address): only send the
+          // player there if it answers, otherwise they land on Cloudflare's "Error 1033" page with no way back
+          if (hit && await gameAlive(hit.url)) sendTo(c, { t: 'goto', url: hit.url, code });
+          else if (hit) sendTo(c, { t: 'err', m: `Lobby "${code}" is in a friend's game that has just closed or gone offline. Ask them to make a new lobby and try again.` });
           else sendTo(c, { t: 'err', m: `No lobby with code "${code}". Check the code, and that your friend's game is open and online.` });
         });
         break;

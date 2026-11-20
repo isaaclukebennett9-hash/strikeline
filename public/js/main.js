@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildMap, MAPS, MAP_ORDER } from '/shared/maps.js';
-import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult } from '/shared/weapons.js';
+import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
 import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
 import { THEMES, getMaterial, MAT_COLORS, WEAPON_SKINS, CHAR_SKINS, RARITY_COLORS, charSkin, radialSprite, flashSprite, decalTexture, nameTagTexture } from './textures.js';
 import { buildGun, buildWeapon, buildArms, buildSoldier, buildRocket, setReticle, RETICLE_STYLES, RETICLE_COLORS } from './models.js';
@@ -33,21 +33,36 @@ if (!['low', 'high', 'ultra'].includes(cfg.gfx)) cfg.gfx = 'high';
 // Ultra uses screen-space ambient occlusion, which needs a normal depth buffer (not logarithmic), so the
 // renderer is created in that mode at start-up; switching in or out of Ultra applies on the next launch.
 const ULTRA = cfg.gfx === 'ultra';
-const gfxPixelRatio = () => Math.min(devicePixelRatio, cfg.gfx === 'ultra' ? 2 : cfg.gfx === 'high' ? 1.5 : 1);
+const gfxPixelRatio = () => Math.min(devicePixelRatio, cfg.gfx === 'ultra' ? 1.5 : cfg.gfx === 'high' ? 1.5 : 1);
 const renderer = new THREE.WebGLRenderer({ antialias: !ULTRA, powerPreference: 'high-performance', logarithmicDepthBuffer: !ULTRA });
 renderer.setPixelRatio(gfxPixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 // If the graphics driver resets (weak/overloaded GPUs), reload instead of sitting on a frozen screen.
-renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); try { reportErr(`WebGL context lost (graphics driver reset / out of GPU memory) · ${renderer.info.memory.geometries} geos ${renderer.info.memory.textures} tex`); } catch {} setTimeout(() => location.reload(), 1200); });
-renderer.shadowMap.enabled = cfg.gfx !== 'low';
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); try { reportErr(`WebGL context lost (graphics driver reset / out of GPU memory) · ${renderer.info.memory.geometries} geos ${renderer.info.memory.textures} tex`); } catch {} setTimeout(safeReload, 1200); });
+// Reload, but only if this game's address still answers: in a friend's game whose tunnel has gone, a reload
+// would land on Cloudflare's "Error 1033" page, so go back to our own game instead.
+function safeReload() {
+  fetch('/info', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(r => { if (!r.ok) throw 0; return r.json(); })
+    .then(() => location.reload())
+    .catch(() => { let h = location.origin; try { h = sessionStorage.getItem('slHome') || h; } catch {} location.href = h === location.origin ? location.origin + '/' : h + '/'; });
+}
+// Shadows have their own setting (Off / Low / Medium / High), separate from the graphics preset.
+const SHADOW_Q = ['off', 'low', 'medium', 'high'];
+if (!SHADOW_Q.includes(cfg.shadows)) cfg.shadows = cfg.gfx === 'low' ? 'off' : cfg.gfx === 'ultra' ? 'high' : 'medium';
+const shadowMapSize = big => Math.min(4096, ({ low: 1024, medium: 2048, high: 4096 }[cfg.shadows] || 2048) * (big ? 2 : 1));
+let sunLight = null, shadowFrame = 0, sunBig = false;
+renderer.shadowMap.enabled = cfg.shadows !== 'off';
+renderer.shadowMap.type = cfg.shadows === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+// the shadow map is redrawn every other frame instead of every frame (the whole map is drawn into it each time)
+renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.autoClear = false;
 $('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(cfg.fov, innerWidth / innerHeight, ULTRA ? 0.1 : 0.05, 900);
+// Ultra has no logarithmic depth buffer, so its near plane sits further out for more depth precision (less flicker)
+const camera = new THREE.PerspectiveCamera(cfg.fov, innerWidth / innerHeight, ULTRA ? 0.2 : 0.05, 900);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 const vmScene = new THREE.Scene();
@@ -75,8 +90,8 @@ async function setupPost() {
   const ao = new GTAOPass(scene, camera, w, h);
   ao.output = GTAOPass.OUTPUT.Default;
   ao.blendIntensity = 1.0;
-  ao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 6, scale: 2.2, samples: 16, distanceFallOff: 1.0 });
-  ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+  ao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 6, scale: 2.2, samples: 8, distanceFallOff: 1.0 });
+  ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
   // sky, particles, sprites and see-through effects don't cast occlusion (map glass/water does, like a solid surface)
   ao.overrideVisibility = function () {
     const cache = this._visibilityCache;
@@ -86,6 +101,11 @@ async function setupPost() {
   const vm = new RenderPass(vmScene, vmCamera); // the held gun, drawn over the world (no AO on it)
   vm.clear = false; vm.clearDepth = true;
   composer.addPass(vm);
+  // Guard against NaN/huge pixel values (from very bright specular highlights in half-float buffers): bloom would
+  // blur them into flickering black squares.
+  composer.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0); gl_FragColor = vec4(clamp(c, 0.0, 24.0), 1.0); }' }));
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.55, 0.92);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -179,11 +199,13 @@ scene.add(sky);
 // "z-fighting"). Decorations win over floors/roofs, which win over walls; walls of different materials
 // get slightly different offsets. A few millimetres is invisible but always resolves the tie.
 const FLAT_MAT = /floor|roof|rug|grate|tile|carpet|mat$|sand$|dirt|asphalt|road|grass/;
+// Ultra uses a normal (not logarithmic) depth buffer, so its offsets are larger to stay flicker-free far away.
 function inflateFor(name, deco) {
   let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  if (deco) return 0.011 + (h % 13) * 0.0006;
-  if (FLAT_MAT.test(name)) return 0.0065 + (h % 5) * 0.0006;
-  return 0.0004 + (h % 11) * 0.0005;
+  const k = ULTRA ? 2.5 : 1;
+  if (deco) return (0.011 + (h % 13) * 0.0006) * k;
+  if (FLAT_MAT.test(name)) return (0.0065 + (h % 5) * 0.0006) * k;
+  return (0.0004 + (h % 11) * 0.0005) * k;
 }
 // ---- weathering: every map box gets worn, lighter edges, a soft shade line inside them (reads as a bevel),
 // grime at the foot of walls and large-scale colour variation, so surfaces stop looking like clean plastic.
@@ -338,7 +360,8 @@ function loadMap(id) {
   sun.castShadow = renderer.shadowMap.enabled;
   const sc = sun.shadow.camera, ext = map.size * 0.62;
   sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = sunD + map.size * 1.1;
-  const smap = map.size > 130 || ULTRA ? 4096 : 2048;
+  sunBig = map.size > 130; sunLight = sun;
+  const smap = shadowMapSize(sunBig);
   sun.shadow.mapSize.set(smap, smap);
   if (ULTRA) addSurfaceDetail([...map.boxes, ...map.deco].map(b => b.m).concat(theme.floor), map.theme);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
@@ -445,7 +468,7 @@ function mapThumb(id) {
 // ================================================================ local player
 const me = { id: null, pos: [0, 0, 0], vel: [0, 0, 0], onGround: false, height: PLAYER.height, eyeH: PLAYER.eye, yaw: 0, pitch: 0, alive: false, hp: 100, crouch: false, slot: 0, weapons: [], streak: 0 };
 let inGame = false, ws = null, myName = cfg.name, room = null, lobbies = [], online = 0;
-let adsT = 0, drawT = 0, bloom = 0, recoilAcc = 0, shake = 0, kickZ = 0, bobPhase = 0, stepDist = 0, swayX = 0, swayY = 0;
+let vmRoll = 0, adsT = 0, drawT = 0, bloom = 0, recoilAcc = 0, shake = 0, kickZ = 0, bobPhase = 0, stepDist = 0, swayX = 0, swayY = 0;
 let sprintLock = 0, meleeAnim = 0, lastShotTime = 0, deathTime = 0, respawnAt = 0, timeLeft = 600, scoreLimit = 30, matchEnded = false, endBackAt = 0;
 const scores = new Map();
 let mode = 'ffa', target = 30, teamScore = [0, 0], myTeam = -1, zone = null, uavUntil = 0, ggWeapon = null, nadesLeft = 2, tacsLeft = 2;
@@ -855,6 +878,8 @@ function fireShot(w, now) {
   const def = w.def;
   w.ammo--;
   w.nextFire = now + 60000 / def.rpm;
+  // shot number in the current spray (drives the gun's own recoil pattern); resets after a short pause
+  w.sprayN = now - lastShotTime > Math.max(220, 60000 / def.rpm * 1.8) || curW() !== w ? 0 : (w.sprayN || 0) + 1;
   lastShotTime = now; sprintLock = 0.35;
   const { f, r, u } = camVectors();
   const origin = camera.position.clone();
@@ -916,9 +941,11 @@ function fireShot(w, now) {
     send({ t: 'fire', w: def.id, e: ends, s: def.suppressed ? 1 : 0, inc: def.incendiary ? 1 : 0, hits: [...hitMap.values()].map(h => ({ id: h.id, dmg: Math.round(h.dmg), h: h.h })) });
   }
   const kick = def.recoil * (1 - adsT * 0.4) * (me.crouch ? 0.8 * (def.crouchRecoil || 1) : 1);
-  me.pitch = clamp(me.pitch + kick, -1.55, 1.55);
-  me.yaw += (Math.random() - 0.5) * kick * 0.6;
-  recoilAcc += kick * 0.75;
+  const [rv, rh] = recoilStep(def, w.sprayN || 0);
+  me.pitch = clamp(me.pitch + kick * rv, -1.55, 1.55);
+  me.yaw -= rh * kick * 0.55;
+  recoilAcc += kick * rv * 0.75;
+  vmRoll += (rh >= 0 ? 1 : -1) * Math.min(0.05, kick * 0.9);
   bloom = Math.min(0.06, bloom + def.recoil * 0.25 * (def.bloomMul || 1));
   kickZ = Math.min(0.12, kickZ + (def.flame ? 0.004 : 0.03 + def.recoil * 0.6));
   if (vm && !def.flame && !def.dart) { vm.flash.visible = true; vm.flash.material.rotation = Math.random() * 6.28; vm.flashT = 0.05; }
@@ -1210,7 +1237,7 @@ function updateCamera(dt, now) {
   const hs = Math.hypot(me.vel[0], me.vel[2]);
   const bobAmt = me.onGround ? Math.min(1, hs / 6) * (1 - adsT * 0.85) * (slide.t > 0 ? 0.2 : 1) : 0;
   const bx = Math.sin(bobPhase) * 0.012 * bobAmt, by = -Math.abs(Math.cos(bobPhase)) * 0.012 * bobAmt;
-  kickZ = Math.max(0, kickZ - dt * 0.6); kickZ *= Math.pow(0.0001, dt);
+  kickZ = Math.max(0, kickZ - dt * 0.6); kickZ *= Math.pow(0.0001, dt); vmRoll *= Math.pow(0.0005, dt);
   swayX *= Math.pow(0.002, dt); swayY *= Math.pow(0.002, dt);
   g.userData.sprintK = lerp(g.userData.sprintK || 0, isSprinting() ? 1 : 0, Math.min(1, dt * 10));
   const sk = g.userData.sprintK, draw = Math.max(0, drawT) / 0.35;
@@ -1219,7 +1246,7 @@ function updateCamera(dt, now) {
     lerp(hip[0], ads[0], adsT) + bx - swayX * (1 - adsT * 0.7) - sk * 0.05 - slide.roll * 0.04 * (1 - adsT) + A.x,
     lerp(hip[1], ads[1], adsT) + by + swayY * (1 - adsT * 0.7) - draw * 0.25 - sk * 0.03 + A.y,
     lerp(hip[2], ads[2], adsT) + kickZ + A.z);
-  g.rotation.set(kickZ * 0.8 - draw * 0.8 + sk * -0.25 + A.rx, sk * 0.7 + swayX * 2 + A.ry, sk * 0.2 + slide.roll * 0.35 * (1 - adsT) + A.rz);
+  g.rotation.set(kickZ * 0.8 - draw * 0.8 + sk * -0.25 + A.rx, sk * 0.7 + swayX * 2 + A.ry, sk * 0.2 + slide.roll * 0.35 * (1 - adsT) + vmRoll * (1 - adsT * 0.6) + A.rz);
   if (def.melee && meleeAnim > 0) {
     meleeAnim -= dt;
     const k = Math.sin((1 - meleeAnim / 0.3) * Math.PI);
@@ -1305,7 +1332,8 @@ function updateRemotes(dt, now) {
 const urlQ = new URLSearchParams(location.search);
 let pendingJoin = /^[A-Z]{4}$/.test(urlQ.get('join') || '') ? urlQ.get('join') : null;
 try { if (/^https?:\/\//.test(urlQ.get('home') || '')) sessionStorage.setItem('slHome', urlQ.get('home')); } catch {}
-if (urlQ.has('join') || urlQ.has('home')) history.replaceState(null, '', location.pathname);
+if (urlQ.has('lost')) setTimeout(() => toast("Your friend's game closed or went offline, so you're back in your own game."), 1500);
+if (urlQ.has('join') || urlQ.has('home') || urlQ.has('lost')) history.replaceState(null, '', location.pathname);
 const homeOrigin = (() => { try { return sessionStorage.getItem('slHome') || location.origin; } catch { return location.origin; } })();
 const onFriendsGame = homeOrigin !== location.origin;
 const goHome = () => { location.href = homeOrigin + '/'; };
@@ -1346,6 +1374,10 @@ function handle(m) {
       // Only the developer's own app (its local server) marks itself as the feedback owner.
       if (m.fbOwner && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) PR.store.set(FB_OWNER_KEY, '1');
       if (!m.fbOwner && PR.store.get(FB_OWNER_KEY) === '1') send({ t: 'fbowner' });
+      // on the developer's server: hand over this PC's desktop crash log (app/game-page crashes) so they can be diagnosed
+      if (m.fbOwner && window.desktop?.crashReport) window.desktop.crashReport().then(r => {
+        if (r && r.text.trim()) setTimeout(() => { reportErr(`crash.log from this player's app:\n${r.text}`); window.desktop.crashReportSent(r.end); }, 3000);
+      }).catch(() => {});
       fbFlush();
       break;
     case 'fback': { const ids = new Set(m.ids || []); fbSave(fbLoad().filter(f => !ids.has(f.id))); break; }
@@ -1899,6 +1931,7 @@ function frame(now) {
       sendAcc = Math.min(sendAcc - 1 / 30, 1 / 30); // steady 30 a second (resetting to 0 gave an uneven ~20)
       send({ t: 's', k: Math.round(performance.now()), p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0 });
     }
+    if (renderer.shadowMap.enabled && (++shadowFrame & 1)) renderer.shadowMap.needsUpdate = true;
     renderer.clear();
     const showVm = inGame && me.alive && vmHolder.visible;
     if (post) { post.vm.enabled = showVm; post.composer.render(dt); }
@@ -2209,16 +2242,30 @@ $('invert').addEventListener('change', () => { cfg.invert = $('invert').checked;
 const updateGfxChips = () => {
   document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
   $('gfxnote').textContent = (cfg.gfx === 'ultra') !== ULTRA ? 'Restart Strikeline to ' + (ULTRA ? 'turn Ultra off.' : 'turn Ultra on.')
-    : cfg.gfx === 'ultra' ? 'Ambient occlusion, bloom, 4K shadows, surface detail. Needs a decent graphics card.' : '';
+    : cfg.gfx === 'ultra' ? 'Ambient occlusion, bloom and surface detail. Needs a decent graphics card. Shadows have their own setting below.' : '';
 };
 document.querySelectorAll('#gfx button').forEach(b => b.addEventListener('click', () => {
   cfg.gfx = b.dataset.g; saveCfg(); updateGfxChips();
   renderer.setPixelRatio(gfxPixelRatio());
   if (post) { post.composer.setPixelRatio(renderer.getPixelRatio()); post.composer.setSize(innerWidth, innerHeight); }
-  renderer.shadowMap.enabled = cfg.gfx !== 'low';
-  scene.traverse(o => { if (o.isDirectionalLight) o.castShadow = renderer.shadowMap.enabled; if (o.material) o.material.needsUpdate = true; });
+  cfg.shadows = cfg.gfx === 'low' ? 'off' : cfg.gfx === 'ultra' ? 'high' : 'medium'; applyShadows();
 }));
 updateGfxChips();
+function applyShadows() {
+  saveCfg();
+  document.querySelectorAll('#shadowq button').forEach(b => b.classList.toggle('on', b.dataset.s === cfg.shadows));
+  const on = cfg.shadows !== 'off', type = cfg.shadows === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  const changed = renderer.shadowMap.enabled !== on || renderer.shadowMap.type !== type;
+  renderer.shadowMap.enabled = on; renderer.shadowMap.type = type; renderer.shadowMap.needsUpdate = true;
+  if (sunLight) {
+    sunLight.castShadow = on;
+    const n = shadowMapSize(sunBig);
+    if (sunLight.shadow.mapSize.x !== n) { sunLight.shadow.mapSize.set(n, n); if (sunLight.shadow.map) { sunLight.shadow.map.dispose(); sunLight.shadow.map = null; } }
+  }
+  if (changed) scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+}
+document.querySelectorAll('#shadowq button').forEach(b => b.addEventListener('click', () => { cfg.shadows = b.dataset.s; applyShadows(); SFX.uiBlip?.(); }));
+document.querySelectorAll('#shadowq button').forEach(b => b.classList.toggle('on', b.dataset.s === cfg.shadows));
 // reticle + crosshair customisation
 function chipRow(el, values, key, label, onPick, swatch) {
   el.innerHTML = values.map(v => `<button data-v="${v}" class="${cfg[key] === v ? 'on' : ''}">${swatch ? `<i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${RETICLE_COLORS[v]};margin-right:6px"></i>` : ''}${label(v)}</button>`).join('');

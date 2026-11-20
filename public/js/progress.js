@@ -151,12 +151,20 @@ export const UNLOCKS = {
   // developer skins: unlocked on this PC with the dev code (Skins screen)
   'ws:dev': { dev: true }, 'ws:glitch': { dev: true }, 'op:dev': { dev: true }, 'op:devgold': { dev: true },
 };
-const DEV_KEY = 'strikeline_dev', DEV_HASH = 3747645086;
-const fnv = s => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
-export const isDev = () => { try { return localStorage.getItem(DEV_KEY) === String(DEV_HASH); } catch { return false; } };
+// Only the SHA-256 of the code lives here; the PC keeps the code itself, so the unlock can't be faked by copying a value from this file.
+const DEV_KEY = 'strikeline_devcode', DEV_SHA = '592825ecebd9678f878dfce975fbb0509465067ff1f8966038b7b36d7cf067e6';
+const shaHex = str => [...sha256(enc.encode(str))].map(v => v.toString(16).padStart(2, "0")).join("");
+const normCode = code => String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const checkCode = code => { const c = normCode(code); return c.length >= 12 && shaHex(c) === DEV_SHA; };
+let devCache = null;
+export const isDev = () => {
+  if (devCache === null) { try { devCache = checkCode(localStorage.getItem(DEV_KEY)); } catch { devCache = false; } }
+  return devCache;
+};
 export function tryDevCode(code) {
-  if (fnv(String(code || '').trim().toUpperCase()) !== DEV_HASH) return false;
-  try { localStorage.setItem(DEV_KEY, String(DEV_HASH)); } catch {}
+  if (!checkCode(code)) return false;
+  try { localStorage.setItem(DEV_KEY, normCode(code)); localStorage.removeItem('strikeline_dev'); } catch {}
+  devCache = true;
   return true;
 }
 const isCosmetic = key => key.startsWith('ws:') || key.startsWith('op:');

@@ -307,7 +307,17 @@ ipcMain.handle('copy', (e, text) => { clipboard.writeText(String(text)); return 
 ipcMain.handle('install-update', () => installUpdate());
 ipcMain.handle('restart-app', () => { stopAll(); app.relaunch(); setTimeout(() => app.exit(0), 300); });
 ipcMain.handle('retry', () => boot());
-ipcMain.handle('rejoin', (e, url) => { if (/^https?:\/\//.test(url)) { joined = url.startsWith(localUrl().slice(0, -1)) ? '' : url.replace(/\/+$/, ''); win.loadURL(url); updateTitle(); } });
+// crash.log entries the developer hasn't seen yet: the game sends them to the developer's server when playing there
+ipcMain.handle('crash-report', () => {
+  try {
+    const txt = fs.readFileSync(path.join(app.getPath('userData'), 'crash.log'), 'utf8');
+    let from = Number(store.strikeline_crash_sent) || 0;
+    if (from > txt.length) from = 0; // log was rotated
+    return { text: txt.slice(from).slice(-1100), end: txt.length };
+  } catch { return { text: '', end: 0 }; }
+});
+ipcMain.handle('crash-report-sent', (e, n) => { store.strikeline_crash_sent = String(Number(n) || 0); saveStore(); });
+ipcMain.handle('rejoin', async (e, url) => { if (/^https?:\/\//.test(url) && !url.startsWith(localUrl().slice(0, -1)) && !(await waitFor(`${new URL(url).origin}/info`, 6000))) url = localUrl() + '?lost=1'; if (/^https?:\/\//.test(url)) { joined = url.startsWith(localUrl().slice(0, -1)) ? '' : url.replace(/\/+$/, ''); win.loadURL(url); updateTitle(); } });
 
 // ---------------------------------------------------------------- window
 function createWindow() {
@@ -324,6 +334,11 @@ function createWindow() {
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
   });
+  // A friend's game address that has gone away shows Cloudflare's "Error 1033" page (HTTP 530) with no way
+  // back into the game: send the player back to their own game instead.
+  const deadFriend = (url) => { if (!/\.trycloudflare\.com/i.test(url)) return; crashLog(`friend's game unreachable: ${url.replace(/\?.*$/, '')}`); joined = ''; updateTitle(); win.loadURL(localUrl() + '?lost=1'); };
+  win.webContents.on('did-navigate', (e, url, code) => { if (code >= 500) deadFriend(url); });
+  win.webContents.on('did-fail-load', (e, code, desc, url, isMain) => { if (isMain && code !== -3) deadFriend(url); });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   // Crash recovery: if the game page dies, show a screen with a one-click rejoin.
   win.webContents.on('render-process-gone', (e, d) => {

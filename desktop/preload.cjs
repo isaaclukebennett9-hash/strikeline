@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('desktop', {
   state: () => ipcRenderer.invoke('state'),
   retry: () => ipcRenderer.invoke('retry'),
   rejoin: (url) => ipcRenderer.invoke('rejoin', url),
+  crashReport: () => ipcRenderer.invoke('crash-report'),     // crash.log lines not yet handed to the developer
+  crashReportSent: (n) => ipcRenderer.invoke('crash-report-sent', n),
   onStatus: (fn) => ipcRenderer.on('status', (e, t) => fn(t)),
   onBootError: (fn) => ipcRenderer.on('boot-error', (e, t) => fn(t)),
 });

@@ -74,7 +74,7 @@ function buildShip(c) {
   for (const x of [-50, -30]) { push(c.boxes, B(x, -30.5, 1.4, 1.4, 4.5, 'crane', H)); push(c.deco, R(x - 0.3, H + 4.2, -30.8, x + 9, H + 4.8, -30.2, 'crane')); push(c.deco, B(x + 8.6, -30.5, 0.06, 0.06, 4, 'metal_dark', H + 0.4)); }
   for (const x of [-60, -42, -28]) { push(c.boxes, B(x, -40.6, 0.8, 0.8, 1.6, 'metal', H)); push(c.deco, B(x, -40.6, 1.0, 1.0, 0.3, 'metal_dark', H + 1.6)); }
   // superstructure on the stern: 2 floors, bridge wings, funnel, mast
-  place(c, 0, H, 0, (t) => building(t, { x: -68, z: -35, w: 11, d: 12, floors: 2, m: 'panel_white', roof: false, roofM: 'metal_roof', floorM: 'floor_tile', doors: { e: [0, { c: 3.5, w: 1.2 }] }, winY: [1.1, 2.3], winGap: 2.2 }));
+  place(c, 0, H, 0, (t) => building(t, { x: -68, z: -35, w: 11, d: 12, floors: 2, m: 'panel_white', roof: false, roofM: 'metal_roof', floorM: 'floor_tile', doors: { e: [0, { c: 4.6, w: 1.2 }] }, winY: [1.1, 2.3], winGap: 2.2 }));
   push(c.deco, R(-70, H + FH - 0.1, -43.5, -66, H + FH + 0.1, -26.5, 'panel_white'));
   for (const s of [-43.5, -26.5]) push(c.deco, R(-70, H + FH + 0.1, s - 0.04, -66, H + FH + 1.1, s + 0.04, 'metal'));
   push(c.deco, B(-70.5, -35, 3.4, 4.2, 4.5, 'hull_red', H + 2 * FH + 0.4)); push(c.deco, B(-70.5, -35, 3.5, 4.3, 0.8, 'metal_dark', H + 2 * FH + 4.9));
@@ -246,7 +246,7 @@ export function suburbs() {
   lotRow(c, rnd, W[0], 7.2, W[1], 42.8, 'e', 19, 2); lotRow(c, rnd, W[0], 7.2, W[1], 42.8, 'w', 17, 2);
   // ---- mall + parking (centre south block)
   building(c, { x: 0, z: -31, w: 48, d: 20, floors: 2, fh: 4.2, m: 'concrete_panel', floorM: 'floor_tile', roofM: 'roof',
-    doors: { n: [-14, { c: 0, w: 4, h: 3.2 }, 14], s: [{ c: -12, w: 3.6, h: 3.4 }], e: [0], w: [0] }, winY: [0.9, 3.4], winGap: 3.2, partition: -6 });
+    doors: { n: [-14, { c: 0, w: 4, h: 3.2 }, 14], s: [{ c: -15.5, w: 3.6, h: 3.4 }], e: [0], w: [0] }, winY: [0.9, 3.4], winGap: 3.2, partition: -6 });
   for (let k = -20; k <= 16; k += 9) if (Math.abs(k + 6) > 2) { // shop unit walls inside along the south wall
     push(c.boxes, R(k - 0.1, 0, -40.7, k + 0.1, 4.0, -35.5, 'plaster_white'));
   }
@@ -273,10 +273,11 @@ export function suburbs() {
   hoop(c, 23, 67.4, 0); hoop(c, 23, 82.6, 2);
   push(c.deco, R(-36, 0, 56.5, -6, 0.04, 68, 'grass')); goalPosts(c, -35, 62, 1); goalPosts(c, -7, 62, 3);
   push(c.deco, R(2, 0, 56.5, 34, 0.04, 64.5, 'asphalt')); hoop(c, 3.2, 60.5, 1); hoop(c, 32.8, 60.5, 3);
-  push(c.boxes, R(-18, 0.3, 54.6, -6, 3.2, 57.1, 'bus')); push(c.deco, R(-17.8, 1.7, 54.55, -6.6, 2.5, 54.6, 'car_glass')); push(c.deco, R(-17.8, 1.7, 57.1, -6.6, 2.5, 57.15, 'car_glass'));
-  for (const x of [-16.5, -8]) for (const z of [54.4, 57.3]) push(c.deco, B(x, z, 1.0, 0.3, 1.0, 'tire'));
+  // school bus parked at the kerb outside the fence (clear of the gates)
+  push(c.boxes, R(-27, 0.3, 52.0, -15, 3.2, 54.5, 'bus')); push(c.deco, R(-26.8, 1.7, 51.95, -15.6, 2.5, 52.0, 'car_glass')); push(c.deco, R(-26.8, 1.7, 54.5, -15.6, 2.5, 54.55, 'car_glass'));
+  for (const x of [-25.5, -17]) for (const z of [51.8, 54.7]) push(c.deco, B(x, z, 1.0, 0.3, 1.0, 'tire'));
   wallSign(c, -14, 70.9, 0, 6.6, 8, 1.0, 'neon_cyan', 'trim');
-  fence(c, -37, 55.6, 37, 55.6, 'metal_grate', 1.8, [-30, -12, 0, 18, 30]);
+  fence(c, -37, 55.6, 37, 55.6, 'metal_grate', 1.8, [-30, -12, 0, 18, 28]);
   // ---- church + gas station (east column middle blocks)
   building(c, { x: 70, z: 25, w: 13, d: 20, floors: 1, fh: 6, m: 'stone', roof: false, floorM: 'floor_wood', doors: { w: [{ c: 0, w: 2.4, h: 3.4 }], e: [4] }, winY: [2, 5], winGap: 3.5 });
   gableRoof(c, 63.5, 15, 76.5, 35, 6, 'roof_slate', false);
@@ -360,7 +361,7 @@ export function canyonTown() {
   push(c.boxes, R(fx1 - WT2, 3.6, FZ - 2.5, fx1, WH, FZ + 2.5, 'wood')); // gate lintel
   for (let x = fx0 + TW; x < fx1 - TW - 0.7; x += 1.6) { push(c.boxes, R(x, WH, fz0, x + 0.8, WH + 0.8, fz0 + 0.4, 'mudbrick')); push(c.boxes, R(x, WH, fz1 - 0.4, x + 0.8, WH + 0.8, fz1, 'mudbrick')); }
   for (let z = fz0 + TW; z < fz1 - TW - 0.7; z += 1.6) { push(c.boxes, R(fx0, WH, z, fx0 + 0.4, WH + 0.8, z + 0.8, 'mudbrick')); if (Math.abs(z + 0.4 - FZ) > 3) push(c.boxes, R(fx1 - 0.4, WH, z, fx1, WH + 0.8, z + 0.8, 'mudbrick')); }
-  for (const [x, z, dr, off] of [[fx0 + 3.2, fz0 + 3.2, 'e', -1.6], [fx1 - 3.2, fz0 + 3.2, 'w', -1.6], [fx0 + 3.2, fz1 - 3.2, 's', 0], [fx1 - 3.2, fz1 - 3.2, 's', 0]]) building(c, { x, z, w: TW, d: TW, floors: 2, fh: 3.6, m: 'mudbrick', roofM: 'mudroof', floorM: 'rug', doors: { [dr]: [off] }, windows: false });
+  for (const [x, z, dr, off] of [[fx0 + 3.2, fz0 + 3.2, 'e', -0.95], [fx1 - 3.2, fz0 + 3.2, 'w', -0.95], [fx0 + 3.2, fz1 - 3.2, 's', 0], [fx1 - 3.2, fz1 - 3.2, 's', 0]]) building(c, { x, z, w: TW, d: TW, floors: 2, fh: 3.6, m: 'mudbrick', roofM: 'mudroof', floorM: 'rug', doors: { [dr]: [off] }, windows: false });
   stairFlight(c, fx0 + 8, fz0 + WT2 + 1, 1, 0, 1.4, 11, WH / 11, 'wood', 0, 0.55); push(c.boxes, R(fx0 + 14, WH - 0.2, fz0 + WT2, fx0 + 16, WH, fz0 + WT2 + 1.8, 'wood'));
   stairFlight(c, fx1 - 8, fz1 - WT2 - 1, -1, 0, 1.4, 11, WH / 11, 'wood', 0, 0.55); push(c.boxes, R(fx1 - 16, WH - 0.2, fz1 - WT2 - 1.8, fx1 - 14, WH, fz1 - WT2, 'wood'));
   adobe(c, FX - 4, FZ + 7, 14, 7, 1, { s: [-3, 3] }); adobe(c, FX + 8, FZ - 8, 8, 7, 1, { n: [0] }, 'sandstone');

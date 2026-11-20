@@ -26,60 +26,60 @@ export const WEAPONS = {
     falloff: [4, 12, 0.25], speed: 1.05, zoom: 1.1, ads: 0.13, snd: { f: 1300, d: 0.5, b: 65, v: 1.15 } }),
 
   // =========================================================== SMGs
-  vector: W({ id: 'vector', name: 'Vector-K', slot: 'primary', cls: 'smg', type: 'SMG', model: 'smg', optic: 'reddot',
+  vector: W({ id: 'vector', name: 'Vector-K', slot: 'primary', cls: 'smg', type: 'SMG', model: 'smg',
     dmg: 20, head: 1.5, rpm: 900, auto: true, mag: 32, reserve: 192, reload: 1.7, spread: 0.028, adsSpread: 0.008, moveSpread: 0.012, recoil: 0.011, range: 70,
     falloff: [12, 35, 0.55], speed: 1.1, zoom: 1.25, ads: 0.14, snd: { f: 3400, d: 0.14, b: 150, v: 0.7 } }),
-  kestrel: W({ id: 'kestrel', name: 'Kestrel PDW', slot: 'primary', cls: 'smg', type: 'PDW', model: 'pdw', optic: 'holo',
+  kestrel: W({ id: 'kestrel', name: 'Kestrel PDW', slot: 'primary', cls: 'smg', type: 'PDW', model: 'pdw',
     dmg: 22, rpm: 820, auto: true, mag: 40, reserve: 200, reload: 2.0, spread: 0.024, adsSpread: 0.006, moveSpread: 0.015, recoil: 0.012, range: 90,
     falloff: [16, 45, 0.6], speed: 1.06, zoom: 1.3, ads: 0.15, snd: { f: 3000, d: 0.16, b: 140, v: 0.75 } }),
   mp5: W({ id: 'mp5', name: 'MP5', slot: 'primary', cls: 'smg', type: 'SMG', model: 'mp5',
     dmg: 21, rpm: 800, auto: true, mag: 30, reserve: 180, reload: 1.9, spread: 0.022, adsSpread: 0.005, moveSpread: 0.012, recoil: 0.009, range: 75,
     falloff: [14, 40, 0.6], speed: 1.08, zoom: 1.3, ads: 0.14, snd: { f: 3300, d: 0.13, b: 150, v: 0.68 } }),
   ppsh: W({ id: 'ppsh', name: 'PPSh-41', slot: 'primary', cls: 'smg', type: 'SMG', model: 'ppsh',
-    dmg: 18, head: 1.5, rpm: 1000, auto: true, mag: 71, reserve: 213, reload: 3.2, spread: 0.032, adsSpread: 0.01, moveSpread: 0.012, recoil: 0.01, range: 60,
-    falloff: [10, 30, 0.5], speed: 1.04, zoom: 1.2, ads: 0.16, snd: { f: 3100, d: 0.12, b: 140, v: 0.7 } }),
+    dmg: 18, head: 1.5, rpm: 1000, auto: true, mag: 71, reserve: 213, reload: 3.2, spread: 0.03, adsSpread: 0.008, moveSpread: 0.012, recoil: 0.01, range: 85,
+    falloff: [16, 42, 0.6], speed: 1.04, zoom: 1.2, ads: 0.16, snd: { f: 3100, d: 0.12, b: 140, v: 0.7 } }),
   tommy: W({ id: 'tommy', name: 'M1928 Tommy', slot: 'primary', cls: 'smg', type: 'SMG', model: 'tommy',
     dmg: 24, head: 1.5, rpm: 700, auto: true, mag: 50, reserve: 150, reload: 3.0, spread: 0.03, adsSpread: 0.008, moveSpread: 0.014, recoil: 0.015, range: 65,
     falloff: [12, 32, 0.55], speed: 1.0, zoom: 1.2, ads: 0.16, snd: { f: 2500, d: 0.16, b: 120, v: 0.8 } }),
   bizon: W({ id: 'bizon', name: 'PP-19 Bizon', slot: 'primary', cls: 'smg', type: 'SMG', model: 'bizon',
     dmg: 19, head: 1.5, rpm: 680, auto: true, mag: 64, reserve: 192, reload: 2.6, spread: 0.026, adsSpread: 0.007, moveSpread: 0.012, recoil: 0.009, range: 65,
     falloff: [12, 34, 0.55], speed: 1.06, zoom: 1.25, ads: 0.15, snd: { f: 3200, d: 0.13, b: 150, v: 0.68 } }),
-  skorpion: W({ id: 'skorpion', name: 'CZ Skorpion', slot: 'primary', cls: 'smg', type: 'SMG', model: 'skorpion', optic: 'reddot',
+  skorpion: W({ id: 'skorpion', name: 'CZ Skorpion', slot: 'primary', cls: 'smg', type: 'SMG', model: 'skorpion',
     dmg: 16, head: 1.5, rpm: 1150, auto: true, mag: 30, reserve: 180, reload: 1.7, spread: 0.03, adsSpread: 0.012, moveSpread: 0.01, recoil: 0.011, range: 50,
     falloff: [8, 26, 0.5], speed: 1.12, zoom: 1.2, ads: 0.12, snd: { f: 3700, d: 0.1, b: 175, v: 0.62 } }),
 
   // =========================================================== ASSAULT RIFLES
-  falcon: W({ id: 'falcon', name: 'AR-7 Falcon', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'rifle', optic: 'reddot',
+  falcon: W({ id: 'falcon', name: 'AR-7 Falcon', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'rifle',
     dmg: 26, head: 1.8, rpm: 650, auto: true, mag: 30, reserve: 180, reload: 2.1, spread: 0.024, adsSpread: 0.003, moveSpread: 0.03, recoil: 0.016, range: 150,
     falloff: [30, 80, 0.7], speed: 0.95, zoom: 1.4, snd: { f: 2400, d: 0.22, b: 110, v: 0.85 } }),
-  tri: W({ id: 'tri', name: 'M4 Tri-Burst', slot: 'primary', cls: 'ar', type: 'Burst Rifle', model: 'burst', optic: 'holo',
+  tri: W({ id: 'tri', name: 'M4 Tri-Burst', slot: 'primary', cls: 'ar', type: 'Burst Rifle', model: 'burst',
     dmg: 31, head: 1.8, rpm: 900, burst: 3, burstDelay: 0.32, auto: true, mag: 30, reserve: 180, reload: 2.0, spread: 0.02, adsSpread: 0.002, moveSpread: 0.03, recoil: 0.014, range: 150,
     falloff: [30, 80, 0.7], speed: 0.95, zoom: 1.5, snd: { f: 2600, d: 0.2, b: 120, v: 0.8 } }),
   ak47: W({ id: 'ak47', name: 'AK-47', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'ak',
     dmg: 33, head: 1.8, rpm: 600, auto: true, mag: 30, reserve: 180, reload: 2.5, spread: 0.028, adsSpread: 0.004, moveSpread: 0.03, recoil: 0.024, range: 160,
     falloff: [35, 90, 0.75], speed: 0.93, zoom: 1.35, ads: 0.19, snd: { f: 2100, d: 0.25, b: 100, v: 0.95 } }),
-  ak12: W({ id: 'ak12', name: 'AK-12', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'ak12', optic: 'reddot',
+  ak12: W({ id: 'ak12', name: 'AK-12', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'ak12',
     dmg: 29, head: 1.8, rpm: 700, auto: true, mag: 30, reserve: 180, reload: 2.3, spread: 0.024, adsSpread: 0.003, moveSpread: 0.028, recoil: 0.017, range: 150,
     falloff: [30, 85, 0.7], speed: 0.95, zoom: 1.4, ads: 0.18, snd: { f: 2250, d: 0.23, b: 105, v: 0.9 } }),
   galil: W({ id: 'galil', name: 'Galil ACE', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'galil',
     dmg: 30, head: 1.8, rpm: 650, auto: true, mag: 35, reserve: 175, reload: 2.4, spread: 0.026, adsSpread: 0.0035, moveSpread: 0.03, recoil: 0.019, range: 150,
     falloff: [30, 85, 0.72], speed: 0.94, zoom: 1.4, ads: 0.18, snd: { f: 2300, d: 0.23, b: 105, v: 0.9 } }),
-  famas: W({ id: 'famas', name: 'FAMAS', slot: 'primary', cls: 'ar', type: 'Burst Rifle', model: 'famas',
-    dmg: 27, head: 1.8, rpm: 1100, burst: 3, burstDelay: 0.26, auto: true, mag: 30, reserve: 180, reload: 2.2, spread: 0.022, adsSpread: 0.0025, moveSpread: 0.028, recoil: 0.012, range: 140,
-    falloff: [28, 80, 0.7], speed: 0.96, zoom: 1.45, ads: 0.16, snd: { f: 2700, d: 0.18, b: 125, v: 0.8 } }),
-  aug: W({ id: 'aug', name: 'AUG A3', slot: 'primary', cls: 'ar', type: 'Bullpup Rifle', model: 'aug', optic: 'acog',
+  famas: W({ id: 'famas', name: 'FAMAS', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'famas',
+    dmg: 24, head: 1.8, rpm: 950, auto: true, mag: 30, reserve: 180, reload: 2.2, spread: 0.023, adsSpread: 0.003, moveSpread: 0.028, recoil: 0.013, range: 130,
+    falloff: [26, 72, 0.68], speed: 0.96, zoom: 1.4, ads: 0.16, snd: { f: 2700, d: 0.18, b: 125, v: 0.8 } }),
+  aug: W({ id: 'aug', name: 'AUG A3', slot: 'primary', cls: 'ar', type: 'Bullpup Rifle', model: 'aug',
     dmg: 27, head: 1.8, rpm: 680, auto: true, mag: 30, reserve: 180, reload: 2.6, spread: 0.022, adsSpread: 0.002, moveSpread: 0.028, recoil: 0.013, range: 160,
-    falloff: [32, 90, 0.72], speed: 0.95, zoom: 1.8, ads: 0.19, snd: { f: 2500, d: 0.2, b: 115, v: 0.82 } }),
-  g36c: W({ id: 'g36c', name: 'G36C', slot: 'primary', cls: 'ar', type: 'Carbine', model: 'g36', optic: 'reddot',
+    falloff: [32, 90, 0.72], speed: 0.95, zoom: 1.4, ads: 0.17, snd: { f: 2500, d: 0.2, b: 115, v: 0.82 } }),
+  g36c: W({ id: 'g36c', name: 'G36C', slot: 'primary', cls: 'ar', type: 'Carbine', model: 'g36',
     dmg: 25, head: 1.7, rpm: 750, auto: true, mag: 30, reserve: 180, reload: 2.0, spread: 0.023, adsSpread: 0.003, moveSpread: 0.026, recoil: 0.013, range: 130,
     falloff: [26, 72, 0.68], speed: 0.98, zoom: 1.4, ads: 0.16, snd: { f: 2600, d: 0.2, b: 120, v: 0.8 } }),
   asval: W({ id: 'asval', name: 'AS Val', slot: 'primary', cls: 'ar', type: 'Suppressed Rifle', model: 'asval', suppressed: true,
     dmg: 27, head: 1.9, rpm: 900, auto: true, mag: 20, reserve: 160, reload: 1.9, spread: 0.024, adsSpread: 0.004, moveSpread: 0.024, recoil: 0.014, range: 90,
     falloff: [18, 50, 0.6], speed: 1.0, zoom: 1.4, ads: 0.16, snd: { f: 1400, d: 0.1, b: 60, v: 0.35 } }),
-  r4c: W({ id: 'r4c', name: 'R4-C', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'r4c', optic: 'holo',
+  r4c: W({ id: 'r4c', name: 'R4-C', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'r4c',
     dmg: 30, head: 1.8, rpm: 860, auto: true, mag: 30, reserve: 180, reload: 2.2, spread: 0.026, adsSpread: 0.0035, moveSpread: 0.03, recoil: 0.021, range: 140,
     falloff: [28, 80, 0.7], speed: 0.95, zoom: 1.4, ads: 0.17, snd: { f: 2450, d: 0.21, b: 112, v: 0.86 } }),
-  scarh: W({ id: 'scarh', name: 'SCAR-H', slot: 'primary', cls: 'ar', type: 'Battle Rifle', model: 'scarh', optic: 'holo',
+  scarh: W({ id: 'scarh', name: 'SCAR-H', slot: 'primary', cls: 'ar', type: 'Battle Rifle', model: 'scarh',
     dmg: 41, head: 1.8, rpm: 550, auto: true, mag: 20, reserve: 140, reload: 2.4, spread: 0.028, adsSpread: 0.003, moveSpread: 0.034, recoil: 0.028, range: 180,
     falloff: [40, 110, 0.78], speed: 0.91, zoom: 1.5, ads: 0.2, snd: { f: 1900, d: 0.28, b: 92, v: 1.0 } }),
   fal: W({ id: 'fal', name: 'FN FAL', slot: 'primary', cls: 'ar', type: 'Battle Rifle', model: 'fal',
@@ -87,10 +87,10 @@ export const WEAPONS = {
     falloff: [45, 120, 0.8], speed: 0.91, zoom: 1.6, ads: 0.2, snd: { f: 1850, d: 0.3, b: 90, v: 1.0 } }),
 
   // =========================================================== LMGs
-  hammer: W({ id: 'hammer', name: 'Hammer M60', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'lmg', optic: 'reddot', anim: 'belt',
+  hammer: W({ id: 'hammer', name: 'Hammer M60', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'lmg', anim: 'belt',
     dmg: 24, rpm: 720, auto: true, mag: 100, reserve: 200, reload: 4.2, spread: 0.035, adsSpread: 0.006, moveSpread: 0.04, recoil: 0.014, range: 150,
     falloff: [30, 80, 0.7], speed: 0.85, zoom: 1.35, ads: 0.24, snd: { f: 2100, d: 0.26, b: 95, v: 0.9 } }),
-  m249: W({ id: 'm249', name: 'M249 SAW', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'm249', optic: 'reddot', anim: 'belt',
+  m249: W({ id: 'm249', name: 'M249 SAW', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'm249', anim: 'belt',
     dmg: 23, rpm: 800, auto: true, mag: 100, reserve: 200, reload: 4.6, spread: 0.036, adsSpread: 0.006, moveSpread: 0.04, recoil: 0.013, range: 150,
     falloff: [30, 80, 0.7], speed: 0.84, zoom: 1.35, ads: 0.24, snd: { f: 2300, d: 0.22, b: 105, v: 0.88 } }),
   pkm: W({ id: 'pkm', name: 'PKM', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'pkm', anim: 'belt',
@@ -102,12 +102,12 @@ export const WEAPONS = {
     dmg: 13, head: 1.4, rpm: 75, pellets: 10, mag: 7, reserve: 42, reload: 2.6, spread: 0.075, adsSpread: 0.055, moveSpread: 0.01, recoil: 0.08, range: 40,
     falloff: [6, 20, 0.3], speed: 1.0, zoom: 1.15, snd: { f: 1400, d: 0.45, b: 70, v: 1.1 } }),
   ksg: W({ id: 'ksg', name: 'KSG 12', slot: 'primary', cls: 'shotgun', type: 'Pump Shotgun', model: 'ksg', anim: 'shells', pump: true, shellTime: 0.42,
-    dmg: 12, head: 1.4, rpm: 85, pellets: 10, mag: 14, reserve: 42, reload: 3, spread: 0.07, adsSpread: 0.05, moveSpread: 0.01, recoil: 0.07, range: 38,
-    falloff: [6, 20, 0.3], speed: 1.0, zoom: 1.15, snd: { f: 1450, d: 0.42, b: 72, v: 1.05 } }),
-  scorpion: W({ id: 'scorpion', name: 'Scorpion Auto', slot: 'primary', cls: 'shotgun', type: 'Auto Shotgun', model: 'autoshotgun', optic: 'reddot',
+    dmg: 17, head: 1.4, rpm: 85, pellets: 10, mag: 14, reserve: 42, reload: 3, spread: 0.058, adsSpread: 0.042, moveSpread: 0.01, recoil: 0.07, range: 38,
+    falloff: [9, 26, 0.4], speed: 1.0, zoom: 1.15, snd: { f: 1450, d: 0.42, b: 72, v: 1.05 } }),
+  scorpion: W({ id: 'scorpion', name: 'Scorpion Auto', slot: 'primary', cls: 'shotgun', type: 'Auto Shotgun', model: 'autoshotgun',
     dmg: 10, head: 1.4, rpm: 260, auto: true, pellets: 8, mag: 10, reserve: 50, reload: 3.0, spread: 0.08, adsSpread: 0.06, moveSpread: 0.01, recoil: 0.05, range: 35,
     falloff: [5, 16, 0.3], speed: 0.95, zoom: 1.15, snd: { f: 1500, d: 0.35, b: 75, v: 1.0 } }),
-  tcsg: W({ id: 'tcsg', name: 'TCSG12', slot: 'primary', cls: 'shotgun', type: 'Slug Shotgun', model: 'tcsg', optic: 'reddot', slug: true,
+  tcsg: W({ id: 'tcsg', name: 'TCSG12', slot: 'primary', cls: 'shotgun', type: 'Slug Shotgun', model: 'tcsg', slug: true,
     dmg: 55, head: 1.7, rpm: 240, mag: 10, reserve: 50, reload: 2.4, spread: 0.03, adsSpread: 0.004, moveSpread: 0.03, recoil: 0.05, range: 70,
     falloff: [15, 45, 0.55], speed: 0.98, zoom: 1.4, snd: { f: 1350, d: 0.42, b: 70, v: 1.1 } }),
   dbarrel: W({ id: 'dbarrel', name: 'Double Barrel', slot: 'primary', cls: 'shotgun', type: 'Break-Action', model: 'dbarrel', anim: 'break',
@@ -176,4 +176,58 @@ export function falloffMult(def, dist) {
   if (dist <= a) return 1;
   if (dist >= b) return m;
   return 1 - (1 - m) * ((dist - a) / (b - a));
+}
+
+// ---------------------------------------------------------------- iron sight styles (what you see when aiming without an optic)
+// aperture: round rear peep + hooded front post · ring: hooded front ring + round rear peep (PPSh/MP5 style)
+// notch: open tangent notch + eared front post (AK family) · ghost: thick ghost ring + winged post (shotguns)
+// bead: front bead on a rib · pistol: three-dot · toy: chunky blaster sights
+const IRONS = {
+  viper: 'pistol', magnum: 'pistol', hawk: 'pistol', stinger: 'notch', sawedoff: 'bead', dbarrel: 'bead',
+  ppsh: 'ring', mp5: 'ring', tommy: 'aperture', bizon: 'notch', skorpion: 'notch', ak47: 'notch', pkm: 'notch', asval: 'notch',
+  hammer: 'notch', breacher: 'ghost', ksg: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
+};
+for (const w of Object.values(WEAPONS)) if (!w.throwable && !w.melee) w.irons = IRONS[w.id] || 'aperture';
+
+// ---------------------------------------------------------------- recoil patterns
+// Every gun climbs and sways its own way. kick = extra climb on the first shots, settle = how much the climb
+// calms down in a long spray (lower = easier to control), bias = steady drift (- left, + right), sway = side-to-side
+// amount, rate = how fast the sway swings. Guns not listed get a pattern derived from their name, so no two match.
+const RECOIL = {
+  falcon: { kick: 0.25, settle: 0.7, bias: 0.15, sway: 0.35, rate: 0.9 },
+  ak47: { kick: 0.45, settle: 0.95, bias: 0.55, sway: 0.5, rate: 0.6 },
+  ak12: { kick: 0.3, settle: 0.75, bias: -0.25, sway: 0.3, rate: 1.1 },
+  galil: { kick: 0.35, settle: 0.85, bias: 0.35, sway: 0.45, rate: 0.7 },
+  famas: { kick: 0.15, settle: 0.8, bias: -0.1, sway: 0.65, rate: 1.6 },
+  aug: { kick: 0.15, settle: 0.6, bias: 0.05, sway: 0.25, rate: 0.8 },
+  g36c: { kick: 0.2, settle: 0.65, bias: -0.2, sway: 0.3, rate: 1.0 },
+  asval: { kick: 0.35, settle: 0.9, bias: 0.3, sway: 0.55, rate: 1.4 },
+  r4c: { kick: 0.4, settle: 0.9, bias: -0.45, sway: 0.4, rate: 1.2 },
+  scarh: { kick: 0.5, settle: 0.95, bias: 0.25, sway: 0.4, rate: 0.5 },
+  tri: { kick: 0.3, settle: 0.7, bias: 0, sway: 0.3, rate: 1.3 },
+  vector: { kick: 0.05, settle: 0.65, bias: 0, sway: 0.3, rate: 2.2 },
+  kestrel: { kick: 0.15, settle: 0.7, bias: 0.2, sway: 0.4, rate: 1.5 },
+  mp5: { kick: 0.1, settle: 0.6, bias: -0.1, sway: 0.25, rate: 1.2 },
+  ppsh: { kick: 0.2, settle: 0.85, bias: 0.4, sway: 0.7, rate: 2.0 },
+  tommy: { kick: 0.4, settle: 0.95, bias: -0.15, sway: 0.35, rate: 0.7 },
+  bizon: { kick: 0.1, settle: 0.6, bias: -0.3, sway: 0.35, rate: 1.0 },
+  skorpion: { kick: 0.1, settle: 0.8, bias: 0.1, sway: 0.8, rate: 2.6 },
+  stinger: { kick: 0.1, settle: 0.85, bias: -0.2, sway: 0.9, rate: 2.4 },
+  hammer: { kick: 0.35, settle: 0.8, bias: 0.3, sway: 0.5, rate: 0.6 },
+  m249: { kick: 0.25, settle: 0.7, bias: -0.25, sway: 0.55, rate: 0.9 },
+  pkm: { kick: 0.45, settle: 0.85, bias: 0.4, sway: 0.45, rate: 0.5 },
+};
+const hash = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; };
+for (const w of Object.values(WEAPONS)) {
+  if (w.throwable || w.melee) continue;
+  const r = hash(w.id), r2 = hash(w.id + 'x');
+  w.rc = RECOIL[w.id] || { kick: 0.15 + r * 0.35, settle: 0.7 + r2 * 0.25, bias: (r2 - 0.5) * 0.8, sway: 0.25 + r * 0.4, rate: 0.6 + r2 * 1.4 };
+  w.rc.phase = r * 6.283;
+}
+// Recoil for shot number n of a spray (0 = first shot): [vertical multiplier, horizontal amount (fraction of kick)]
+export function recoilStep(def, n) {
+  const p = def.rc; if (!p) return [1, (Math.random() - 0.5) * 0.6];
+  const v = p.settle + (1 + p.kick - p.settle) * Math.exp(-n / 4);
+  const h = p.bias * Math.min(1, n / 7) + p.sway * Math.sin(n * p.rate + p.phase) * Math.min(1, (n + 1) / 3) + (Math.random() - 0.5) * 0.12;
+  return [v, h];
 }

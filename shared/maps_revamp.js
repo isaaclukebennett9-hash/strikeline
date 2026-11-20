@@ -120,7 +120,7 @@ export function harborNew() {
   push(c.boxes, R(-39.7, 3.0, 21.5, -18, 3.25, 25.7, 'metal_grate')); railing(c, -39.7, 21.5, -21, 21.5, 3.25); railing(c, -19, 21.5, -18, 21.5, 3.25);
   stairFlight(c, -20, 21.5 - 8 * 0.6, 0, 1, 1.4, 8, 3.25 / 8, 'metal_grate', 0, 0.6);
   for (const [x, z] of [[-34, 13], [-28, 13], [-22, 13]]) { pallets(c, x, z, 2); crate(c, x + 1.5, z + 1, 1.0); }
-  container(c, -14, 15, 0, 'container_blue');
+  container(c, -14, 13.3, 0, 'container_blue');
   // fish market hall (open sides) + stalls
   for (const [dx, dz] of [[-9, -5], [9, -5], [-9, 5], [9, 5], [0, -5], [0, 5]]) push(c.boxes, B(14 + dx, 14 + dz, 0.4, 0.4, 4.2, 'metal_dark'));
   push(c.deco, R(4, 4.2, 8.4, 24, 4.5, 19.6, 'metal_roof')); for (let k = 0; k < 3; k++) push(c.deco, R(4 + k * 0.6, 4.5 + k * 0.4, 8.4, 24 - k * 0.6, 4.9 + k * 0.4, 19.6, 'metal_roof'));
@@ -173,7 +173,7 @@ export function neonNew() {
   for (const [x, z, y] of [[-20, -24, 9.6], [18, -18, 9.6], [-32, 30, 6.4], [30, 30, 6.4]]) acUnit(c, x, z, y);
   // street level: noodle stalls, vending machines, dumpsters, parked cars, lamps
   for (const [x, z, r, a] of [[-14, -8, 0, 'awning_red'], [-20, -8, 0, 'awning_green'], [12, 7, 0, 'awning_red'], [18, -9, 0, 'awning_green']]) stall(c, x, z, r, a);
-  for (const [x, z] of [[-17, -14.4], [15, -16.4], [-26, 23.4]]) push(c.boxes, B(x, z, 0.8, 0.6, 1.9, 'vending'));
+  for (const [x, z] of [[-20.5, -13.65], [15.5, -15.65], [-28.3, 22.65]]) push(c.boxes, B(x, z, 0.8, 0.6, 1.9, 'vending')); // against the facades, clear of doors and windows
   for (const [x, z, r] of [[-36, -10, 1], [36, 8, 0], [-8, -36, 0], [8, 22, 1]]) dumpster(c, x, z, r);
   car(c, -12, 2.4, 1, 'car_blue'); car(c, 20, -2.4, 1, 'car_red'); car(c, 2.4, -22, 0, 'car_glass'); car(c, -2.4, 26, 0, 'car_blue');
   for (const [x, z, col] of [[-36, -5, 'neon_cyan'], [-12, 5, 'neon_orange'], [12, -5, 'neon_cyan'], [36, 5, 'neon_orange'], [5, -24, 'neon_cyan'], [-5, 24, 'neon_orange']]) lamp(c, x, z, col);
