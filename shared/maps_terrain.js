@@ -118,11 +118,18 @@ export function ridgeline() {
     if (rnd() < 0.72) pine(c, x, z, g, 0.8 + rnd() * 0.5); else boulder(c, x, z, g, 0.7 + rnd() * 0.7, rnd);
   }
   // perimeter: cliffs and treeline instead of a bare wall
-  for (let t = -half; t < half; t += 6) {
-    for (const [x, z] of [[t, -half + 1.5], [t, half - 1.5], [-half + 1.5, t], [half - 1.5, t]]) {
-      const hh = 7 + rnd() * 6;
-      push(c.boxes, R(x - 3.2, 0, z - 3.2, x + 3.2, hh, z + 3.2, 'rock_grey'));
-      push(c.deco, R(x - 2.6, hh, z - 2.6, x + 2.6, hh + 0.6, z + 2.6, 'grass'));
+  // jagged, layered cliffs: each segment juts out by a different amount, with a lower ledge and a grassy top
+  for (let t = -half; t < half; t += 4.5) {
+    for (const [ax, sgn] of [['z', -1], ['z', 1], ['x', -1], ['x', 1]]) {
+      const hh = 6 + rnd() * 9, jut = 2 + rnd() * 3.5, ledge = 1.5 + rnd() * 2.5, lh = 1.5 + rnd() * 2.5, len = 4.5 + rnd() * 1.5;
+      const seg = (inA, outA, y0, y1, m, dst = c.boxes) => {     // inA/outA: distance in from the edge
+        const a0 = t, a1 = t + len, e0 = sgn * (half - outA), e1 = sgn * (half - inA);
+        if (ax === 'z') push(dst, R(a0, y0, Math.min(e0, e1), a1, y1, Math.max(e0, e1), m)); else push(dst, R(Math.min(e0, e1), y0, a0, Math.max(e0, e1), y1, a1, m));
+      };
+      seg(jut, 0, 0, hh, 'rock_grey');
+      seg(jut + ledge, jut - 0.2, 0, lh, rnd() < 0.5 ? 'rock_grey' : 'stone');
+      seg(jut - 0.4, 0, hh, hh + 0.5, 'grass', c.deco);
+      if (rnd() < 0.4) seg(jut * 0.5, 0, hh, hh + 1.5 + rnd() * 2, 'rock_grey');
     }
   }
   c.ground = ground;
