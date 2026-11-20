@@ -56,6 +56,24 @@ const M = {
   toyWhite: new THREE.MeshStandardMaterial({ color: '#f2f4f7', roughness: 0.5 }),
   redTank: new THREE.MeshStandardMaterial({ color: '#b8261e', roughness: 0.35, metalness: 0.5 }),
   laser: new THREE.MeshBasicMaterial({ color: '#ff2020' }),
+  // real-world furniture / factory finishes so guns don't all look the same grey
+  fde: new THREE.MeshStandardMaterial({ color: '#b39a6e', roughness: 0.62, metalness: 0.15 }),
+  coyote: new THREE.MeshStandardMaterial({ color: '#7c6646', roughness: 0.66, metalness: 0.1 }),
+  odGreen: new THREE.MeshStandardMaterial({ color: '#56623f', roughness: 0.6, metalness: 0.12 }),
+  ranger: new THREE.MeshStandardMaterial({ color: '#3d4733', roughness: 0.66, metalness: 0.1 }),
+  polyGG: new THREE.MeshStandardMaterial({ color: '#4a5048', roughness: 0.7, metalness: 0.08 }),
+  wolf: new THREE.MeshStandardMaterial({ color: '#6c7074', roughness: 0.6, metalness: 0.2 }),
+  polyBlack: new THREE.MeshStandardMaterial({ color: '#1d1f22', roughness: 0.72, metalness: 0.08 }),
+  chrome: new THREE.MeshStandardMaterial({ color: '#d3d8de', roughness: 0.28, metalness: 0.55 }),
+  blued: new THREE.MeshStandardMaterial({ color: '#232a36', roughness: 0.3, metalness: 0.85 }),
+  smokeMag: new THREE.MeshStandardMaterial({ color: '#9aa29c', roughness: 0.25, metalness: 0.0, transparent: true, opacity: 0.72 }),
+};
+// factory ("Factory New" skin) finish per model; anything not listed keeps the default gunmetal skin
+const FACTORY = {
+  pistol: M.polyBlack, hawk: M.chrome, revolver: M.blued, mpistol: M.polyBlack,
+  r4c: M.polyBlack, burst: M.polyBlack, ak12: M.polyBlack, galil: M.polyBlack,
+  scarh: M.fde, aug: M.odGreen, g36: M.polyGG, famas: M.polyBlack, pdw: M.polyBlack,
+  dmr: M.polyBlack, autoshotgun: M.polyBlack, tcsg: M.polyBlack, ksg: M.polyBlack, smg: M.wolf,
 };
 // reticle drawn into a small canvas so players can pick the style/colour (see setReticle)
 const reticleCanvas = document.createElement('canvas'); reticleCanvas.width = reticleCanvas.height = 64;
@@ -183,7 +201,7 @@ function muzzleBrake(g, y, z, r = 0.016, len = 0.06) {
 // `irons` (default iron sights). Moving parts for animations go in named groups (mag, bolt, pump, break, cover, tank).
 // userData: muzzle, sightY, adsZ, left, skin, parts {mag, bolt, pump, brk, cover, tank}, optic, scoped
 export function buildGun(model, skinId = 'factory', att = {}) {
-  const S = weaponSkinMaterial(skinId);
+  const S = (skinId === 'factory' && FACTORY[model]) || weaponSkinMaterial(skinId);
   const g = new THREE.Group();
   let muzzleZ = -0.5, muzzleY = 0.04, sightY = 0.1, adsZ = -0.3, left = [-0.02, -0.02, -0.3];
   let spot = null, under = null, irons = null, magObj = null;
@@ -211,10 +229,13 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.044, 0.05, 0.22, S, 0, 0.032, -0.06);
       box(g, 0.003, 0.018, 0.05, M.black, 0.022, 0.04, -0.04);
       for (let i = 0; i < 5; i++) box(g, 0.046, 0.034, 0.003, M.black, 0, 0.032, 0.01 + i * 0.007);
-      box(g, 0.036, 0.028, 0.18, M.dark, 0, -0.005, -0.05);
-      triggerGroup(g, -0.03, M.grip, 0.18, -0.019);
-      magObj = mag(g, 0.01, 0.16, 0.18, 0.026, 0.036, M.dark, -0.019);
+      box(g, 0.038, 0.03, 0.18, M.wolf, 0, -0.005, -0.05);                          // grey polymer frame
+      triggerGroup(g, -0.03, M.wolf, 0.18, -0.019);
+      magObj = mag(g, 0.01, 0.22, 0.18, 0.026, 0.036, M.dark, -0.019);              // long 33-round mag
       box(g, 0.026, 0.05, 0.03, M.grip, 0, -0.04, -0.13);                           // foregrip
+      box(g, 0.03, 0.01, 0.03, M.wolf, 0, -0.016, -0.13);                           // foregrip hinge
+      for (const s of [-1, 1]) box(g, 0.005, 0.005, 0.2, M.steel, s * 0.014, -0.005, 0.13);   // folding wire stock
+      box(g, 0.034, 0.05, 0.008, M.steel, 0, -0.025, 0.23); box(g, 0.036, 0.05, 0.012, M.grip, 0, -0.025, 0.237);
       cyl(g, 0.012, 0.05, M.dark, 0, 0.032, -0.19);
       muzzleBrake(g, 0.032, -0.225, 0.012, 0.03);
       ironSights(g, 0.066, 0.02, -0.16);
@@ -269,21 +290,39 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.03, 0.01, 0.03, M.dark, 0, 0.072, 0.08);                             // charging handle
       box(g, 0.05, 0.04, 0.075, S, 0, -0.03, -0.11);                                // mag well
       if (burst) {
-        box(g, 0.06, 0.062, 0.26, S, 0, 0.04, -0.38);                               // skin-coloured handguard
-        box(g, 0.012, 0.03, 0.22, M.dark, 0.034, 0.04, -0.38);                      // side rails
-        box(g, 0.012, 0.03, 0.22, M.dark, -0.034, 0.04, -0.38);
-        box(g, 0.03, 0.06, 0.03, M.grip, 0, -0.02, -0.4);                           // vertical grip
-        magObj = mag(g, -0.11, 0.15, -0.05, 0.032, 0.06);
-        box(g, 0.02, 0.06, 0.26, M.dark, 0, 0.02, 0.21);                             // skeleton stock
-        box(g, 0.02, 0.012, 0.26, M.dark, 0, 0.065, 0.21);
+        // M4/M16A2 look: round ribbed handguard, delta ring, carry handle with the rear sight, A2 front sight tower, fixed stock
+        cyl(g, 0.031, 0.27, M.black, 0, 0.035, -0.375, 12);                         // round handguard
+        for (let i = 0; i < 10; i++) cyl(g, 0.0325, 0.009, M.polyBlack, 0, 0.035, -0.255 - i * 0.026, 12);   // ribs
+        cyl(g, 0.036, 0.022, M.dark, 0, 0.035, -0.235, 14);                         // delta ring
+        cyl(g, 0.033, 0.016, M.dark, 0, 0.035, -0.513, 12);                         // handguard cap
+        for (const s of [-1, 1]) for (let i = 0; i < 4; i++) box(g, 0.003, 0.006, 0.012, M.black, s * 0.032, 0.035, -0.29 - i * 0.06);   // heat-shield vents
+        for (const z of [-0.17, 0.045]) box(g, 0.026, 0.044, 0.03, S, 0, 0.09, z);  // carry handle legs
+        box(g, 0.024, 0.016, 0.25, S, 0, 0.118, -0.06);                             // carry handle bar
+        box(g, 0.012, 0.03, 0.2, M.black, 0, 0.096, -0.06);                         // handle opening shadow
+        box(g, 0.03, 0.024, 0.036, S, 0, 0.128, 0.045);                             // rear sight housing
+        box(g, 0.006, 0.012, 0.012, M.steel, 0.017, 0.128, 0.045);                  // windage knob
+        // A2 triangular front sight tower on the gas block
+        box(g, 0.026, 0.02, 0.03, M.dark, 0, 0.045, -0.555);
+        box(g, 0.008, 0.075, 0.012, M.dark, 0, 0.085, -0.542, 0.28);                // rear leg (sloped)
+        box(g, 0.008, 0.075, 0.012, M.dark, 0, 0.085, -0.568, -0.28);               // front leg
+        box(g, 0.012, 0.012, 0.034, M.dark, 0, 0.122, -0.555);                      // top of the tower
+        magObj = mag(g, -0.11, 0.16, -0.25, 0.032, 0.058);
+        box(g, 0.044, 0.07, 0.14, M.polyBlack, 0, 0.03, 0.15);                      // fixed A2 stock (front)
+        box(g, 0.046, 0.09, 0.14, M.polyBlack, 0, 0.012, 0.27, 0.05);               // stock (rear, deeper)
+        box(g, 0.048, 0.004, 0.24, M.black, 0, 0.05, 0.22);                         // stock seam
+        box(g, 0.003, 0.03, 0.04, M.dark, 0.024, 0.01, 0.31);                       // trapdoor
+        sling(g, -0.04, 0.3);
       } else if (r4) {
-        box(g, 0.062, 0.062, 0.32, M.dark, 0, 0.04, -0.41);                         // quad-rail handguard
-        for (const [x, y, w, h] of [[0.034, 0.04, 0.008, 0.03], [-0.034, 0.04, 0.008, 0.03], [0, 0.006, 0.03, 0.008]])
-          for (let zz = -0.56; zz < -0.26; zz += 0.016) box(g, w + 0.002, h + 0.002, 0.007, M.black, x, y, zz);
-        magObj = mag(g, -0.11, 0.16, -0.25, 0.032, 0.058, S);
+        // modern carbine: long free-float M-LOK handguard, coyote furniture, crane stock, flash hider
+        box(g, 0.056, 0.056, 0.42, M.coyote, 0, 0.04, -0.44);                       // handguard (-0.65 .. -0.23)
+        for (const s of [-1, 1]) for (let zz = -0.62; zz < -0.27; zz += 0.05) box(g, 0.003, 0.012, 0.032, M.black, s * 0.0285, 0.04, zz);   // M-LOK slots
+        for (let zz = -0.62; zz < -0.27; zz += 0.05) box(g, 0.014, 0.003, 0.032, M.black, 0, 0.0115, zz);
+        box(g, 0.03, 0.03, 0.02, M.black, 0, -0.002, -0.58);                        // hand stop
+        box(g, 0.06, 0.012, 0.03, M.dark, 0, 0.04, -0.24);                          // barrel nut ring
+        magObj = mag(g, -0.11, 0.16, -0.12, 0.032, 0.058, M.coyote);
         cyl(g, 0.016, 0.16, M.dark, 0, 0.035, 0.165);                                // buffer tube
-        box(g, 0.044, 0.08, 0.15, M.dark, 0, 0.012, 0.27);                          // adjustable stock
-        box(g, 0.03, 0.022, 0.12, M.dark, 0, 0.062, 0.27);
+        box(g, 0.044, 0.08, 0.15, M.coyote, 0, 0.012, 0.27);                        // crane stock
+        box(g, 0.03, 0.022, 0.12, M.coyote, 0, 0.062, 0.27);
         for (const s of [-1, 1]) { box(g, 0.003, 0.04, 0.09, M.black, s * 0.0225, 0.005, 0.27); box(g, 0.003, 0.012, 0.02, M.steel, s * 0.0225, 0.042, 0.21); }   // stock cut-outs + QD sockets
         box(g, 0.012, 0.022, 0.02, M.steel, 0, -0.03, 0.2);                         // adjustment latch
         for (let z = 0.13; z < 0.2; z += 0.014) box(g, 0.035, 0.004, 0.006, M.black, 0, 0.051, z);   // buffer tube positions
@@ -299,11 +338,20 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.046, 0.09, 0.02, M.grip, 0, 0.01, 0.345);                            // butt pad
       cyl(g, 0.011, 0.2, M.dark, 0, 0.04, -0.62);                                   // barrel
       box(g, 0.022, 0.024, 0.02, M.dark, 0, 0.03, -0.55);                           // gas block
-      muzzleBrake(g, 0.04, -0.75, 0.016, 0.06);
-      triggerGroup(g, 0.0);
-      rail(g, 0.074, -0.52, 0.09);
-      optic(0.108, -0.07, 0.078, -0.52, 0.09); under = burst ? null : { y: 0.011, z: -0.42 };
-      irons = { cy: 0.1, zr: 0.06, zf: -0.5 };
+      if (r4) {                                                                     // 4-prong flash hider
+        cyl(g, 0.013, 0.02, M.dark, 0, 0.04, -0.73);
+        for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.78; box(g, 0.007, 0.007, 0.045, M.black, Math.cos(a) * 0.01, 0.04 + Math.sin(a) * 0.01, -0.76); }
+      } else muzzleBrake(g, 0.04, -0.75, 0.016, 0.06);
+      triggerGroup(g, 0.0, r4 ? M.coyote : M.grip);
+      if (burst) {                                                                  // optics sit on top of the carry handle
+        rail(g, 0.13, -0.17, 0.03, 0.022);
+        optic(0.164, -0.07, 0.134, -0.17, 0.03); under = null;
+        irons = { cy: 0.142, zr: 0.045, zf: -0.555 };
+      } else {
+        rail(g, 0.074, r4 ? -0.64 : -0.52, 0.09);
+        optic(0.108, -0.07, 0.078, r4 ? -0.6 : -0.52, 0.09); under = { y: 0.011, z: -0.42 };
+        irons = { cy: 0.1, zr: 0.06, zf: r4 ? -0.6 : -0.5 };
+      }
       muzzleZ = -0.79; muzzleY = 0.04; sightY = 0.108; left = [-0.02, -0.03, -0.4];
       break;
     }
@@ -332,13 +380,22 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.052, 0.05, 0.36, S, 0, 0.045, -0.08);
       box(g, 0.048, 0.045, 0.26, S, 0, 0.0, -0.05);
       box(g, 0.003, 0.02, 0.07, M.black, 0.027, 0.045, -0.06);
-      box(g, 0.06, 0.06, 0.34, M.dark, 0, 0.04, -0.43);
+      // SR-25 marksman: long ranger-green free-float handguard, fluted heavy barrel, folded bipod, adjustable precision stock
+      box(g, 0.06, 0.06, 0.34, M.ranger, 0, 0.04, -0.43);
       vents(g, 0.04, -0.58, -0.28, 0.031, 5);
-      cyl(g, 0.012, 0.22, M.dark, 0, 0.04, -0.7);
+      cyl(g, 0.014, 0.22, M.dark, 0, 0.04, -0.7);                                   // heavy barrel
+      for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; box(g, 0.004, 0.004, 0.18, M.black, Math.cos(a) * 0.0135, 0.04 + Math.sin(a) * 0.0135, -0.7); }   // flutes
       muzzleBrake(g, 0.04, -0.83, 0.017, 0.06);
+      box(g, 0.026, 0.02, 0.026, M.dark, 0, 0.0, -0.56);                            // bipod yoke
+      for (const s of [-1, 1]) { box(g, 0.01, 0.01, 0.24, M.steel, s * 0.018, -0.006, -0.43, 0.03); box(g, 0.016, 0.012, 0.024, M.black, s * 0.018, -0.012, -0.31); }
       magObj = mag(g, -0.1, 0.12, -0.1, 0.034, 0.07);
-      triggerGroup(g, 0.0);
-      box(g, 0.05, 0.1, 0.26, S, 0, -0.005, 0.22); box(g, 0.052, 0.11, 0.02, M.grip, 0, -0.005, 0.36);
+      triggerGroup(g, 0.0, M.ranger);
+      cyl(g, 0.017, 0.14, M.dark, 0, 0.035, 0.15);                                  // buffer tube
+      box(g, 0.05, 0.03, 0.22, M.ranger, 0, 0.065, 0.26);                           // adjustable cheek riser
+      for (const zz of [0.18, 0.32]) cyl(g, 0.005, 0.03, M.steel, 0, 0.045, zz, 6).rotation.set(0, 0, 0);   // riser posts
+      box(g, 0.05, 0.05, 0.2, M.ranger, 0, 0.012, 0.26);                            // stock body
+      box(g, 0.05, 0.02, 0.1, M.ranger, 0, -0.04, 0.31);                            // monopod / bag rider
+      box(g, 0.054, 0.12, 0.022, M.grip, 0, 0.01, 0.37);                            // butt pad
       rail(g, 0.074, -0.56, 0.1);
       optic(0.115, -0.08, 0.078, -0.56, 0.1); under = { y: 0.01, z: -0.45 };
       muzzleZ = -0.87; muzzleY = 0.04; sightY = 0.115; left = [-0.02, -0.03, -0.45];
@@ -451,32 +508,48 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       break;
     }
     case 'hawk': {
-      box(g, 0.046, 0.056, 0.24, S, 0, 0.04, -0.07);                                // big slide
-      for (let i = 0; i < 6; i++) box(g, 0.048, 0.04, 0.003, M.black, 0, 0.04, 0.0 + i * 0.006); // serrations
-      for (let i = 0; i < 3; i++) box(g, 0.012, 0.003, 0.012, M.black, 0, 0.069, -0.15 - i * 0.022); // barrel ports
-      box(g, 0.003, 0.02, 0.05, M.black, 0.024, 0.045, -0.05);                      // ejection port
-      box(g, 0.042, 0.03, 0.2, M.dark, 0, 0.0, -0.06);                              // frame
-      box(g, 0.03, 0.012, 0.06, M.black, 0, -0.018, -0.13);                         // rail
-      cyl(g, 0.011, 0.014, M.black, 0, 0.04, -0.19);
-      triggerGroup(g, -0.03, M.grip, 0.2, -0.014);
-      ironSights(g, 0.078, 0.03, -0.18, M.dot);
-      muzzleZ = -0.2; muzzleY = 0.04; sightY = 0.076; left = [-0.01, -0.07, 0.0];
+      // big-bore Desert-Eagle-style hand cannon: tall slab-sided slide, triangular-profile barrel on top, squared guard
+      box(g, 0.05, 0.05, 0.13, S, 0, 0.038, 0.0);                                   // rear slide
+      for (let i = 0; i < 7; i++) box(g, 0.052, 0.036, 0.003, M.black, 0, 0.038, 0.02 + i * 0.006); // serrations
+      box(g, 0.05, 0.044, 0.17, S, 0, 0.034, -0.15);                                // barrel block
+      box(g, 0.036, 0.022, 0.27, S, 0, 0.066, -0.105);                               // top of the barrel
+      for (const s of [-1, 1]) box(g, 0.03, 0.022, 0.27, S, s * 0.016, 0.056, -0.105, 0, 0, s * 0.55);  // chamfered (triangular) sides
+      box(g, 0.012, 0.006, 0.3, M.black, 0, 0.078, -0.09);                          // sight groove / rib
+      for (const s of [-1, 1]) box(g, 0.003, 0.012, 0.12, M.black, s * 0.0255, 0.026, -0.16);   // flutes along the barrel block
+      box(g, 0.003, 0.022, 0.05, M.black, 0.026, 0.045, -0.02);                     // ejection port
+      box(g, 0.004, 0.014, 0.022, M.steel, 0.026, 0.026, 0.02);                     // slide-mounted safety
+      box(g, 0.044, 0.024, 0.2, S, 0, 0.002, -0.07);                                // frame
+      cyl(g, 0.012, 0.004, M.black, 0, 0.042, -0.2355);                             // bore
+      box(g, 0.012, 0.02, 0.016, S, 0, 0.06, 0.07, -0.5);                           // hammer
+      triggerGroup(g, -0.03, M.grip, 0.2, -0.012);
+      box(g, 0.012, 0.012, 0.03, M.dark, 0, -0.052, -0.08);                         // squared trigger guard hook
+      ironSights(g, 0.09, 0.05, -0.225, M.dot);
+      muzzleZ = -0.25; muzzleY = 0.042; sightY = 0.088; left = [-0.01, -0.07, 0.0];
       break;
     }
     case 'pdw': {
-      box(g, 0.056, 0.085, 0.4, S, 0, 0.022, 0.0);                                  // bullpup body
-      box(g, 0.058, 0.03, 0.18, M.black, 0, 0.0, 0.06);                             // side panel
-      box(g, 0.05, 0.07, 0.03, M.grip, 0, 0.0, 0.205);                              // butt pad
-      box(g, 0.044, 0.05, 0.12, M.dark, 0, 0.035, -0.26);                           // shroud
-      vents(g, 0.035, -0.31, -0.21, 0.023, 3);
-      cyl(g, 0.012, 0.05, M.dark, 0, 0.035, -0.34);
-      muzzleBrake(g, 0.035, -0.38, 0.015, 0.04);
-      triggerGroup(g, -0.12, M.grip, 0.15, -0.02);                                  // grip forward of mag (bullpup)
-      magObj = mag(g, 0.06, 0.15, -0.05, 0.03, 0.05, M.dark, -0.02);
-      box(g, 0.028, 0.07, 0.03, M.grip, 0, -0.04, -0.23);                           // vertical foregrip
-      rail(g, 0.068, -0.2, 0.12, 0.024);
-      optic(0.1, -0.02, 0.072, -0.2, 0.12);
-      muzzleZ = -0.41; muzzleY = 0.035; sightY = 0.1; left = [-0.02, -0.05, -0.23];
+      // compact PDW (MP7-like): tall slab receiver, magazine inside the pistol grip, folding foregrip, sliding rod stock
+      box(g, 0.05, 0.075, 0.3, S, 0, 0.035, -0.07);                                 // receiver (-0.22 .. 0.08)
+      box(g, 0.052, 0.026, 0.22, M.polyBlack, 0, -0.008, -0.09);                    // lower shell
+      box(g, 0.054, 0.004, 0.3, M.black, 0, 0.004, -0.07);                          // upper/lower seam
+      for (const s of [-1, 1]) for (let i = 0; i < 3; i++) box(g, 0.003, 0.03, 0.016, M.black, s * 0.0255, 0.035, -0.19 + i * 0.026);   // front grip slots
+      box(g, 0.003, 0.018, 0.05, M.black, 0.0255, 0.05, -0.02);                     // ejection port
+      selector(g, 0.026, 0.012, 0.03);
+      box(g, 0.03, 0.012, 0.018, M.steel, 0, 0.074, 0.075);                         // T charging handle
+      cyl(g, 0.011, 0.07, M.dark, 0, 0.04, -0.255);                                 // short barrel
+      cyl(g, 0.013, 0.02, M.dark, 0, 0.04, -0.29);
+      for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.78; box(g, 0.006, 0.006, 0.04, M.black, Math.cos(a) * 0.009, 0.04 + Math.sin(a) * 0.009, -0.315); }   // flash hider
+      triggerGroup(g, -0.04, M.polyBlack, 0.12, -0.02);                             // grip (holds the mag)
+      magObj = mag(g, 0.01, 0.2, 0.12, 0.028, 0.038, M.dark, -0.02);                // 40-round mag out the bottom of the grip
+      box(g, 0.024, 0.016, 0.03, M.dark, 0, -0.026, -0.17);                         // foregrip hinge
+      box(g, 0.026, 0.07, 0.028, M.polyBlack, 0, -0.065, -0.17);                    // folding vertical foregrip
+      ribs(g, 0.026, 0.07, -0.065, -0.184, -0.156, 0.009);
+      for (const s of [-1, 1]) box(g, 0.006, 0.006, 0.2, M.steel, s * 0.018, 0.03, 0.17);   // sliding stock rods
+      box(g, 0.048, 0.07, 0.016, M.polyBlack, 0, 0.022, 0.27); box(g, 0.05, 0.075, 0.01, M.grip, 0, 0.022, 0.282);   // butt plate
+      rail(g, 0.077, -0.22, 0.08, 0.026);                                           // full-length top rail
+      optic(0.116, -0.07, 0.081, -0.22, 0.08);
+      irons = { cy: 0.104, zr: 0.06, zf: -0.2 };
+      muzzleZ = -0.34; muzzleY = 0.04; sightY = 0.116; left = [0, -0.08, -0.17];
       break;
     }
     case 'autoshotgun': {
@@ -492,16 +565,21 @@ export function buildGun(model, skinId = 'factory', att = {}) {
         const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.064, 12), M.steel);
         cap.rotation.z = Math.PI / 2; dm.add(cap); }
       triggerGroup(g, 0.05, M.grip, 0.3, -0.02);
-      box(g, 0.05, 0.1, 0.24, S, 0, 0.0, 0.2);                                      // stock
-      box(g, 0.052, 0.11, 0.02, M.grip, 0, 0.0, 0.33);
-      rail(g, 0.072, -0.42, 0.08);
-      optic(0.108, -0.05, 0.076, -0.42, 0.08); under = { y: -0.003, z: -0.36 };
+      box(g, 0.06, 0.1, 0.24, S, 0, 0.0, 0.2);                                      // boxy fixed stock (in line with the receiver)
+      box(g, 0.062, 0.11, 0.02, M.grip, 0, 0.0, 0.33);
+      for (const s of [-1, 1]) for (let zz = 0.12; zz < 0.3; zz += 0.04) box(g, 0.003, 0.05, 0.02, M.black, s * 0.031, 0.0, zz);   // stock ribs
+      // AA-12-style full-length carry handle; the optic rail sits on top of it
+      for (const z of [-0.36, 0.06]) box(g, 0.026, 0.05, 0.03, M.dark, 0, 0.095, z);
+      box(g, 0.03, 0.016, 0.46, M.dark, 0, 0.126, -0.15);
+      box(g, 0.012, 0.03, 0.38, M.black, 0, 0.1, -0.15);                            // handle opening shadow
+      rail(g, 0.138, -0.32, 0.04, 0.026);
+      optic(0.172, -0.12, 0.142, -0.32, 0.04); under = { y: -0.003, z: -0.36 };
       muzzleZ = -0.71; muzzleY = 0.04; sightY = 0.108; left = [-0.02, -0.03, -0.35];
       break;
     }
     // =================================================================== new guns
     case 'ak': case 'ak12': case 'galil': {
-      const k12 = model === 'ak12', gal = model === 'galil', fur = k12 || gal ? M.black : M.wood;
+      const k12 = model === 'ak12', gal = model === 'galil', fur = k12 ? M.polyBlack : gal ? M.odGreen : M.wood;
       box(g, 0.05, 0.06, 0.32, S, 0, 0.035, -0.06);                                 // receiver
       box(g, 0.052, 0.012, 0.3, M.dark, 0, 0.069, -0.06);                           // dust cover
       for (let i = 0; i < 5; i++) box(g, 0.053, 0.003, 0.006, M.black, 0, 0.0755, -0.17 + i * 0.05);
@@ -520,7 +598,18 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       magObj = mag(g, -0.1, 0.17, -0.35, 0.03, 0.06, gal ? M.black : k12 ? M.dark : S);
       triggerGroup(g, 0.0, k12 || gal ? M.grip : M.wood, 0.3);
       if (k12) { cyl(g, 0.015, 0.12, M.dark, 0, 0.03, 0.15); box(g, 0.044, 0.085, 0.16, M.dark, 0, 0.012, 0.26); box(g, 0.03, 0.02, 0.12, M.dark, 0, 0.062, 0.26); }
-      else if (gal) { for (const y of [0.04, -0.02]) box(g, 0.016, 0.014, 0.25, M.dark, 0, y, 0.2); box(g, 0.044, 0.09, 0.03, M.grip, 0, 0.01, 0.33); }
+      else if (gal) {
+        // side-folding tubular stock with an OD cheek piece, folded bipod, hooded front sight, upturned charging handle, top rail
+        for (const y of [0.04, -0.02]) box(g, 0.016, 0.014, 0.25, M.dark, 0, y, 0.2);
+        box(g, 0.012, 0.072, 0.014, M.dark, 0, 0.01, 0.1);                          // stock front strut
+        box(g, 0.03, 0.03, 0.12, M.odGreen, 0, 0.058, 0.24);                        // cheek piece
+        box(g, 0.044, 0.09, 0.03, M.odGreen, 0, 0.01, 0.33);
+        box(g, 0.03, 0.03, 0.03, M.dark, 0, 0.012, -0.47);                          // bipod yoke
+        for (const s of [-1, 1]) { box(g, 0.009, 0.009, 0.2, M.steel, s * 0.016, -0.012, -0.35, 0.05); box(g, 0.014, 0.01, 0.02, M.black, s * 0.016, -0.018, -0.25); }
+        for (const s of [-1, 1]) box(g, 0.005, 0.034, 0.016, M.dark, s * 0.012, 0.078, -0.6);   // front sight hood ears
+        box(g, 0.006, 0.03, 0.014, M.steel, 0.035, 0.068, -0.03, 0, 0, -0.35);      // upturned charging handle
+        rail(g, 0.079, -0.42, -0.24, 0.024);                                        // handguard top rail
+      }
       else { box(g, 0.045, 0.07, 0.3, M.wood, 0, 0.0, 0.22, 0.08); box(g, 0.047, 0.09, 0.015, M.dark, 0, -0.012, 0.37, 0.08); }
       box(g, 0.047, 0.1, 0.02, M.grip, 0, k12 ? 0.012 : -0.012, k12 ? 0.345 : 0.385, k12 ? 0 : 0.08);
       // --- detail
@@ -538,7 +627,10 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       else sling(g, -0.01, 0.26);
       sling(g, 0.01, -0.45);
       irons = { cy: 0.096, zr: -0.2, zf: -0.6 };
-      optic(0.122, -0.1, 0.087, -0.2, 0.0); spot.side = true;
+      if (k12) {                                                                    // AK-12: railed top cover + railed gas tube, optic sits straight on top
+        rail(g, 0.082, -0.18, 0.08, 0.026); rail(g, 0.078, -0.42, -0.24, 0.024);
+        optic(0.118, -0.06, 0.086, -0.18, 0.08);
+      } else { optic(0.122, -0.1, 0.087, -0.2, 0.0); spot.side = true; }
       under = { y: -0.013, z: -0.34 };
       muzzleZ = -0.68; muzzleY = 0.03; left = [-0.02, -0.04, -0.33];
       break;
@@ -660,27 +752,31 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       break;
     }
     case 'skorpion': {
-      box(g, 0.05, 0.07, 0.26, S, 0, 0.035, -0.05);
-      box(g, 0.054, 0.055, 0.12, M.dark, 0, 0.03, -0.23); vents(g, 0.03, -0.28, -0.18, 0.028, 3);
-      cyl(g, 0.011, 0.07, M.dark, 0, 0.035, -0.32); muzzleBrake(g, 0.035, -0.37, 0.014, 0.04);
-      magObj = mag(g, -0.11, 0.15, -0.08, 0.028, 0.04);
-      triggerGroup(g, 0.0);
-      skeletonStock(g, 0.05, -0.015, 0.08, 0.24);
-      rail(g, 0.072, -0.2, 0.06, 0.024);
-      // --- detail
-      box(g, 0.052, 0.02, 0.26, M.dark, 0, 0.0, -0.05);                             // lower receiver band
-      seams(g, 0.025, [0.05], -0.17, 0.08);
-      ejectPort(g, 0.025, 0.045, -0.06, 0.045);
-      selector(g, 0.026, 0.018, 0.04);
-      { const bp = part('bolt', -0.03, 0.05, -0.1); pbox(bp, 0.02, 0.012, 0.014, M.steel, -0.034, 0.05, -0.1); }   // charging handle (left)
-      for (const s of [-1, 1]) box(g, 0.004, 0.02, 0.08, M.black, s * 0.028, 0.03, -0.23);   // handguard slots
-      box(g, 0.006, 0.01, 0.12, M.dark, 0, 0.003, -0.23);                           // lower rail
-      box(g, 0.022, 0.02, 0.02, M.dark, 0, 0.018, 0.08);                            // stock hinge
-      sling(g, 0.0, 0.07, 0.026);
-      irons = { cy: 0.09, zr: 0.04, zf: -0.18 };
-      optic(0.104, -0.05, 0.076, -0.2, 0.06);
-      under = { y: 0.0, z: -0.23 };
-      muzzleZ = -0.39; muzzleY = 0.035; left = [-0.02, -0.04, -0.23];
+      // Vz.61: small slim pressed-steel receiver, curved mag ahead of the guard, wooden grip, bent-wire stock
+      box(g, 0.04, 0.05, 0.26, S, 0, 0.038, -0.08);                                 // receiver (-0.21 .. 0.05)
+      box(g, 0.042, 0.012, 0.22, M.dark, 0, 0.068, -0.08);                          // top cover
+      box(g, 0.042, 0.016, 0.2, M.dark, 0, 0.006, -0.08);                           // lower frame
+      seams(g, 0.02, [0.03, 0.05], -0.2, 0.04);
+      rivets(g, 0.02, 0.02, [-0.19, -0.16, 0.03]);
+      ejectPort(g, 0.02, 0.05, -0.06, 0.045);                                       // ejects straight up/right
+      selector(g, 0.021, 0.014, 0.03);
+      for (const s of [-1, 1]) { const bp = s > 0 ? part('bolt', 0.03, 0.05, -0.15) : null;   // twin cocking knobs
+        if (bp) pbox(bp, 0.016, 0.012, 0.012, M.steel, 0.028, 0.05, -0.15); else box(g, 0.016, 0.012, 0.012, M.steel, -0.028, 0.05, -0.15); }
+      cyl(g, 0.0095, 0.05, M.dark, 0, 0.04, -0.235);                                // barrel stub
+      cyl(g, 0.013, 0.02, M.black, 0, 0.04, -0.265);                                // muzzle nut
+      for (const s of [-1, 1]) box(g, 0.004, 0.02, 0.012, M.dark, s * 0.01, 0.08, -0.2);   // front sight ears
+      magObj = mag(g, -0.085, 0.16, 0.22, 0.024, 0.034, M.dark, 0.0);              // curved 20-round mag
+      triggerGroup(g, 0.0, M.wood, 0.4, 0.0);
+      for (const s of [-1, 1]) box(g, 0.0045, 0.0045, 0.22, M.steel, s * 0.013, 0.05, 0.16);          // wire stock top rails
+      for (const s of [-1, 1]) box(g, 0.0045, 0.0045, 0.21, M.steel, s * 0.013, 0.012, 0.16, 0.16);   // wire stock lower rails
+      box(g, 0.03, 0.07, 0.006, M.steel, 0, 0.025, 0.27);                           // butt loop
+      box(g, 0.02, 0.016, 0.02, M.dark, 0, 0.04, 0.055);                            // stock hinge
+      sling(g, 0.0, 0.0, 0.022);
+      rail(g, 0.078, -0.17, -0.02, 0.022);                                          // short optic rail on the top cover
+      irons = { cy: 0.092, zr: 0.03, zf: -0.2 };
+      optic(0.112, -0.09, 0.082, -0.17, -0.02);
+      under = { y: -0.003, z: -0.17 };
+      muzzleZ = -0.28; muzzleY = 0.04; left = [-0.01, -0.03, -0.17];
       break;
     }
     case 'famas': {
@@ -745,10 +841,17 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       { const bp = part('bolt', 0, 0.075, -0.1); pbox(bp, 0.024, 0.01, 0.02, M.steel, 0, 0.076, -0.1); }
       box(g, 0.058, 0.055, 0.16, M.dark, 0, 0.025, -0.29); vents(g, 0.025, -0.36, -0.22, 0.03, 4);
       cyl(g, 0.01, 0.12, M.dark, 0, 0.035, -0.42); cyl(g, 0.014, 0.05, M.black, 0, 0.035, -0.5);
-      magObj = mag(g, -0.11, 0.15, -0.15, 0.03, 0.055);
-      triggerGroup(g, 0.02);
-      skeletonStock(g, 0.055, -0.02, 0.09, 0.3);
-      rail(g, 0.073, -0.2, 0.06);
+      magObj = mag(g, -0.11, 0.15, -0.15, 0.03, 0.055, M.smokeMag);                // translucent polymer mag
+      { const rounds = magObj; for (let i = 0; i < 4; i++) box(rounds, 0.012, 0.008, 0.04, M.brass, 0, -0.01 - i * 0.012, -0.004); }   // visible cartridges
+      triggerGroup(g, 0.02, M.polyGG);
+      skeletonStock(g, 0.055, -0.02, 0.09, 0.3, M.polyGG);
+      // tall carry handle with the optic rail on top (G36 signature)
+      box(g, 0.03, 0.05, 0.03, S, 0, 0.093, -0.175);                                // front handle post
+      box(g, 0.03, 0.05, 0.04, S, 0, 0.093, 0.04);                                  // rear handle post
+      box(g, 0.034, 0.016, 0.26, S, 0, 0.124, -0.07);                               // handle bridge
+      box(g, 0.012, 0.03, 0.17, M.black, 0, 0.096, -0.07);                          // handle opening shadow
+      for (const s of [-1, 1]) for (let zz = -0.15; zz < 0.02; zz += 0.04) box(g, 0.003, 0.008, 0.016, M.black, s * 0.0175, 0.124, zz);   // lightening cuts
+      rail(g, 0.136, -0.18, 0.04, 0.026);
       // --- detail
       box(g, 0.054, 0.024, 0.3, M.dark, 0, 0.012, -0.06);                           // lower receiver
       seams(g, 0.026, [0.024, 0.05], -0.2, 0.09);
@@ -760,8 +863,8 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.006, 0.014, 0.018, M.steel, 0, -0.03, -0.085);                       // mag paddle
       box(g, 0.024, 0.024, 0.02, M.dark, 0, 0.03, 0.09);                            // stock hinge
       sling(g, 0.0, -0.36);
-      irons = { cy: 0.096, zr: 0.05, zf: -0.19 };
-      optic(0.105, -0.07, 0.077, -0.2, 0.06);
+      irons = { cy: 0.154, zr: 0.04, zf: -0.17 };
+      optic(0.17, -0.07, 0.14, -0.18, 0.04);
       under = { y: -0.003, z: -0.29 };
       muzzleZ = -0.53; muzzleY = 0.035; left = [-0.02, -0.04, -0.29];
       break;
@@ -804,7 +907,8 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       cyl(g, 0.012, 0.2, M.dark, 0, 0.04, -0.42); muzzleBrake(g, 0.04, -0.55, 0.016, 0.06);
       magObj = mag(g, -0.1, 0.13, -0.1, 0.034, 0.07);
       triggerGroup(g, 0.02);
-      box(g, 0.05, 0.08, 0.24, M.dark, 0, 0.03, 0.22); box(g, 0.03, 0.02, 0.18, M.dark, 0, 0.078, 0.22); box(g, 0.052, 0.095, 0.02, M.grip, 0, 0.025, 0.345);
+      box(g, 0.05, 0.08, 0.24, S, 0, 0.03, 0.22); box(g, 0.03, 0.02, 0.18, S, 0, 0.078, 0.22); box(g, 0.052, 0.095, 0.02, M.grip, 0, 0.025, 0.345);   // folding stock (same finish as the upper)
+      box(g, 0.052, 0.05, 0.16, M.polyBlack, 0, 0.0, -0.02);                        // black polymer lower
       rail(g, 0.081, -0.5, 0.06);
       // --- detail
       seams(g, 0.027, [0.03], -0.32, 0.08);
@@ -966,11 +1070,11 @@ export function buildGun(model, skinId = 'factory', att = {}) {
     case 'tcsg': {
       box(g, 0.058, 0.075, 0.32, S, 0, 0.03, -0.06);
       { const bp = part('bolt', 0.035, 0.04, -0.06); pbox(bp, 0.02, 0.014, 0.016, M.steel, 0.036, 0.04, -0.06); }
-      box(g, 0.064, 0.06, 0.2, M.dark, 0, 0.025, -0.32); vents(g, 0.025, -0.4, -0.24, 0.033, 4);
+      box(g, 0.064, 0.06, 0.2, M.wolf, 0, 0.025, -0.32); vents(g, 0.025, -0.4, -0.24, 0.033, 4);   // grey railed handguard
       cyl(g, 0.017, 0.2, M.dark, 0, 0.035, -0.5); muzzleBrake(g, 0.035, -0.62, 0.022, 0.06);
-      magObj = mag(g, -0.1, 0.12, -0.05, 0.04, 0.075);
-      triggerGroup(g, 0.02);
-      box(g, 0.05, 0.09, 0.24, S, 0, 0.01, 0.22); box(g, 0.052, 0.1, 0.02, M.grip, 0, 0.01, 0.345);
+      magObj = mag(g, -0.1, 0.17, -0.2, 0.044, 0.08, M.wolf);                       // long curved shotgun box mag
+      triggerGroup(g, 0.02, M.wolf);
+      skeletonStock(g, 0.06, -0.035, 0.1, 0.33, M.wolf, 0.022);                     // grey skeleton stock
       rail(g, 0.068, -0.2, 0.08);
       // --- detail
       box(g, 0.062, 0.026, 0.32, M.dark, 0, 0.004, -0.06);                          // lower receiver
@@ -983,8 +1087,6 @@ export function buildGun(model, skinId = 'factory', att = {}) {
       box(g, 0.022, 0.014, 0.18, M.dark, 0, -0.012, -0.32);                         // bottom rail
       for (let z = -0.4; z < -0.24; z += 0.014) box(g, 0.026, 0.006, 0.007, M.black, 0, -0.017, z);
       cyl(g, 0.02, 0.02, M.dark, 0, 0.035, -0.41);                                  // barrel nut
-      box(g, 0.052, 0.024, 0.012, M.dark, 0, 0.06, 0.1);                            // stock cheek riser
-      buttPad(g, 0.052, 0.1, 0.01, 0.345);
       sling(g, -0.03, 0.3);
       irons = { cy: 0.092, zr: 0.06, zf: -0.18 };
       optic(0.1, -0.06, 0.072, -0.2, 0.08);
