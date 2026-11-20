@@ -182,8 +182,14 @@
         </div>
       </div>
       <div class="preview-col">
-        <div class="pv-slot" id="pv-loadout"></div><div id="wstats"></div>
-        <div id="gsHead" class="gs-head"></div><div id="gunsmith" class="gunsmith"></div>
+        <div class="pv-slot" id="pv-loadout"></div>
+        <div id="pvTabs" class="chips pvtabs"><button data-pt="stats" class="on">WEAPON</button><button data-pt="gs">GUNSMITH</button></div>
+        <div id="pvStats"><div id="wstats"></div></div>
+        <div id="pvGs" class="hidden">
+          <div id="gsLock" class="gs-lock hidden">Locked during a match: leave the match to change attachments and reticles.</div>
+          <div id="gsHead" class="gs-head"></div><div id="gunsmith" class="gunsmith"></div>
+          <label class="gs-retlabel">RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -224,7 +230,6 @@
       <label>GRAPHICS</label><div id="gfx" class="chips"><button data-g="low">Performance</button><button data-g="high">Quality</button><button data-g="ultra">Ultra</button></div><div id="gfxnote" class="gfxnote"></div>
       <label>SHADOWS</label><div id="shadowq" class="chips"><button data-s="off">Off</button><button data-s="low">Low</button><button data-s="medium">Medium</button><button data-s="high">High</button></div>
       <label class="check"><input type="checkbox" id="invert"> Invert mouse Y</label>
-      <label>SIGHT RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
       <label>HIP-FIRE CROSSHAIR</label><div id="xhStyle" class="chips"></div><div id="xhColor" class="chips" style="margin-top:6px"></div>
     </div>
   </section>

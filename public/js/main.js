@@ -474,7 +474,7 @@ const scores = new Map();
 let mode = 'ffa', target = 30, teamScore = [0, 0], myTeam = -1, zone = null, uavUntil = 0, ggWeapon = null, nadesLeft = 2, tacsLeft = 2;
 let stunUntil = 0, burnUntil = 0;
 const smokes = new Map(), fires = new Map(); // active smoke clouds / fire pools from the server
-let matchXP = 0; const matchXPReasons = {};
+let matchXP = 0, matchStart = null; const matchXPReasons = {};
 const teamsMode = () => MODES[mode]?.teams;
 const teamOf = id => id === me.id ? myTeam : (remotes.get(id)?.info.team ?? -1);
 const isMate = id => teamsMode() && teamOf(id) === myTeam;
@@ -1014,7 +1014,7 @@ function updateWeapon(dt, now) {
 const isSprinting = () => keys.ShiftLeft && keys.KeyW && !keys.KeyS && !me.crouch && adsT < 0.3 && me.onGround && sprintLock <= 0;
 
 // ================================================================ movement (with slide)
-let wasGround = true, fallVel = 0, padFlight = false;
+let wasGround = true, fallVel = 0, padFlight = false, stepOff = 0;
 const FALL_SAFE = Math.sqrt(2 * PLAYER.gravity * 4.5); // landing speed of a 4.5 m drop (~14 m/s)
 const slide = { t: 0, cd: 0, dir: [0, 0], wasCrouchKey: false, roll: 0 };
 const SLIDE_TIME = 0.8, SLIDE_SPEED = 12.5;
@@ -1129,7 +1129,18 @@ function updateMovement(dt) {
   }
   slide.roll = lerp(slide.roll, slide.t > 0 ? 1 : 0, Math.min(1, dt * 10));
   fallVel = me.vel[1];
+  const yBefore = me.pos[1], groundBefore = me.onGround;
   moveBody(me, dt, near);
+  // Stairs: going down, stay on the steps instead of dropping off each one; going up or down, the camera eases
+  // over the step instead of snapping (stepOff is added to the eye height and fades out).
+  if (groundBefore && !me.onGround && me.vel[1] <= 0 && !me.padded && !mantle) {
+    let top = -Infinity;
+    const r = PLAYER.radius * 0.8;
+    for (const b of near) if (me.pos[0] + r > b.min[0] && me.pos[0] - r < b.max[0] && me.pos[2] + r > b.min[2] && me.pos[2] - r < b.max[2] && b.max[1] <= yBefore + 0.01 && b.max[1] >= yBefore - 0.42) top = Math.max(top, b.max[1]);
+    if (yBefore - 0.42 <= 0 && yBefore > 0.001) top = Math.max(top, 0);
+    if (top > -Infinity) { me.pos[1] = top; me.vel[1] = 0; me.onGround = true; }
+  }
+  if (groundBefore && me.onGround) { const dy = me.pos[1] - yBefore; if (Math.abs(dy) > 0.02 && Math.abs(dy) <= PLAYER.stepUp + 0.02) stepOff = clamp(stepOff - dy, -0.6, 0.6); }
   if (me.padded) { SFX.jet(); kickZ += 0.06; shake = Math.max(shake, 0.15); padFlight = true; }
   if (me.onGround && !wasGround && fallVel < -7) { SFX.land(); kickZ += 0.03; }
   // fall damage: starts at a ~4.5 m drop, lethal around 17 m (jump-pad flights don't count)
@@ -1209,7 +1220,8 @@ function animateParts(g, w, def) {
 function updateCamera(dt, now) {
   const w = curW(), def = w?.def;
   if (inGame && me.alive) {
-    camera.position.set(me.pos[0], me.pos[1] + me.eyeH, me.pos[2]);
+    stepOff *= Math.exp(-dt * 13); if (Math.abs(stepOff) < 0.002) stepOff = 0;
+    camera.position.set(me.pos[0], me.pos[1] + me.eyeH + stepOff, me.pos[2]);
     camera.rotation.set(me.pitch, me.yaw, slide.roll * 0.07);
   } else if (inGame && deathTime) {
     const k = Math.min(1, (now - deathTime) / 600);
@@ -1259,12 +1271,17 @@ function updateCamera(dt, now) {
 // ================================================================ remote update
 // ---- network clock: place snapshots on the server's own clock (ms), not on arrival time,
 // so bursty internet connections don't make other players skip back and forth.
-const net = { off: null, jitter: 0, lastK: -1 };
+// Remote players' updates are kept in their buffers on the SERVER's clock and converted with the current
+// offset only when drawn, so a re-estimate of the offset after a connection hiccup can never make fresh
+// updates look "older than what we have" and get thrown away (that froze everyone for seconds).
+const net = { off: null, jitter: 0, lastK: -1, srv: false };
 function netClock(k, now) {
   if (typeof k !== 'number' || window.__netOld) return now; // older server (or A/B test of the old behaviour)
+  net.srv = true;
   const st = k;
   const target = now - st;
-  if (net.off === null || k < net.lastK || Math.abs(target - net.off) > 1500) { net.off = target; net.jitter = 0; }
+  // re-base only for a server restart or a very long stall; ordinary late packets are what the min-tracking absorbs
+  if (net.off === null || k < net.lastK || target - net.off > 5000) { net.off = target; net.jitter = 0; }
   else if (target < net.off) net.off = target;            // a packet arrived quicker: tighten
   else net.off += (target - net.off) * 0.01;              // otherwise drift slowly
   net.jitter = net.jitter * 0.95 + Math.abs(target - net.off) * 0.05;
@@ -1273,10 +1290,11 @@ function netClock(k, now) {
 }
 function updateRemotes(dt, now) {
   const baseJit = net.jitter;
+  const off = net.srv && !window.__netOld && net.off !== null ? net.off : 0; // buffers are on the server clock
   for (const r of remotes.values()) {
     // bigger buffer on bumpier connections: ours from the server, plus that player's upload to the server
     const delay = window.__netOld ? 110 : clamp(80 + (baseJit + (r.jit || 0)) * 2.5, 80, 400);
-    const renderT = now - delay;
+    const renderT = now - off - delay;
     const b = r.buf;
     if (!b.length) { r.model.visible = false; continue; }
     let a = b[0], c = b[0], ext = 0;
@@ -1409,6 +1427,7 @@ function handle(m) {
       mode = m.mode || 'ffa'; target = m.target ?? scoreLimit; teamScore = m.teamScore || [0, 0];
       zone = m.zone ? { x: m.zone[0], z: m.zone[1], r: m.zone[2], state: -1, ttm: 60 } : null;
       uavUntil = 0; matchXP = 0; for (const k in matchXPReasons) delete matchXPReasons[k];
+      matchStart = { level: PR.levelInfo().level, credits: PR.profile.credits, wl: Object.fromEntries([...PRIMARIES, ...SECONDARIES].map(w => [w, PR.weaponLevel(w)])) };
       const mine = m.players.find(p => p.id === m.id);
       myTeam = mine ? mine.team : -1;
       ggWeapon = mode === 'gungame' ? (mine?.w || GUNGAME_LADDER[0]) : null;
@@ -1425,9 +1444,10 @@ function handle(m) {
       break;
     }
     case 'xp': {
-      matchXP += m.a;
-      matchXPReasons[m.r] = (matchXPReasons[m.r] || 0) + m.a;
-      xpPopup(m.r, m.a);
+      const gain = Math.max(1, Math.round(m.a * PR.XP_RATE));
+      matchXP += gain;
+      matchXPReasons[m.r] = (matchXPReasons[m.r] || 0) + gain;
+      xpPopup(m.r, gain);
       const lvl = PR.addXP(m.a);
       if (lvl) levelUp(lvl);
       PR.challengeEvent('xp', {}, m.a);
@@ -1500,21 +1520,19 @@ function handle(m) {
         const r = remotes.get(id); if (!r) continue;
         if (r.alive || alive) {
           // the in-between updates of a burst, so their movement is replayed in full rather than cut corners
-          if (Array.isArray(hist) && typeof m.k === 'number' && !window.__netOld) for (const [ht, hx, hy, hz, hry, hrx, hc] of hist) {
-            const t = st + (ht - m.k);
-            if (r.buf.length && t <= r.buf[r.buf.length - 1].t) continue;
-            r.buf.push({ t, x: hx, y: hy, z: hz, ry: hry, rx: hrx, c: hc }); if (r.buf.length > 40) r.buf.shift();
-          }
+          const srv = typeof m.k === 'number' && !window.__netOld; // times below are on the server's clock
+          // add one update; same time = nothing new; clearly older = that player's clock was re-based, so start over
+          const add = (t, e) => {
+            const lastT = r.buf.length ? r.buf[r.buf.length - 1].t : -Infinity;
+            if (t === lastT) return;
+            if (t < lastT) { if (lastT - t > 300) r.buf.length = 0; else return; }
+            e.t = t; r.buf.push(e); if (r.buf.length > 40) r.buf.shift();
+          };
+          if (Array.isArray(hist) && srv) for (const [ht, hx, hy, hz, hry, hrx, hc] of hist) add(ht, { x: hx, y: hy, z: hz, ry: hry, rx: hrx, c: hc });
           // newer servers say when the player was really at this spot (their send time), so a burst of late
           // updates from a laggy player plays back at the right pace instead of freeze → jump
-          const t = typeof pt === 'number' && typeof m.k === 'number' && !window.__netOld ? st + (pt - m.k) : st;
           r.jit = typeof jit === 'number' ? jit : 0;
-          const lastT = r.buf.length ? r.buf[r.buf.length - 1].t : -Infinity;
-          if (t <= lastT) {
-            if (lastT - t > 1000) r.buf.length = 0; // clock reset (new match)
-            else { r.alive = !!alive; setRemoteGun(r, w); continue; } // nothing new from this player yet
-          }
-          r.buf.push({ t, x, y, z, ry, rx, c }); if (r.buf.length > 40) r.buf.shift();
+          add(srv ? (typeof pt === 'number' ? pt : m.k) : st, { x, y, z, ry, rx, c });
         }
         r.alive = !!alive; setRemoteGun(r, w);
       }
@@ -1564,7 +1582,8 @@ function handle(m) {
         $('deathscreen').classList.add('hidden');
       } else {
         const r = remotes.get(m.id);
-        if (r) { r.buf = [{ t: now - 200, x: m.p[0], y: m.p[1], z: m.p[2], ry: m.ry, rx: 0, c: 0 }]; r.alive = true; r.deathT = 0; r.prev = null; }
+        const off = net.srv && !window.__netOld && net.off !== null ? net.off : 0; // buffers are on the server clock
+        if (r) { r.buf = [{ t: now - off - 200, x: m.p[0], y: m.p[1], z: m.p[2], ry: m.ry, rx: 0, c: 0 }]; r.alive = true; r.deathT = 0; r.prev = null; }
       }
       break;
     case 'fx': {
@@ -1744,7 +1763,17 @@ function showEnd(m) {
   PR.saveProfile();
   const li = PR.levelInfo();
   const top = Object.entries(matchXPReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  $('xpsum').innerHTML = `<div class="xprow"><span>XP EARNED THIS MATCH</span><b>+${matchXP}</b></div>` +
+  const ms = matchStart || { level: li.level, credits: PR.profile.credits, wl: {} };
+  const unl = []; for (let l = ms.level + 1; l <= li.level; l++) unl.push(...PR.newUnlocksAt(l).map(unlockName).filter(Boolean));
+  const wUps = Object.entries(ms.wl).map(([w, a]) => [w, a, PR.weaponLevel(w)]).filter(([, a, b]) => b > a);
+  const rewards = `<div class="xprow xplvl"><span>${li.level > ms.level ? `LEVEL ${ms.level} → ${li.level}` : `LEVEL ${li.level}`}</span><b>${li.level > ms.level ? `+${li.level - ms.level} LEVEL${li.level - ms.level > 1 ? 'S' : ''}` : ''}</b></div>` +
+    `<div class="xprow"><span>CREDITS EARNED</span><b>+◆${Math.max(0, PR.profile.credits - ms.credits)}</b></div>` +
+    (unl.length ? `<div class="xprew"><span>NEW UNLOCKS</span>${unl.map(n => `<i>${esc(n)}</i>`).join('')}</div>` : '') +
+    wUps.map(([w, a, b]) => {
+      const att = PR.slotsFor(w).flatMap(s => PR.optionsFor(w, s).filter(o => o.lvl > a && o.lvl <= b).map(o => o.name));
+      return `<div class="xprew"><span>${esc(WEAPONS[w].name)} LV ${a} → ${b}</span>${att.map(n => `<i>${esc(n)}</i>`).join('')}</div>`;
+    }).join('');
+  $('xpsum').innerHTML = rewards + `<div class="xprow"><span>XP EARNED THIS MATCH</span><b>+${matchXP}</b></div>` +
     top.map(([r, v]) => `<div class="xprow" style="font-size:14px;color:var(--muted)"><span>${esc(r)}</span><span>+${v}</span></div>`).join('') +
     `<div class="xpbar"><div style="width:${(li.pct * 100).toFixed(1)}%"></div></div><div class="lvlline"><span>LEVEL ${li.level}</span><span>${li.into} / ${li.need} XP · ◆ ${PR.profile.credits}</span></div>`;
   challengeToasts(done);
@@ -1768,6 +1797,7 @@ function xpPopup(reason, amt) {
   while (feed.children.length > 5) feed.firstChild.remove();
   function fade(l) { l.el.style.opacity = 0; l.el.style.transform = 'translateY(-10px)'; setTimeout(() => l.el.remove(), 600); xpLines = xpLines.filter(x => x !== l); }
 }
+const unlockName = k => k.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === k.slice(3))?.name : k.startsWith('op:') ? charSkin(k.slice(3)).name : WEAPONS[k]?.name;
 function levelUp(lvl) {
   SFX.announce();
   const unlocks = PR.newUnlocksAt(lvl).map(k => k.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === k.slice(3))?.name : k.startsWith('op:') ? charSkin(k.slice(3)).name : WEAPONS[k]?.name).filter(Boolean);
@@ -1865,7 +1895,10 @@ function updateHud(now) {
 }
 function drawMinimap(now) {
   if (!world) return;
-  const c = $('minimap'), x = c.getContext('2d'), { canvas, H, ms } = world.minimap, k = 3.2;
+  // Radar killstreak: the minimap zooms out and sweeps, and enemies beyond its edge show as markers on the rim
+  // (before, the minimap only covered ~30 m around you, so radar showed almost nobody on the big maps).
+  const uavOn = now < uavUntil;
+  const c = $('minimap'), x = c.getContext('2d'), { canvas, H, ms } = world.minimap, k = uavOn ? 1.9 : 3.2;
   x.clearRect(0, 0, 200, 200);
   x.save();
   x.beginPath(); x.arc(100, 100, 100, 0, Math.PI * 2); x.clip();
@@ -1885,14 +1918,27 @@ function drawMinimap(now) {
     const [tx, , tz] = tg.userData.base;
     x.fillStyle = '#ffd36a'; x.fillRect((tx + H) * ms - 2.5 * ms / k, (tz + H) * ms - 2.5 * ms / k, 5 * ms / k, 5 * ms / k);
   }
-  const uav = now < uavUntil;
+  const uav = uavOn, rim = [];
   for (const r of remotes.values()) {
     if (!r.alive) continue;
     if (!r.mate && !uav && now - r.lastFired > 2500) continue;
     const p = r.model.position;
+    if (uav && !r.mate && Math.hypot(p.x - me.pos[0], p.z - me.pos[2]) * k > 92) { rim.push(p); continue; }
     x.fillStyle = r.mate ? '#5aa2ff' : '#ff3b3b'; x.beginPath(); x.arc((p.x + H) * ms, (p.z + H) * ms, 4.5 * ms / k, 0, Math.PI * 2); x.fill();
   }
   x.restore();
+  if (uav) {
+    const a = (now / 1000 * 2.4) % (Math.PI * 2);                                   // radar sweep
+    const g = x.createConicGradient ? x.createConicGradient(a, 100, 100) : null;
+    if (g) { g.addColorStop(0, 'rgba(125,255,154,0.35)'); g.addColorStop(0.12, 'rgba(125,255,154,0)'); g.addColorStop(1, 'rgba(125,255,154,0)'); x.fillStyle = g; x.beginPath(); x.arc(100, 100, 100, 0, Math.PI * 2); x.fill(); }
+    x.strokeStyle = 'rgba(125,255,154,0.8)'; x.lineWidth = 2; x.beginPath(); x.arc(100, 100, 98, 0, Math.PI * 2); x.stroke();
+    for (const p of rim) {                                                            // far enemies: arrow on the rim pointing at them
+      const dx = p.x - me.pos[0], dz = p.z - me.pos[2], cs = Math.cos(me.yaw), sn = Math.sin(me.yaw);
+      const sx = dx * cs - dz * sn, sy = dx * sn + dz * cs, ang = Math.atan2(sy, sx);
+      x.save(); x.translate(100 + Math.cos(ang) * 90, 100 + Math.sin(ang) * 90); x.rotate(ang);
+      x.fillStyle = '#ff3b3b'; x.beginPath(); x.moveTo(7, 0); x.lineTo(-5, -5); x.lineTo(-5, 5); x.closePath(); x.fill(); x.restore();
+    }
+  }
   x.fillStyle = '#2ee6ff';
   x.beginPath(); x.moveTo(100, 92); x.lineTo(106, 106); x.lineTo(100, 103); x.lineTo(94, 106); x.closePath(); x.fill();
 }
@@ -2113,7 +2159,7 @@ function statBars(def) {
   return `<div style="font-size:22px;font-weight:700">${def.name}</div><div class="hint">${def.type}${def.mag ? ` · ${def.mag} ${def.flame ? 'fuel' : 'rounds'}` : ''}${extra.length ? ' · ' + extra.join(' · ') : ''}</div>` +
     rows.map(([n, v]) => `<div class="stat"><span>${n}</span><div class="sb"><div style="width:${(v * 100).toFixed(0)}%"></div></div></div>`).join('');
 }
-let previewWeapon = cfg.primary, armTab = 'all', gsOpen = null;
+let previewWeapon = cfg.primary, armTab = 'all', gsOpen = null, gsBuyPending = null, pvTab = 'stats';
 const lockText = key => { const u = PR.UNLOCKS[key]; if (!u) return ''; if (u.dev) return '🔒 DEV ONLY'; return u.price ? `◆${u.price}${u.level > 1 ? ` · needs level ${u.level}` : ''}` : `🔒 Level ${u.level}`; };
 function tryBuy(key, label) {
   const u = PR.UNLOCKS[key];
@@ -2155,7 +2201,8 @@ function renderGunsmith() {
   const id = previewWeapon, d = WEAPONS[id], open = PR.isUnlocked(id), wl = PR.weaponLevelInfo(id), att = PR.getAtt(id);
   const slots = PR.slotsFor(id);
   const pct = wl.next ? (wl.kills - wl.cur) / (wl.next - wl.cur) : 1;
-  $('gsHead').innerHTML = `<span>GUNSMITH · WEAPON LEVEL ${wl.level}</span><small>${wl.next ? `${wl.kills}/${wl.next} kills to level ${wl.level + 1}` : 'MAX LEVEL'}</small>`;
+  $('gsLock').classList.toggle('hidden', !inGame); $('pvGs').classList.toggle('locked-match', inGame);
+  $('gsHead').innerHTML = `<span>${esc(d.name.toUpperCase())} · WEAPON LEVEL ${wl.level}</span><small>${wl.next ? `${wl.kills}/${wl.next} kills to level ${wl.level + 1}` : 'MAX LEVEL'}</small>`;
   if (!slots.length) { $('gunsmith').innerHTML = `<div class="hint">No attachments for the ${esc(d.name)}.</div>`; return; }
   $('gunsmith').innerHTML = `<div class="gs-wl"><div style="width:${(pct * 100).toFixed(0)}%"></div></div>` + slots.map(slot => {
     const cur = att[slot], opts = PR.optionsFor(id, slot);
@@ -2163,15 +2210,21 @@ function renderGunsmith() {
     const isOpen = gsOpen === slot;
     return `<div class="gs-slot ${isOpen ? 'open' : ''}"><button data-slot="${slot}"><span>${PR.SLOT_NAMES[slot].toUpperCase()}</span><b>${esc(curName || 'None')}</b></button>` +
       (isOpen ? `<div class="gs-opts"><button data-a="" class="${!cur ? 'on' : ''}"><b>${slot === 'optic' ? 'Default sight' : 'None'}</b></button>` + opts.map(o => {
-        const locked = !open || wl.level < o.lvl;
-        return `<button data-a="${o.id}" class="${cur === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><span class="lv">${locked ? '🔒 ' : ''}LV ${o.lvl}</span><b>${esc(o.name)}</b><br>${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join(' ')} ${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join(' ')}</button>`;
+        const locked = !PR.attOwned(id, slot, o);
+        return `<button data-a="${o.id}" class="${cur === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><span class="lv">${locked ? `🔒 LV ${o.lvl} · ◆${PR.attPrice(o)}` : `LV ${o.lvl}`}</span><b>${esc(o.name)}</b><br>${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join(' ')} ${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join(' ')}</button>`;
       }).join('') + '</div>' : '') + '</div>';
   }).join('');
   $('gunsmith').querySelectorAll('[data-slot]').forEach(b => b.onclick = () => { gsOpen = gsOpen === b.dataset.slot ? null : b.dataset.slot; renderGunsmith(); SFX.uiBlip(); });
   $('gunsmith').querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
     const a = b.dataset.a, o = PR.optionsFor(id, gsOpen).find(x => x.id === a);
-    if (!open) { toast(`Unlock the ${d.name} first`); return; }
-    if (a && wl.level < o.lvl) { toast(`${o.name} unlocks at ${d.name} level ${o.lvl}`); return; }
+    if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+    if (a && !PR.attOwned(id, gsOpen, o)) {
+      const price = PR.attPrice(o), key = id + gsOpen + a;
+      if (gsBuyPending !== key) { gsBuyPending = key; toast(`${o.name} unlocks at ${d.name} level ${o.lvl} — or click again to buy it now for ◆${price}`); return; }
+      gsBuyPending = null;
+      if (!PR.buyAtt(id, gsOpen, a)) { toast(`Not enough credits — need ◆${price}, you have ◆${PR.profile.credits}`); return; }
+      toast(`Bought ${o.name} for the ${d.name}${open ? '' : ' — ready when the gun unlocks'}`); SFX.killConfirm(); updateProfileUI();
+    }
     PR.setAtt(id, gsOpen, a || null); SFX.uiBlip();
     $('wstats').innerHTML = statBars(PR.attachedDef(id)); renderGunsmith(); rebuildPreview();
   });
@@ -2267,14 +2320,24 @@ function applyShadows() {
 document.querySelectorAll('#shadowq button').forEach(b => b.addEventListener('click', () => { cfg.shadows = b.dataset.s; applyShadows(); SFX.uiBlip?.(); }));
 document.querySelectorAll('#shadowq button').forEach(b => b.classList.toggle('on', b.dataset.s === cfg.shadows));
 // reticle + crosshair customisation
-function chipRow(el, values, key, label, onPick, swatch) {
+function chipRow(el, values, key, label, onPick, swatch, canPick) {
   el.innerHTML = values.map(v => `<button data-v="${v}" class="${cfg[key] === v ? 'on' : ''}">${swatch ? `<i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${RETICLE_COLORS[v]};margin-right:6px"></i>` : ''}${label(v)}</button>`).join('');
-  el.querySelectorAll('button').forEach(b => b.onclick = () => { cfg[key] = b.dataset.v; saveCfg(); onPick(); chipRow(el, values, key, label, onPick, swatch); SFX.uiBlip(); });
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { if (canPick && !canPick()) return; cfg[key] = b.dataset.v; saveCfg(); onPick(); chipRow(el, values, key, label, onPick, swatch, canPick); SFX.uiBlip(); });
 }
 const RET_NAMES = { dot: 'Dot', cross: 'Cross', circle: 'Circle Dot', chevron: 'Chevron', tdot: 'T-Dot' };
 const capWord = s => s[0].toUpperCase() + s.slice(1);
-chipRow($('retStyle'), RETICLE_STYLES, 'reticle', v => RET_NAMES[v], () => setReticle(cfg.reticle, cfg.reticleColor));
-chipRow($('retColor'), Object.keys(RETICLE_COLORS), 'reticleColor', capWord, () => setReticle(cfg.reticle, cfg.reticleColor), true);
+// reticles are picked in the Gunsmith tab, outside matches only
+const retPickable = () => { if (inGame) { toast('Reticles can only be changed outside a match'); return false; } return true; };
+const retPicked = () => { setReticle(cfg.reticle, cfg.reticleColor); rebuildPreview(); };
+chipRow($('retStyle'), RETICLE_STYLES, 'reticle', v => RET_NAMES[v], retPicked, false, retPickable);
+chipRow($('retColor'), Object.keys(RETICLE_COLORS), 'reticleColor', capWord, retPicked, true, retPickable);
+function setPvTab(t) {
+  pvTab = t;
+  document.querySelectorAll('#pvTabs button').forEach(b => b.classList.toggle('on', b.dataset.pt === t));
+  $('pvStats').classList.toggle('hidden', t !== 'stats'); $('pvGs').classList.toggle('hidden', t !== 'gs');
+  if (t === 'gs') renderGunsmith();
+}
+document.querySelectorAll('#pvTabs button').forEach(b => b.onclick = () => { setPvTab(b.dataset.pt); SFX.uiBlip(); });
 chipRow($('xhStyle'), ['lines', 'dot', 'circle', 'none'], 'xh', capWord, applyCrosshair);
 chipRow($('xhColor'), Object.keys(RETICLE_COLORS), 'xhColor', capWord, applyCrosshair, true);
 applyCrosshair();

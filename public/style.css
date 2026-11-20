@@ -449,3 +449,15 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
    Only its update notices stay visible. */
 #dkBadge > :not(.upd) { display: none !important; }
 #dkBadge:not(:has(.upd)) { display: none !important; }
+
+/* Armory: WEAPON / GUNSMITH tabs under the preview, reticle picker, match lock */
+.pvtabs { margin-top: 12px; }
+.pvtabs button { flex: 1; font-weight: 800; letter-spacing: 2px; }
+.gs-lock { margin-top: 12px; padding: 8px 12px; border: 1px solid #b8862b; background: rgba(184, 134, 43, 0.15); color: #ffd27a; font-weight: 600; }
+.gs-retlabel { display: block; margin-top: 14px; }
+#pvGs.locked-match .gunsmith, #pvGs.locked-match .chips { opacity: 0.55; }
+/* post-match rewards */
+#xpsum .xplvl { font-size: 20px; margin-bottom: 4px; }
+#xpsum .xprew { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; font-weight: 600; }
+#xpsum .xprew span { color: var(--muted); margin-right: 4px; }
+#xpsum .xprew i { font-style: normal; background: rgba(255, 210, 122, 0.14); border: 1px solid rgba(255, 210, 122, 0.4); color: #ffd27a; padding: 2px 8px; }

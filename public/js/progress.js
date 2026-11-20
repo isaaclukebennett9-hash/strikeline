@@ -1,6 +1,7 @@
 // Player progression.
 //  • Player level (XP)  → unlocks weapons and throwables. Slow curve, max level 55.
 //  • Weapon level (kills with that gun) → unlocks that gun's attachments (Gunsmith), up to weapon level 20.
+//    Attachments can also be bought early with credits, even before the gun itself is unlocked.
 //  • Credits → cosmetics only (weapon finishes, operators) and challenge swaps.
 import { WEAPONS } from '/shared/weapons.js';
 
@@ -111,7 +112,7 @@ if (migrate) {
   const OLD_PRICE = { breacher: 800, stinger: 900, kestrel: 1100, tri: 1400, hawk: 1600, scorpion: 2400, magnum: 1200, marksman: 1800, hammer: 2200, longbow: 2800, thumper: 3500 };
   for (const tiers of Object.values(profile.upgrades || {})) for (const [k, t] of Object.entries(tiers)) for (let i = 0; i < t; i++) migrationRefund += UPG_COST[k]?.[i] || 0;
   for (const k of profile.owned) migrationRefund += OLD_PRICE[k] || 0;
-  profile.owned = profile.owned.filter(k => k.startsWith('ws:') || k.startsWith('op:'));
+  profile.owned = profile.owned.filter(k => k.startsWith('ws:') || k.startsWith('op:') || k.startsWith('at:'));
   delete profile.upgrades;
   profile.credits += migrationRefund;
   profile.att = profile.att || {};
@@ -268,12 +269,22 @@ export function optionsFor(wid, slot) {
   return (ATTACHMENTS[slot] || []).filter(a => !a.classes || a.classes.includes(d.cls));
 }
 export const getAtt = wid => profile.att[wid] || {};
+// buying an attachment early (before reaching the weapon level, even before the gun unlocks)
+const attKey = (wid, slot, id) => `at:${wid}:${slot}:${id}`;
+export const attPrice = opt => 200 + opt.lvl * 150;
+export const attOwned = (wid, slot, opt) => weaponLevel(wid) >= opt.lvl || profile.owned.includes(attKey(wid, slot, opt.id));
+export function buyAtt(wid, slot, id) {
+  const opt = optionsFor(wid, slot).find(o => o.id === id);
+  if (!opt || attOwned(wid, slot, opt) || profile.credits < attPrice(opt)) return false;
+  profile.credits -= attPrice(opt); profile.owned.push(attKey(wid, slot, id)); saveProfile();
+  return true;
+}
 export function setAtt(wid, slot, id) {
   const a = { ...(profile.att[wid] || {}) };
   if (!id) delete a[slot];
   else {
     const opt = optionsFor(wid, slot).find(o => o.id === id);
-    if (!opt || weaponLevel(wid) < opt.lvl) return false;
+    if (!opt || !attOwned(wid, slot, opt)) return false;
     a[slot] = id;
   }
   profile.att[wid] = a; saveProfile();
@@ -378,9 +389,12 @@ export function rerollChallenge(i) {
   return true;
 }
 // XP in, credits out (1 credit per 10 XP)
+// Levelling was too quick. Raising the level curve would take levels away from existing players, so matches give
+// less XP instead (credits are unchanged).
+export const XP_RATE = 0.6;
 export function addXP(amount) {
   const before = levelInfo().level;
-  profile.xp += amount;
+  profile.xp += Math.max(1, Math.round(amount * XP_RATE));
   profile.credits += Math.round(amount / 10);
   saveProfile();
   const after = levelInfo().level;
