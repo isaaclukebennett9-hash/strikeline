@@ -2543,6 +2543,11 @@ bindRange('fov', 'fov', v => v + '°');
 bindRange('vol', 'vol', v => Math.round(v * 100) + '%', () => { SFX.setVolume(cfg.vol); Announcer.setVolume(Math.min(1, cfg.vol * 1.4)); });
 $('invert').checked = cfg.invert;
 $('invert').addEventListener('change', () => { cfg.invert = $('invert').checked; saveCfg(); });
+$('shutup').checked = !cfg.announcer;
+$('shutup').addEventListener('change', () => {
+  cfg.announcer = !$('shutup').checked; Announcer.setEnabled(cfg.announcer); saveCfg();
+  toast(cfg.announcer ? 'Fine. The announcer is back.' : 'Announcer gagged. Blessed silence.');
+});
 $('announcerOn').checked = cfg.announcer;
 $('announcerOn').addEventListener('change', () => { cfg.announcer = $('announcerOn').checked; saveCfg(); Announcer.setEnabled(cfg.announcer); if (cfg.announcer) Announcer.say('ready', 0); });
 const updateGfxChips = () => {
