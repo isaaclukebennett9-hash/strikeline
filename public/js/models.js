@@ -1208,26 +1208,71 @@ function mergeByMaterial(g, keep) {
 }
 
 // First-person arms (sleeve + glove), positioned relative to the gun group.
+// Woven fabric with folds and a seam, tinted per skin by the material colour (so one texture serves every skin).
+const fabricTex = texCanvas(128, (x, s) => {
+  x.fillStyle = '#d8d8d8'; x.fillRect(0, 0, s, s);
+  for (let i = 0; i < s; i += 2) { x.fillStyle = `rgba(0,0,0,${i % 4 ? 0.05 : 0.1})`; x.fillRect(i, 0, 1, s); x.fillRect(0, i, s, 1); } // weave
+  for (let k = 0; k < 7; k++) { // soft creases running round the sleeve
+    const y = Math.random() * s, g = x.createLinearGradient(0, y - 7, 0, y + 7);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, `rgba(0,0,0,${0.12 + Math.random() * 0.12})`); g.addColorStop(0.62, 'rgba(255,255,255,0.08)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.save(); x.translate(s / 2, y); x.rotate((Math.random() - 0.5) * 0.5); x.translate(-s / 2, -y); x.fillStyle = g; x.fillRect(-20, y - 7, s + 40, 14); x.restore();
+  }
+  x.fillStyle = 'rgba(0,0,0,0.28)'; x.fillRect(s * 0.72, 0, 2, s);                            // seam
+  x.fillStyle = 'rgba(255,255,255,0.1)'; x.fillRect(s * 0.72 + 2, 0, 1, s);
+  for (let y = 3; y < s; y += 6) { x.fillStyle = 'rgba(0,0,0,0.3)'; x.fillRect(s * 0.72 - 3, y, 2, 3); } // stitches
+  speckle(x, s, 14);
+});
+// Synthetic glove: fine grain, palm padding.
+const gloveTex = texCanvas(64, (x, s) => {
+  x.fillStyle = '#9a9a9a'; x.fillRect(0, 0, s, s);
+  for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(0,0,0,${Math.random() * 0.18})`; x.fillRect(Math.random() * s, Math.random() * s, 2, 1); }
+  x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 1;
+  for (let i = 8; i < s; i += 16) { x.beginPath(); x.moveTo(0, i); x.lineTo(s, i); x.stroke(); }
+  speckle(x, s, 10);
+});
+
 export function buildArms(skinId, gun) {
   const sk = charSkin(skinId);
-  const sleeve = new THREE.MeshStandardMaterial({ color: sk.body, roughness: 0.9 });
-  const cuff = new THREE.MeshStandardMaterial({ color: sk.accent, roughness: 0.8 });
-  const glove = new THREE.MeshStandardMaterial({ map: gripTex, color: '#3a3d42', roughness: 0.85 });
+  const shade = (hex, f) => '#' + new THREE.Color(hex).multiplyScalar(f).getHexString();
+  // sleeves are toned down a little: viewmodel lights are strong and flat bright fabric looks plastic
+  const sleeve = new THREE.MeshStandardMaterial({ map: fabricTex, color: shade(sk.body, 0.82), roughness: 0.95 });
+  const sleeveDark = new THREE.MeshStandardMaterial({ map: fabricTex, color: shade(sk.body, 0.58), roughness: 0.95 });
+  const cuff = new THREE.MeshStandardMaterial({ map: fabricTex, color: shade(sk.accent, 0.9), roughness: 0.85 });
+  const glove = new THREE.MeshStandardMaterial({ map: gloveTex, color: '#3b3e43', roughness: 0.75 });
+  const pad = new THREE.MeshStandardMaterial({ map: gripTex, color: '#8a8f96', roughness: 0.6, metalness: 0.1 }); // knuckle guard
+  const strap = new THREE.MeshStandardMaterial({ color: '#17181b', roughness: 0.7 });
   const arms = new THREE.Group();
-  // right hand on grip
+
+  // forearm: a tapered sleeve (two blocks), rolled cuff and glove wrist strap
+  const forearm = (g, x, y, z, rx, ry, len) => {
+    const f = new THREE.Group(); f.position.set(x, y, z); f.rotation.set(rx, ry, 0); g.add(f);
+    box(f, 0.074, 0.072, len * 0.55, sleeve, 0, 0, len * 0.5 + len * 0.27);
+    box(f, 0.068, 0.066, len * 0.5, sleeve, 0, 0, len * 0.25);
+    box(f, 0.08, 0.078, 0.05, sleeveDark, 0, 0.001, 0.035);                                // rolled cuff
+    box(f, 0.081, 0.012, 0.052, cuff, 0, 0.034, 0.035);
+    box(f, 0.03, 0.006, 0.05, strap, 0.018, 0.038, len * 0.62);                             // velcro tab
+    box(f, 0.062, 0.058, 0.03, glove, 0, 0, -0.004);                                        // glove wrist
+    box(f, 0.066, 0.012, 0.026, strap, 0, 0.026, -0.004);
+    return f;
+  };
+  // right hand on the grip
   const r = new THREE.Group();
-  box(r, 0.055, 0.07, 0.09, glove, 0, -0.06, 0.04);
-  box(r, 0.02, 0.025, 0.05, glove, -0.025, -0.035, 0.0);                           // trigger finger
-  box(r, 0.062, 0.03, 0.06, cuff, 0.012, -0.12, 0.08, 0.95, 0.15);
-  box(r, 0.07, 0.07, 0.36, sleeve, 0.04, -0.22, 0.17, 0.95, 0.15);
+  box(r, 0.056, 0.072, 0.085, glove, 0, -0.06, 0.042);                                      // palm
+  box(r, 0.05, 0.016, 0.05, pad, 0.03, -0.045, 0.03, 0, 0, 0.3);                            // knuckle guard (back of hand)
+  box(r, 0.018, 0.022, 0.056, glove, -0.026, -0.034, -0.002);                               // trigger finger
+  box(r, 0.016, 0.018, 0.022, glove, -0.026, -0.034, -0.036, -0.5, 0, 0);                   // fingertip curl
+  for (let k = 0; k < 3; k++) box(r, 0.05, 0.017, 0.022, glove, -0.008, -0.062 - k * 0.019, -0.006 + k * 0.002); // fingers round the grip
+  box(r, 0.02, 0.02, 0.05, glove, -0.03, -0.05, 0.04, 0.4, 0, 0);                           // thumb
+  forearm(r, 0.012, -0.11, 0.09, 0.95, 0.15, 0.4);
   arms.add(r);
-  // left hand forward
+  // left hand on the handguard
   const [lx, ly, lz] = gun.userData.left;
   const l = new THREE.Group();
-  box(l, 0.06, 0.05, 0.09, glove, 0, -0.03, 0);
-  box(l, 0.02, 0.02, 0.07, glove, 0.03, -0.01, -0.01);                              // thumb
-  box(l, 0.062, 0.03, 0.06, cuff, -0.02, -0.07, 0.04, 0.85, -0.45);
-  box(l, 0.07, 0.07, 0.38, sleeve, -0.07, -0.17, 0.13, 0.85, -0.45);
+  box(l, 0.06, 0.05, 0.085, glove, 0, -0.03, 0);                                            // palm
+  box(l, 0.052, 0.014, 0.05, pad, -0.012, -0.004, 0.006);                                   // knuckle guard
+  for (let k = 0; k < 4; k++) box(l, 0.02, 0.016, 0.017, glove, 0.036, -0.012, -0.034 + k * 0.021, 0, 0, -0.5); // fingers over the guard
+  box(l, 0.02, 0.02, 0.066, glove, -0.032, -0.008, -0.012);                                 // thumb
+  forearm(l, -0.02, -0.06, 0.04, 0.85, -0.45, 0.42);
   l.position.set(lx, ly, lz);
   arms.add(l);
   gun.userData.leftHand = l; gun.userData.leftBase = l.position.clone();

@@ -14,11 +14,32 @@ function noise(ctx, s, amt) {
   for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * amt; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
   ctx.putImageData(img, 0, 0);
 }
+// Weathering marks: soft, stretched smudges (not hard round dots), some dark ones running down as streaks.
+// Drawn wrapped at the edges so the tiling texture stays seamless.
 function blotches(ctx, s, color, count, rMin, rMax, alpha = 0.15) {
-  ctx.fillStyle = color;
+  ctx.fillStyle = color; const c = ctx.fillStyle; // normalised '#rrggbb'
+  const rgb = c[0] === '#' ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)).join(',') : '0,0,0';
+  const dark = rgb.split(',').reduce((a, v) => a + +v, 0) < 240;
+  const draw = (fn, x, y, r) => { for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) if (x + ox > -r * 3 && x + ox < s + r * 3 && y + oy > -r * 4 && y + oy < s + r * 4) fn(x + ox, y + oy); };
   for (let i = 0; i < count; i++) {
-    ctx.globalAlpha = alpha * Math.random();
-    ctx.beginPath(); ctx.arc(Math.random() * s, Math.random() * s, rnd(rMin, rMax), 0, Math.PI * 2); ctx.fill();
+    const x = Math.random() * s, y = Math.random() * s, r = rnd(rMin, rMax), a = alpha * (0.4 + Math.random() * 0.8);
+    const sx = rnd(0.5, 1.7), rot = Math.random() * Math.PI;
+    if (dark && Math.random() < 0.3) { // run-off streak
+      const len = r * rnd(2, 4.5), w = Math.max(1.5, r * rnd(0.12, 0.3));
+      draw((px, py) => {
+        const g = ctx.createLinearGradient(0, py, 0, py + len);
+        g.addColorStop(0, `rgba(${rgb},${a * 0.9})`); g.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = g; ctx.fillRect(px - w / 2, py, w, len);
+      }, x, y, r);
+      continue;
+    }
+    draw((px, py) => {
+      ctx.save(); ctx.translate(px, py); ctx.rotate(rot); ctx.scale(sx, 1 / sx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(0.55, `rgba(${rgb},${a * 0.45})`); g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }, x, y, r);
   }
   ctx.globalAlpha = 1;
 }

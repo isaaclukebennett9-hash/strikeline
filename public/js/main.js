@@ -29,12 +29,17 @@ setReticle(cfg.reticle, cfg.reticleColor);
 const saveCfg = () => PR.store.set('strikeline', JSON.stringify(cfg));
 
 // ================================================================ renderer / scenes
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, cfg.gfx === 'high' ? 1.5 : 1));
+if (!['low', 'high', 'ultra'].includes(cfg.gfx)) cfg.gfx = 'high';
+// Ultra uses screen-space ambient occlusion, which needs a normal depth buffer (not logarithmic), so the
+// renderer is created in that mode at start-up; switching in or out of Ultra applies on the next launch.
+const ULTRA = cfg.gfx === 'ultra';
+const gfxPixelRatio = () => Math.min(devicePixelRatio, cfg.gfx === 'ultra' ? 2 : cfg.gfx === 'high' ? 1.5 : 1);
+const renderer = new THREE.WebGLRenderer({ antialias: !ULTRA, powerPreference: 'high-performance', logarithmicDepthBuffer: !ULTRA });
+renderer.setPixelRatio(gfxPixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 // If the graphics driver resets (weak/overloaded GPUs), reload instead of sitting on a frozen screen.
 renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); try { reportErr(`WebGL context lost (graphics driver reset / out of GPU memory) · ${renderer.info.memory.geometries} geos ${renderer.info.memory.textures} tex`); } catch {} setTimeout(() => location.reload(), 1200); });
-renderer.shadowMap.enabled = cfg.gfx === 'high';
+renderer.shadowMap.enabled = cfg.gfx !== 'low';
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -42,7 +47,7 @@ renderer.autoClear = false;
 $('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(cfg.fov, innerWidth / innerHeight, 0.05, 900);
+const camera = new THREE.PerspectiveCamera(cfg.fov, innerWidth / innerHeight, ULTRA ? 0.1 : 0.05, 900);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 const vmScene = new THREE.Scene();
@@ -55,8 +60,56 @@ const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(
 scene.environment = envTex;
 vmScene.environment = envTex;
 
+// ---- Ultra graphics: ambient occlusion (soft contact shadows in corners and under objects), bloom on
+// bright lights, and a light colour grade + vignette. Loaded only when Ultra is on.
+let post = null;
+async function setupPost() {
+  const base = 'three/addons/postprocessing/';
+  const [{ EffectComposer }, { RenderPass }, { GTAOPass }, { UnrealBloomPass }, { OutputPass }, { ShaderPass }] = await Promise.all(
+    ['EffectComposer', 'RenderPass', 'GTAOPass', 'UnrealBloomPass', 'OutputPass', 'ShaderPass'].map(n => import(base + n + '.js')));
+  const w = innerWidth, h = innerHeight;
+  const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+  const composer = new EffectComposer(renderer, rt);
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
+  composer.addPass(new RenderPass(scene, camera));
+  const ao = new GTAOPass(scene, camera, w, h);
+  ao.output = GTAOPass.OUTPUT.Default;
+  ao.blendIntensity = 1.0;
+  ao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 6, scale: 2.2, samples: 16, distanceFallOff: 1.0 });
+  ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+  // sky, particles, sprites and see-through effects don't cast occlusion (map glass/water does, like a solid surface)
+  ao.overrideVisibility = function () {
+    const cache = this._visibilityCache;
+    this.scene.traverse(o => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite || o === sky || (o.material && o.material.transparent && !o.material.userData.shared)) o.visible = false; });
+  };
+  composer.addPass(ao);
+  const vm = new RenderPass(vmScene, vmCamera); // the held gun, drawn over the world (no AO on it)
+  vm.clear = false; vm.clearDepth = true;
+  composer.addPass(vm);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.55, 0.92);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const grade = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, vig: { value: 0.22 }, sat: { value: 1.0 }, con: { value: 1.06 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float vig; uniform float sat; uniform float con; varying vec2 vUv;
+      void main(){
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, sat);
+        c = (c - 0.5) * con + 0.5;
+        vec2 d = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.75, dot(d, d) * 2.2);
+        gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+      }`,
+  });
+  composer.addPass(grade);
+  post = { composer, ao, bloom, vm };
+}
+if (ULTRA) setupPost().catch(e => { try { reportErr('Ultra graphics failed to start: ' + (e?.message || e)); } catch {} });
+
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
+  if (post) { post.composer.setPixelRatio(renderer.getPixelRatio()); post.composer.setSize(innerWidth, innerHeight); }
   camera.aspect = vmCamera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix(); vmCamera.updateProjectionMatrix();
   resizePreview();
@@ -132,12 +185,96 @@ function inflateFor(name, deco) {
   if (FLAT_MAT.test(name)) return 0.0065 + (h % 5) * 0.0006;
   return 0.0004 + (h % 11) * 0.0005;
 }
+// ---- weathering: every map box gets worn, lighter edges, a soft shade line inside them (reads as a bevel),
+// grime at the foot of walls and large-scale colour variation, so surfaces stop looking like clean plastic.
+// Edges where a box meets another box (one long wall built from pieces) or the ground are left plain.
+let joinGrid = null;
+function buildJoinGrid(lists) {
+  const g = new Map(), C = 4;
+  for (const list of lists) for (const b of list) {
+    if (b.max[0] - b.min[0] < 0.05 && b.max[2] - b.min[2] < 0.05) continue;
+    for (let i = Math.floor(b.min[0] / C); i <= Math.floor(b.max[0] / C); i++)
+      for (let j = Math.floor(b.min[2] / C); j <= Math.floor(b.max[2] / C); j++) { const k = i * 100003 + j; if (!g.has(k)) g.set(k, []); g.get(k).push(b); }
+  }
+  joinGrid = { g, C };
+}
+function solidAt(p, self) {
+  if (!joinGrid) return false;
+  const { g, C } = joinGrid, list = g.get(Math.floor(p[0] / C) * 100003 + Math.floor(p[2] / C));
+  if (!list) return false;
+  for (const b of list) if (b !== self && p[0] > b.min[0] && p[0] < b.max[0] && p[1] > b.min[1] && p[1] < b.max[1] && p[2] > b.min[2] && p[2] < b.max[2]) return true;
+  return false;
+}
+const FACE_AXES = [[2, 1, 0, 1], [2, 1, 0, -1], [0, 2, 1, 1], [0, 2, 1, -1], [0, 1, 2, 1], [0, 1, 2, -1]]; // in-plane a, c; normal axis, sign
+function addEdgeAttrs(g, b) {
+  const pos = g.attributes.position, n = pos.count, edge = new Float32Array(n * 4), grime = new Float32Array(n * 2);
+  const mn = b.min, mx = b.max;
+  for (let f = 0; f < 6; f++) {
+    const [a, c, na, sg] = FACE_AXES[f];
+    // which of this face's 4 edges continue into another box (or the ground)?
+    const ctr = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+    ctr[na] = (sg > 0 ? mx[na] : mn[na]) - sg * 0.03;
+    const joined = [[a, mn[a], -1], [a, mx[a], 1], [c, mn[c], -1], [c, mx[c], 1]].map(([ax, v, dir]) => {
+      if (ax === 1 && dir < 0 && mn[1] < 0.03) return true; // sits on the ground
+      const p = ctr.slice(); p[ax] = v + dir * 0.03;
+      return solidAt(p, b);
+    });
+    const vertical = na !== 1 ? 1 : 0;
+    for (let v = 0; v < 4; v++) {
+      const i = f * 4 + v, pa = pos.getComponent(i, a), pc = pos.getComponent(i, c);
+      const lo = pa < (mn[a] + mx[a]) / 2, bo = pc < (mn[c] + mx[c]) / 2;
+      const W = mx[a] - mn[a], H = mx[c] - mn[c];
+      edge[i * 4] = (lo ? 0 : W) + (joined[0] ? 50 : 0);
+      edge[i * 4 + 1] = (lo ? W : 0) + (joined[1] ? 50 : 0);
+      edge[i * 4 + 2] = (bo ? 0 : H) + (joined[2] ? 50 : 0);
+      edge[i * 4 + 3] = (bo ? H : 0) + (joined[3] ? 50 : 0);
+      grime[i * 2] = pos.getY(i) - mn[1]; grime[i * 2 + 1] = vertical;
+    }
+  }
+  g.setAttribute('aEdge', new THREE.BufferAttribute(edge, 4));
+  g.setAttribute('aGrime', new THREE.BufferAttribute(grime, 2));
+}
+function weatherMaterial(mat) {
+  if (mat.userData.weathered) return;
+  mat.userData.weathered = true;
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    prev?.(sh, r);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec4 aEdge; attribute vec2 aGrime; varying vec4 vEdge; varying vec2 vGrime; varying vec3 vWPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvEdge = aEdge; vGrime = aGrime; vWPos = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec4 vEdge; varying vec2 vGrime; varying vec3 vWPos;
+        float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float wNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          float d = min(min(vEdge.x, vEdge.y), min(vEdge.z, vEdge.w));
+          float size = min(vEdge.x + vEdge.y, vEdge.z + vEdge.w);
+          float rw = min(0.05, size * 0.12), fw = fwidth(d);
+          float rim = 1.0 - smoothstep(rw * 0.35, rw + fw, d);
+          float inner = smoothstep(rw, rw * 1.8 + fw, d) * (1.0 - smoothstep(rw * 1.8, rw * 6.0, d));
+          float wear = wNoise(vWPos.xz * 3.1 + vWPos.y * 2.3);
+          float grime = vGrime.y * (1.0 - smoothstep(0.0, 0.8, vGrime.x)) * (0.7 + 0.3 * wear);
+          float macro = wNoise(vWPos.xz * 0.11 + vWPos.y * 0.07) * 0.6 + wNoise(vWPos.zx * 0.53 + vWPos.y * 0.31) * 0.4;
+          vec3 col = diffuseColor.rgb;
+          col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, 0.8);             // tone down saturation
+          col = mix(col, col * 1.5 + 0.05, rim * (0.45 + 0.4 * wear));                           // worn, lighter edge
+          col *= (1.0 - inner * 0.16) * (1.0 - grime * 0.45) * (0.86 + macro * 0.26);
+          diffuseColor.rgb = col;
+        }`);
+  };
+  mat.needsUpdate = true;
+}
 function boxGeometry(b, mat, deco = false) {
   const e = inflateFor(b.m || '', deco);
   const w = b.max[0] - b.min[0] + 2 * e, h = b.max[1] - b.min[1] + 2 * e, d = b.max[2] - b.min[2] + 2 * e;
   const g = new THREE.BoxGeometry(w, h, d);
   const s = mat.userData.scale || 3, fit = mat.userData.fit;
   g.translate((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+  addEdgeAttrs(g, b);
   if (!fit) {
     // world-aligned UVs (from real vertex positions) so textures line up across neighbouring boxes
     const uv = g.attributes.uv, pos = g.attributes.position;
@@ -153,6 +290,7 @@ function mergedMeshes(list, theme, group, shadows, deco = false) {
   const byMat = new Map();
   for (const b of list) {
     const mat = getMaterial(b.m, theme);
+    if (!mat.transparent) weatherMaterial(mat);
     if (!byMat.has(mat)) byMat.set(mat, []);
     byMat.get(mat).push(boxGeometry(b, mat, deco));
   }
@@ -180,21 +318,29 @@ function loadMap(id) {
   const fg = new THREE.PlaneGeometry(fs, fs);
   const fuv = fg.attributes.uv, rep = fs / (floorMat.userData.scale || 6);
   for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * rep, fuv.getY(i) * rep);
+  buildJoinGrid([map.boxes, map.deco]);
+  // the ground has no box edges: far-away edge distances, no wall grime (it still gets colour variation)
+  fg.setAttribute('aEdge', new THREE.BufferAttribute(new Float32Array(fg.attributes.position.count * 4).fill(999), 4));
+  fg.setAttribute('aGrime', new THREE.BufferAttribute(new Float32Array(fg.attributes.position.count * 2), 2));
+  weatherMaterial(floorMat);
   const floor = new THREE.Mesh(fg, floorMat);
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
   group.add(floor);
   const meshes = [floor, ...mergedMeshes(map.boxes, map.theme, group, true)];
   mergedMeshes(map.deco, map.theme, group, true, true);
 
-  const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiI); group.add(hemi);
-  const sun = new THREE.DirectionalLight(theme.sun, theme.sunI);
+  // Ultra: less flat fill light and a stronger sun, so shadows and occlusion give shapes some depth
+  const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiI * (ULTRA ? 0.8 : 1)); group.add(hemi);
+  const sun = new THREE.DirectionalLight(theme.sun, theme.sunI * (ULTRA ? 1.15 : 1));
   const sd = new THREE.Vector3(...theme.sunDir).normalize();
   const sunD = Math.max(90, map.size * 0.85); // far enough that big maps sit fully inside the shadow camera
   sun.position.copy(sd).multiplyScalar(sunD);
   sun.castShadow = renderer.shadowMap.enabled;
   const sc = sun.shadow.camera, ext = map.size * 0.62;
   sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = sunD + map.size * 1.1;
-  sun.shadow.mapSize.set(map.size > 130 ? 4096 : 2048, map.size > 130 ? 4096 : 2048);
+  const smap = map.size > 130 || ULTRA ? 4096 : 2048;
+  sun.shadow.mapSize.set(smap, smap);
+  if (ULTRA) addSurfaceDetail([...map.boxes, ...map.deco].map(b => b.m).concat(theme.floor), map.theme);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   group.add(sun); group.add(sun.target);
   for (const [col, x, z] of theme.lamps) { const l = new THREE.PointLight(col, 90, 38, 1.4); l.position.set(x, 5, z); group.add(l); }
@@ -224,6 +370,17 @@ function loadMap(id) {
   group.add(pickupGroup);
   world = { map, group, meshes, snow, minimap: renderMapCanvas(map, 512, true), pickupGroup, pickupMeshes };
   $('mapname').textContent = map.name.toUpperCase();
+}
+// Ultra: materials without their own bump map use their colour texture as one, so bricks, planks, rock and
+// concrete pick up light and shade instead of looking flat-printed.
+function addSurfaceDetail(names, themeId) {
+  for (const n of new Set(names)) {
+    const m = getMaterial(n, themeId);
+    if (!m.map || m.bumpMap || m.transparent || m.userData.detail) continue;
+    m.userData.detail = true;
+    m.envMapIntensity = 0.65;
+    m.bumpMap = m.map; m.bumpScale = 1.6; m.needsUpdate = true;
+  }
 }
 const nearBoxes = (x, z, r = 3) => world.map.query(x - r, z - r, x + r, z + r);
 
@@ -1695,8 +1852,12 @@ function frame(now) {
       send({ t: 's', p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0 });
     }
     renderer.clear();
-    renderer.render(scene, camera);
-    if (inGame && me.alive && vmHolder.visible) { renderer.clearDepth(); renderer.render(vmScene, vmCamera); }
+    const showVm = inGame && me.alive && vmHolder.visible;
+    if (post) { post.vm.enabled = showVm; post.composer.render(dt); }
+    else {
+      renderer.render(scene, camera);
+      if (showVm) { renderer.clearDepth(); renderer.render(vmScene, vmCamera); }
+    }
   }
   if (!$('ui').classList.contains('hidden')) renderPreview(now);
 }
@@ -1985,11 +2146,16 @@ bindRange('fov', 'fov', v => v + '°');
 bindRange('vol', 'vol', v => Math.round(v * 100) + '%', () => SFX.setVolume(cfg.vol));
 $('invert').checked = cfg.invert;
 $('invert').addEventListener('change', () => { cfg.invert = $('invert').checked; saveCfg(); });
-const updateGfxChips = () => document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
+const updateGfxChips = () => {
+  document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
+  $('gfxnote').textContent = (cfg.gfx === 'ultra') !== ULTRA ? 'Restart Strikeline to ' + (ULTRA ? 'turn Ultra off.' : 'turn Ultra on.')
+    : cfg.gfx === 'ultra' ? 'Ambient occlusion, bloom, 4K shadows, surface detail. Needs a decent graphics card.' : '';
+};
 document.querySelectorAll('#gfx button').forEach(b => b.addEventListener('click', () => {
   cfg.gfx = b.dataset.g; saveCfg(); updateGfxChips();
-  renderer.setPixelRatio(Math.min(devicePixelRatio, cfg.gfx === 'high' ? 1.5 : 1));
-  renderer.shadowMap.enabled = cfg.gfx === 'high';
+  renderer.setPixelRatio(gfxPixelRatio());
+  if (post) { post.composer.setPixelRatio(renderer.getPixelRatio()); post.composer.setSize(innerWidth, innerHeight); }
+  renderer.shadowMap.enabled = cfg.gfx !== 'low';
   scene.traverse(o => { if (o.isDirectionalLight) o.castShadow = renderer.shadowMap.enabled; if (o.material) o.material.needsUpdate = true; });
 }));
 updateGfxChips();
@@ -2073,11 +2239,12 @@ function renderGunSheet(ids, cols = 5, attFor = () => ({}), W = 300, H = 150) {
   r.dispose();
   return out.toDataURL('image/png');
 }
-window.__strike = { handle, renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT };
+window.__strike = { handle, renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT, getPost: () => post };
 if (!PR.isUnlocked(cfg.primary)) cfg.primary = 'falcon';
 if (!PR.isUnlocked(cfg.secondary)) cfg.secondary = 'viper';
 if (!PR.isUnlocked(cfg.lethal)) cfg.lethal = 'frag';
 if (!PR.isUnlocked(cfg.tactical)) cfg.tactical = 'smoke';
+if (PR.saveTampered) setTimeout(() => toast('Your save file was edited outside the game, so your progress was reset.'), 1500);
 if (PR.migrationRefund > 0) setTimeout(() => toast(`Progression update: weapons now unlock by level and attachments by weapon level. Refunded ◆${PR.migrationRefund} from old upgrades.`), 1500);
 if (!PR.isUnlocked('ws:' + cfg.wskin)) cfg.wskin = 'factory';
 if (!PR.isUnlocked('op:' + cfg.cskin)) cfg.cskin = 'ranger';
