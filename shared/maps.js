@@ -235,6 +235,32 @@ function fountain(c, x, z) {
   push(c.boxes, B(x, z, 0.5, 0.5, 2.6, 'stone'));
   push(c.deco, B(x, z, 0.9, 0.9, 0.2, 'stone', 2.6));
 }
+// rooftop billboard: posts + dark frame with neon border tubes and blocky "letters" on both faces
+function roofSign(c, cx, y0, cz, neon) {
+  const y1 = y0 + 1.1, y2 = y0 + 2.4, hw = 1.2, t = 0.08;
+  for (const px of [cx - 0.85, cx + 0.85]) {
+    push(c.deco, B(px, cz, 0.12, 0.12, y1 - y0 + 0.1, 'metal_dark', y0));
+    push(c.deco, B(px, cz, 0.36, 0.36, 0.05, 'metal_dark', y0));
+  }
+  push(c.deco, B(cx, cz, 1.9, 0.1, 0.08, 'metal_dark', y1 - 0.45)); // cross brace
+  push(c.deco, R(cx - hw, y1, cz - t, cx + hw, y2, cz + t, 'metal_dark'));
+  push(c.deco, R(cx - hw - 0.03, y2, cz - t - 0.03, cx + hw + 0.03, y2 + 0.06, cz + t + 0.03, 'metal')); // cap trim
+  let h = Math.abs(Math.round(cx * 7919 + cz * 104729 + y0 * 31)) | 0;
+  for (const s of [-1, 1]) {
+    const f = cz + s * t, o = f + s * 0.05, Z = (x0, ya, x1, yb) => push(c.deco, R(x0, ya, f, x1, yb, o, neon));
+    Z(cx - 1.1, y2 - 0.14, cx + 1.1, y2 - 0.08); Z(cx - 1.1, y1 + 0.08, cx + 1.1, y1 + 0.14);
+    Z(cx - 1.1, y1 + 0.14, cx - 1.04, y2 - 0.14); Z(cx + 1.04, y1 + 0.14, cx + 1.1, y2 - 0.14);
+    let g = h;
+    for (let i = 0; i < 4; i++, g = (g * 1103515245 + 12345) >>> 8) {
+      const lx = cx - 0.84 + i * 0.48, ya = y1 + 0.32, yb = y2 - 0.32, ym = (ya + yb) / 2;
+      Z(lx, ya, lx + 0.06, yb); // stem
+      if (g & 1) Z(lx + 0.24, ya, lx + 0.3, yb);
+      if (g & 2) Z(lx + 0.06, yb - 0.06, lx + 0.3, yb);
+      if (g & 4) Z(lx + 0.06, ym - 0.03, lx + 0.26, ym + 0.03);
+      if (!(g & 7) || g & 8) Z(lx + 0.06, ya, lx + 0.3, ya + 0.06);
+    }
+  }
+}
 const dumpster = (c, x, z, rot) => { push(c.boxes, B(x, z, rot ? 1.2 : 2, rot ? 2 : 1.2, 1.3, 'dumpster')); push(c.deco, B(x, z, rot ? 1.3 : 2.1, rot ? 2.1 : 1.3, 0.1, 'metal_dark', 1.3)); };
 const barrier = (c, x, z, rot, len = 3) => push(c.boxes, B(x, z, rot ? 0.6 : len, rot ? len : 0.6, 1.0, 'barrier'));
 
@@ -465,7 +491,7 @@ function downtown() {
       const doors = { [lx < 0 ? 'w' : 'e']: [0], [lz < 0 ? 's' : 'n']: [lz < 0 ? 0 : w / 2 - 1.3] };
       building(c, { x, z, w, d, floors, m: pk(mats), doors, floorM: pk(['floor_wood', 'floor_tile']), partition: floors >= 2 && w >= 9 ? -1.5 : undefined });
       roofs.push({ x, z, w, d, top: floors * 3.2, floors });
-      if (rnd() < 0.35) push(c.deco, R(x - w / 2 + 1, floors * 3.2 + 0.95, z - 0.3, x - w / 2 + 3, floors * 3.2 + 2.4, z + 0.3, pk(['neon_pink', 'neon_cyan', 'neon_orange'])));
+      if (rnd() < 0.35) roofSign(c, x - w / 2 + 2, floors * 3.2, z, pk(['neon_pink', 'neon_cyan', 'neon_orange']));
     }
     // rooftop bridges between neighbours of the same height (vault over the parapet to cross)
     for (const [a, b, axis] of [[0, 1, 'x'], [2, 3, 'x'], [0, 2, 'z'], [1, 3, 'z']]) {
