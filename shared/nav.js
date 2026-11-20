@@ -22,13 +22,13 @@ export function buildNav(map) {
     const x = -half + 0.25 + i * STEP, z = -half + 0.25 + j * STEP;
     const boxes = map.query(x - 1, z - 1, x + 1, z + 1);
     const hs = new Set([0]);
-    for (const b of boxes) if (b.m !== 'wall' && x >= b.min[0] && x <= b.max[0] && z >= b.min[2] && z <= b.max[2]) hs.add(b.max[1]);
+    for (const b of boxes) if (b.m !== 'wall' && x >= b.min[0] - 0.01 && x <= b.max[0] + 0.01 && z >= b.min[2] - 0.01 && z <= b.max[2] + 0.01) hs.add(b.max[1]); // (1 cm slack: tread edges)
     const lifted = new Set();
     for (let h of hs) {
       // a body standing here rests on the highest step-up-able surface under its footprint
       for (let it = 0; it < 4; it++) {
         let nh = h;
-        for (const b of boxes) if (b.m !== 'wall' && x + 0.35 > b.min[0] && x - 0.35 < b.max[0] && z + 0.35 > b.min[2] && z - 0.35 < b.max[2] && b.max[1] > nh && b.max[1] <= h + PLAYER.stepUp && b.min[1] < h + 0.01) nh = b.max[1];
+        for (const b of boxes) if (b.m !== 'wall' && x + 0.35 > b.min[0] && x - 0.35 < b.max[0] && z + 0.35 > b.min[2] && z - 0.35 < b.max[2] && b.max[1] > nh && b.max[1] <= h + PLAYER.stepUp && b.min[1] < h + PLAYER.stepUp) nh = b.max[1]; // (thin stair treads count too)
         if (nh === h) break;
         h = nh;
       }
@@ -55,6 +55,11 @@ export function buildNav(map) {
       for (const bi of list) {
         const b = nodes[bi];
         if (b.y - a.y > 1.0 || a.y - b.y > 3.5) continue;
+        // fast path: same floor height and a clear body-sized gap at the midpoint and the destination
+        if (a.y === b.y) {
+          const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2, y = a.y + 0.02, h = PLAYER.height - 0.04;
+          if (!blocked(mx, y, mz, PLAYER.radius, h, boxes) && !blocked(b.x, y, b.z, PLAYER.radius, h, boxes)) { a.e.push(bi); continue; }
+        }
         body.pos[0] = a.x; body.pos[1] = a.y; body.pos[2] = a.z;
         body.vel[0] = body.vel[1] = body.vel[2] = 0; body.onGround = true;
         let ok = false;
@@ -64,7 +69,7 @@ export function buildNav(map) {
           moveBody(body, 1 / 30, boxes);
           if (d < 0.12 && body.onGround) { ok = true; break; }
         }
-        if (ok && Math.abs(body.pos[1] - b.y) < 0.3) a.e.push(bi);
+        if (ok && Math.abs(body.pos[1] - b.y) < PLAYER.stepUp + 0.02) a.e.push(bi); // (one stair step of slack: bodies can rest on a tread edge)
       }
     }
   }

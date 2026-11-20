@@ -189,11 +189,12 @@ function loadMap(id) {
   const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiI); group.add(hemi);
   const sun = new THREE.DirectionalLight(theme.sun, theme.sunI);
   const sd = new THREE.Vector3(...theme.sunDir).normalize();
-  sun.position.copy(sd).multiplyScalar(90);
+  const sunD = Math.max(90, map.size * 0.85); // far enough that big maps sit fully inside the shadow camera
+  sun.position.copy(sd).multiplyScalar(sunD);
   sun.castShadow = renderer.shadowMap.enabled;
   const sc = sun.shadow.camera, ext = map.size * 0.62;
-  sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = 260;
-  sun.shadow.mapSize.set(2048, 2048);
+  sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = sunD + map.size * 1.1;
+  sun.shadow.mapSize.set(map.size > 130 ? 4096 : 2048, map.size > 130 ? 4096 : 2048);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   group.add(sun); group.add(sun.target);
   for (const [col, x, z] of theme.lamps) { const l = new THREE.PointLight(col, 90, 38, 1.4); l.position.set(x, 5, z); group.add(l); }
@@ -251,7 +252,7 @@ function makePickupMesh(kind) {
 }
 
 // Top-down picture of a map (used for the minimap and lobby thumbnails)
-const FLOOR_COLORS = { city: '#2e2f34', base: '#55703a', town: '#8f8b82', harbor: '#6e6c66', neon: '#26272c', snow: '#e3e9f0', desert: '#d6b27a', construction: '#a88a66', killhouse: '#6a7078' };
+const FLOOR_COLORS = { city: '#2e2f34', base: '#55703a', town: '#8f8b82', harbor: '#6e6c66', neon: '#26272c', snow: '#e3e9f0', desert: '#d6b27a', construction: '#a88a66', killhouse: '#6a7078', shipyard: '#6e6c66', suburb: '#5f8a45', canyon: '#c99a6a' };
 function renderMapCanvas(map, size, minimap) {
   const c = document.createElement('canvas'); c.width = c.height = size;
   const x = c.getContext('2d');

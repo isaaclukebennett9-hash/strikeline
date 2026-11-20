@@ -1079,7 +1079,17 @@ setInterval(() => {
 if (process.env.STRIKE_PERF) setInterval(() => { console.log(`tick avg ${(perf.sum / Math.max(1, perf.n)).toFixed(2)}ms max ${perf.max.toFixed(1)}ms`); perf.max = perf.sum = perf.n = 0; }, 5000);
 
 // pre-build bot navigation for every map in the background so match starts are instant
-setTimeout(() => { for (const id of MAP_ORDER) buildNav(buildMap(id)); console.log('  Bot navigation ready for all maps.'); }, 200);
+// one map at a time with gaps in between, so the server stays responsive while the big maps build
+{
+  const queue = [...MAP_ORDER].sort((a, b) => (MAPS[a].size || 0) - (MAPS[b].size || 0));
+  const next = () => {
+    const id = queue.shift();
+    if (!id) { console.log('  Bot navigation ready for all maps.'); return; }
+    try { buildNav(buildMap(id)); } catch (err) { errLog(`nav build ${id}: ${err && err.stack || err}`); }
+    setTimeout(next, 250);
+  };
+  setTimeout(next, 200);
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');

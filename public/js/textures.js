@@ -159,6 +159,89 @@ const P = {
       blotches(x, s, '#000', 30, 20, 60, 0.08);
     });
   },
+  dirt(c1 = '#8a6a48', c2 = '#6a5034') { // packed earth: mottled patches, pebbles and tyre ruts
+    return paint(512, (x, b, s) => {
+      x.fillStyle = c1; x.fillRect(0, 0, s, s); b.fillStyle = '#808080'; b.fillRect(0, 0, s, s);
+      blotches(x, s, c2, 160, 10, 70, 0.3); blotches(x, s, '#000', 120, 6, 40, 0.06); blotches(x, s, '#fff', 60, 6, 30, 0.05);
+      for (let i = 0; i < 900; i++) { const px = rnd(0, s), py = rnd(0, s), r = rnd(1, 4), v = rnd(70, 200); x.fillStyle = `rgba(${v},${v * 0.85 | 0},${v * 0.7 | 0},0.6)`; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill(); b.fillStyle = gray(v); b.beginPath(); b.arc(px, py, r, 0, 7); b.fill(); }
+      noise(x, s, 22); noise(b, s, 45);
+    });
+  },
+  siding(col) { // horizontal clapboard with a shadow line under each board
+    return paint(256, (x, b, s) => {
+      x.fillStyle = col; x.fillRect(0, 0, s, s); b.fillStyle = '#909090'; b.fillRect(0, 0, s, s);
+      const n = 10, h = s / n;
+      for (let i = 0; i < n; i++) {
+        const g = x.createLinearGradient(0, i * h, 0, (i + 1) * h); g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.85, 'rgba(0,0,0,0.06)'); g.addColorStop(1, 'rgba(0,0,0,0.32)');
+        x.fillStyle = g; x.fillRect(0, i * h, s, h);
+        const gb = b.createLinearGradient(0, i * h, 0, (i + 1) * h); gb.addColorStop(0, '#d0d0d0'); gb.addColorStop(1, '#404040'); b.fillStyle = gb; b.fillRect(0, i * h, s, h);
+      }
+      blotches(x, s, '#000', 30, 5, 30, 0.04); noise(x, s, 10);
+    });
+  },
+  roofTile(c1, c2) { // overlapping tile rows
+    return paint(256, (x, b, s) => {
+      x.fillStyle = c2; x.fillRect(0, 0, s, s); b.fillStyle = '#303030'; b.fillRect(0, 0, s, s);
+      const rows = 8, cols = 8, h = s / rows, w = s / cols;
+      for (let r = 0; r < rows; r++) for (let k = -1; k <= cols; k++) {
+        const px = k * w + (r % 2) * w / 2 + 1, py = r * h + 1;
+        x.fillStyle = hexMix(c1, c2, Math.random() * 0.5); x.fillRect(px, py, w - 2, h - 2);
+        x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(px, py + h - 5, w - 2, 3);
+        b.fillStyle = gray(rnd(170, 230)); b.fillRect(px, py, w - 2, h - 4);
+      }
+      noise(x, s, 14);
+    });
+  },
+  rock(c1, c2) { // weathered stone: mottled colour, faint wavy strata, chips, cracks and speckle
+    return paint(512, (x, b, s) => {
+      x.fillStyle = c1; x.fillRect(0, 0, s, s); b.fillStyle = '#808080'; b.fillRect(0, 0, s, s);
+      blotches(x, s, c2, 90, 20, 90, 0.35); blotches(x, s, '#ffffff', 60, 15, 70, 0.08); blotches(x, s, '#000000', 80, 8, 50, 0.08);
+      for (let k = 0; k < 7; k++) { // faint, broken, wavy strata lines
+        const y0 = rnd(0, s), amp = rnd(4, 14), ph = rnd(0, 6);
+        x.strokeStyle = `rgba(0,0,0,${rnd(0.06, 0.16)})`; x.lineWidth = rnd(1.5, 4); b.strokeStyle = 'rgba(30,30,30,0.6)'; b.lineWidth = 3;
+        x.beginPath(); b.beginPath();
+        for (let px = 0; px <= s; px += 8) { const py = y0 + Math.sin(px / s * Math.PI * 4 + ph) * amp; if (px === 0 || Math.random() < 0.08) { x.moveTo(px, py); b.moveTo(px, py); } else { x.lineTo(px, py); b.lineTo(px, py); } }
+        x.stroke(); b.stroke();
+      }
+      for (let i = 0; i < 70; i++) { // chipped facets
+        const px = rnd(0, s), py = rnd(0, s), r = rnd(6, 22), v = rnd(0, 1);
+        x.fillStyle = v < 0.5 ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.08)'; b.fillStyle = gray(v < 0.5 ? 90 : 190);
+        x.beginPath(); b.beginPath();
+        for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283 + rnd(-0.3, 0.3), rr = r * rnd(0.6, 1); const qx = px + Math.cos(a) * rr, qy = py + Math.sin(a) * rr; k ? (x.lineTo(qx, qy), b.lineTo(qx, qy)) : (x.moveTo(qx, qy), b.moveTo(qx, qy)); }
+        x.fill(); b.fill();
+      }
+      cracks(x, s, 18, 'rgba(0,0,0,0.35)', 1.5); cracks(b, s, 18, 'rgba(0,0,0,0.9)', 3);
+      for (let i = 0; i < 1500; i++) { x.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.12)'; x.fillRect(rnd(0, s), rnd(0, s), 2, 2); }
+      noise(x, s, 18); noise(b, s, 50);
+    });
+  },
+  hull(col) { // painted steel plates with weld seams and rust streaks
+    return paint(512, (x, b, s) => {
+      x.fillStyle = col; x.fillRect(0, 0, s, s); b.fillStyle = '#909090'; b.fillRect(0, 0, s, s);
+      x.strokeStyle = 'rgba(0,0,0,0.35)'; b.strokeStyle = '#303030'; x.lineWidth = 2; b.lineWidth = 3;
+      for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(0, i * s / 4); x.lineTo(s, i * s / 4); x.stroke(); b.beginPath(); b.moveTo(0, i * s / 4); b.lineTo(s, i * s / 4); b.stroke(); }
+      for (let r = 0; r < 4; r++) for (let k = 0; k < 3; k++) { const px = k * s / 3 + (r % 2) * s / 6; x.beginPath(); x.moveTo(px, r * s / 4); x.lineTo(px, (r + 1) * s / 4); x.stroke(); }
+      for (let i = 0; i < 18; i++) { const px = rnd(0, s), g = x.createLinearGradient(0, 0, 0, s); g.addColorStop(0, 'rgba(120,60,20,0.5)'); g.addColorStop(1, 'rgba(120,60,20,0)'); x.fillStyle = g; x.fillRect(px, rnd(0, s), rnd(2, 5), rnd(40, 160)); }
+      blotches(x, s, '#000', 60, 6, 30, 0.06); noise(x, s, 12);
+    });
+  },
+  deck() { // non-slip steel deck plates
+    return paint(256, (x, b, s) => {
+      x.fillStyle = '#6a6f72'; x.fillRect(0, 0, s, s); b.fillStyle = '#808080'; b.fillRect(0, 0, s, s);
+      for (let i = 0; i < s; i += 16) for (let j = 0; j < s; j += 16) { const o = ((i + j) / 16) % 2 ? 4 : 10; x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(i + o, j + 3, 2, 9); b.fillStyle = '#d0d0d0'; b.fillRect(i + o, j + 3, 2, 9); }
+      x.strokeStyle = 'rgba(0,0,0,0.4)'; x.lineWidth = 2; x.strokeRect(1, 1, s - 2, s - 2);
+      blotches(x, s, '#5a3a1a', 20, 6, 24, 0.12); noise(x, s, 12);
+    });
+  },
+  billboard() { // generic ad poster: gradient, big shape and text bars (no real brands)
+    return paint(256, (x, b, s) => {
+      const g = x.createLinearGradient(0, 0, s, s); g.addColorStop(0, '#1f6fd1'); g.addColorStop(1, '#ff8a2a'); x.fillStyle = g; x.fillRect(0, 0, s, s);
+      x.fillStyle = 'rgba(255,255,255,0.9)'; x.beginPath(); x.arc(s * 0.72, s * 0.45, s * 0.2, 0, 7); x.fill();
+      x.fillStyle = '#fff'; x.fillRect(s * 0.08, s * 0.2, s * 0.42, s * 0.1); x.fillRect(s * 0.08, s * 0.38, s * 0.3, s * 0.06); x.fillRect(s * 0.08, s * 0.5, s * 0.34, s * 0.06);
+      x.fillStyle = '#ffd36a'; x.fillRect(s * 0.08, s * 0.7, s * 0.25, s * 0.12);
+      noise(x, s, 8);
+    });
+  },
   metalCorr(col, rust = true) {
     return paint(256, (x, b, s) => {
       for (let i = 0; i < s; i++) {
@@ -367,7 +450,7 @@ export const THEMES = {
     lamps: [['#ff2bd6', 14, 14], ['#22e5ff', -14, 14], ['#ff2bd6', -14, -14], ['#22e5ff', 14, -14], ['#ffb12b', 0, 0]],
   },
   snow: {
-    skyTop: '#8aa4c2', skyHorizon: '#e3ebf3', skyBottom: '#d8e2ec', fog: '#dfe7ef', fogNear: 15, fogFar: 95,
+    skyTop: '#8aa4c2', skyHorizon: '#e3ebf3', skyBottom: '#d8e2ec', fog: '#dfe7ef', fogNear: 20, fogFar: 130,
     sun: '#e8f0ff', sunI: 2.0, sunDir: [0.3, 0.7, 0.6], hemiSky: '#dfeaff', hemiGround: '#9aa8b8', hemiI: 1.0,
     floor: 'snow', wall: 'bunker', exposure: 0.95, lamps: [],
   },
@@ -390,6 +473,21 @@ export const THEMES = {
     skyTop: '#46669a', skyHorizon: '#f4b47a', skyBottom: '#6a5440', fog: '#d9b48c', fogNear: 35, fogFar: 160,
     sun: '#ffc68a', sunI: 2.8, sunDir: [0.75, 0.42, 0.3], hemiSky: '#c8d4f0', hemiGround: '#7a5a3a', hemiI: 0.9,
     floor: 'dirt', wall: 'concrete', exposure: 1.0, lamps: [],
+  },
+  shipyard: {
+    skyTop: '#4d6a8c', skyHorizon: '#e8c9a4', skyBottom: '#4a4c52', fog: '#b9b6b0', fogNear: 70, fogFar: 300,
+    sun: '#ffe2bc', sunI: 2.6, sunDir: [-0.6, 0.55, 0.45], hemiSky: '#cdd8ea', hemiGround: '#5a5650', hemiI: 0.95,
+    floor: 'concrete_floor', wall: 'concrete', exposure: 1.0, lamps: [],
+  },
+  suburb: {
+    skyTop: '#3a7fd0', skyHorizon: '#e6eef4', skyBottom: '#6f7a62', fog: '#cfdde6', fogNear: 70, fogFar: 300,
+    sun: '#fff6e4', sunI: 3.1, sunDir: [0.45, 0.85, 0.3], hemiSky: '#d4e4ff', hemiGround: '#5c6e48', hemiI: 0.95,
+    floor: 'grass', wall: 'brick', exposure: 1.0, lamps: [],
+  },
+  canyon: {
+    skyTop: '#3170c4', skyHorizon: '#f6cf9a', skyBottom: '#b07a4a', fog: '#e8c39a', fogNear: 70, fogFar: 300,
+    sun: '#ffdcae', sunI: 3.3, sunDir: [0.65, 0.6, -0.35], hemiSky: '#cfe0ff', hemiGround: '#a06a42', hemiI: 0.9,
+    floor: 'sand', wall: 'rock', exposure: 0.95, lamps: [],
   },
   killhouse: {
     skyTop: '#26313f', skyHorizon: '#78849a', skyBottom: '#2a2a2a', fog: '#55606e', fogNear: 25, fogFar: 90,
@@ -467,7 +565,7 @@ const MAT_DEFS = {
   neon_cyan: () => ({ color: '#22e5ff', emissive: '#22e5ff', emissiveI: 3 }),
   neon_orange: () => ({ color: '#ffb12b', emissive: '#ffb12b', emissiveI: 3 }),
   tiles: () => ({ tex: P.floorTile('#8a9098', '#6a7078'), scale: 2.5, rough: 0.5, bump: 1 }),
-  dirt: () => ({ tex: P.sand(), scale: 6, rough: 1, bump: 1.2, color: '#b08a66' }),
+  dirt: () => ({ tex: P.dirt(), scale: 6, rough: 1, bump: 1.4 }),
   portacabin: () => ({ tex: P.metalCorr('#d8d4c8', false), scale: 3, rough: 0.6, metal: 0.2, bump: 1.5 }),
   portaloo: () => ({ tex: P.panels('#2a6fd1', 'rgba(0,0,0,0.4)', 2, false), scale: 1.3, rough: 0.5, bump: 1 }),
   mixer: () => ({ tex: P.awning('#e0e0e0', '#e86a1a'), scale: 1.6, rough: 0.4, metal: 0.3 }),
@@ -480,6 +578,25 @@ const MAT_DEFS = {
   bus: () => ({ tex: P.awning('#e8a81c', '#e8a81c'), scale: 3, rough: 0.4, metal: 0.3 }),
   pump: () => ({ tex: P.panels('#c42a2a', 'rgba(0,0,0,0.4)', 2, false), scale: 1.3, rough: 0.4, metal: 0.3 }),
   flag: () => ({ tex: P.awning('#2a4a8a', '#e8e8e0'), scale: 1, fit: true, rough: 0.9 }),
+  // new-map materials
+  rock: () => ({ tex: P.rock('#c08458', '#9a5e3a'), scale: 7, rough: 0.95, bump: 2.2 }),
+  rock_dark: () => ({ tex: P.rock('#7a4e36', '#5a3826'), scale: 5, rough: 0.95, bump: 2 }),
+  rock_grey: () => ({ tex: P.rock('#8d9096', '#6a6d72'), scale: 5, rough: 0.95, bump: 2 }),
+  siding_white: () => ({ tex: P.siding('#e6e2d8'), scale: 2.4, rough: 0.8, bump: 1.4 }),
+  siding_blue: () => ({ tex: P.siding('#7c9ab8'), scale: 2.4, rough: 0.8, bump: 1.4 }),
+  siding_yellow: () => ({ tex: P.siding('#e2c77a'), scale: 2.4, rough: 0.8, bump: 1.4 }),
+  siding_sage: () => ({ tex: P.siding('#9aae8c'), scale: 2.4, rough: 0.8, bump: 1.4 }),
+  roof_red: () => ({ tex: P.roofTile('#a8442e', '#6e2a1c'), scale: 2.2, rough: 0.85, bump: 1.6 }),
+  roof_slate: () => ({ tex: P.roofTile('#4c5560', '#2c3238'), scale: 2.2, rough: 0.8, bump: 1.6 }),
+  hull_red: () => ({ tex: P.hull('#8a2a22'), scale: 6, rough: 0.6, metal: 0.3, bump: 1 }),
+  hull_dark: () => ({ tex: P.hull('#26303a'), scale: 6, rough: 0.55, metal: 0.35, bump: 1 }),
+  deck: () => ({ tex: P.deck(), scale: 2, rough: 0.6, metal: 0.4, bump: 1.2 }),
+  pool_tile: () => ({ tex: P.floorTile('#5ab4d6', '#3a8cb0'), scale: 1.2, rough: 0.2, bump: 0.8 }),
+  fence_white: () => ({ tex: P.paint('#ecebe4', 8), scale: 1, rough: 0.7 }),
+  hedge: () => ({ tex: P.leaves(), scale: 1.4, rough: 0.95, bump: 1.6, color: '#7da862' }),
+  rope: () => ({ tex: P.paint('#a88a5a', 20), scale: 1, rough: 1 }),
+  billboard: () => ({ tex: P.billboard(), scale: 1, fit: true, rough: 0.5, emissiveSelf: 0.35 }),
+  glass: () => ({ tex: P.paint('#8fb8cc', 6), scale: 2, rough: 0.05, metal: 0.6, transparent: 0.55 }),
 };
 
 // Average colours for minimaps / thumbnails
@@ -492,6 +609,9 @@ export const MAT_COLORS = {
   vending: '#c4202a', neon_pink: '#ff2bd6', neon_cyan: '#22e5ff', wall: '#111318',
   dirt: '#9a7a58', portacabin: '#d8d4c8', portaloo: '#2a6fd1', mixer: '#e86a1a', tire: '#121212',
   jumppad: '#22e5ff', jet: '#8a939c', tank: '#5a6236', tent: '#6a7046', fueltank: '#d8dcdc', bus: '#e8a81c', pump: '#c42a2a', paint_white: '#ecebe4',
+  rock: '#a86c44', rock_dark: '#5e3c2a', rock_grey: '#7e8186', siding_white: '#e2ded4', siding_blue: '#7c9ab8', siding_yellow: '#e2c77a', siding_sage: '#9aae8c',
+  roof_red: '#8e3a28', roof_slate: '#3e464f', hull_red: '#8a2a22', hull_dark: '#26303a', deck: '#6a6f72', pool_tile: '#4aa4c6', hedge: '#4e7a3a', fence_white: '#ecebe4',
+  glass: '#8fb8cc', water: '#3a7a9a', grass: '#5a8a3a', sand: '#d8bc8a', asphalt: '#3a3c40', road: '#3a3c40',
 };
 
 const matCache = {};
