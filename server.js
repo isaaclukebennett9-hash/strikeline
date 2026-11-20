@@ -11,6 +11,7 @@ import { WEAPONS, BOT_WEAPONS, THROWABLE_KINDS, LETHALS, TACTICALS, falloffMult 
 import { moveBody, raycastBoxes, PLAYER } from './shared/physics.js';
 import { MODES, GUNGAME_LADDER, ZONE_RADIUS, ZONE_MOVE, targetScore, PICKUP_RESPAWN, POWER_TIME } from './shared/modes.js';
 import { buildNav } from './shared/nav.js';
+import { STREAKS, cleanPerks, cleanStreaks, streakCost } from './shared/loadout.js';
 
 const PORT = Number(process.env.PORT) || 3080;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -118,12 +119,13 @@ const server = http.createServer((req, res) => {
 const BOT_NAMES = ['Viper', 'Ghost', 'Havoc', 'Reaper', 'Nova', 'Blitz', 'Talon', 'Raptor', 'Echo', 'Frost', 'Jinx', 'Onyx'];
 const CHAR_SKINS = ['ranger', 'crimson', 'ghost', 'cobalt', 'shadow', 'desert', 'toxic', 'royal'];
 const DEV_CHAR_SKINS = ['dev', 'devgold'], DEV_W_SKINS = ['dev', 'glitch']; // accepted from players, never given to bots
-const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno'];
+const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno', 'desert', 'urban', 'jungle', 'hex', 'cobalt'];
 const DIFFICULTY = { easy: 0.22, normal: 0.36, hard: 0.55 };
 const DEFAULT_SETTINGS = { mode: 'ffa', map: 'town', bots: 4, difficulty: 'normal', scoreLimit: 30, timeLimit: 10, maxPlayers: 8 };
 const STREAK_XP = { 3: 100, 5: 200, 7: 300, 10: 500, 15: 750 };
-const UAV_STREAK = 4, UAV_TIME = 15, AIRSTRIKE_STREAK = 7;
+const UAV_STREAK = 4, UAV_TIME = 25, AIRSTRIKE_STREAK = 7;
 
+const MORTAR = { dmg: 130, splash: 5.5 };
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -334,6 +336,7 @@ function makeEnt(f) {
     id: nextId++, name: 'Player', bot: false, skin: 'ranger', wskin: 'factory', client: null, team: -1,
     pos: [0, 0, 0], vel: [0, 0, 0], onGround: true, height: PLAYER.height, ry: 0, rx: 0, w: 'falcon', c: 0,
     hp: 100, alive: false, respawnAt: Date.now() + 400, protectUntil: 0, lastDmg: 0,
+    perks: [], streaks: null, ready: [], armor: 0,
     kills: 0, deaths: 0, assists: 0, score: 0, streak: 0, gg: 0, nades: 2, tacs: 2, burnUntil: 0, lastFire: 0, lastNade: 0, lastKiller: 0, damagers: new Map(), ddUntil: 0, spdUntil: 0,
   }, f);
 }
@@ -350,7 +353,7 @@ function fireAllowed(e, def, now) {
   return true;
 }
 function publicInfo(e) {
-  return { id: e.id, name: e.name, bot: e.bot, skin: e.skin, wskin: e.wskin, team: e.team, kills: e.kills, deaths: e.deaths, score: e.score, gg: e.gg, alive: e.alive, w: e.w };
+  return { id: e.id, name: e.name, bot: e.bot, skin: e.skin, wskin: e.wskin, team: e.team, kills: e.kills, deaths: e.deaths, score: e.score, gg: e.gg, alive: e.alive, w: e.w, pk: e.perks };
 }
 function smallerTeam(room) {
   const n = [0, 0];
@@ -358,7 +361,7 @@ function smallerTeam(room) {
   return n[0] <= n[1] ? 0 : 1;
 }
 function addEnt(room, c) {
-  const e = makeEnt({ id: c.id, client: c, name: c.name, skin: c.skin, wskin: c.wskin });
+  const e = makeEnt({ id: c.id, client: c, name: c.name, skin: c.skin, wskin: c.wskin, perks: c.perks || [], streaks: c.streaks || null });
   if (teamsOn(room)) e.team = room.settings.mode === 'infected' ? (room.infectStarted ? 1 : 0) : smallerTeam(room);
   if (e.team === 1 && room.settings.mode === 'infected') { e.w = 'knife'; e.skin = 'toxic'; }
   if (room.settings.mode === 'gungame') e.w = GUNGAME_LADDER[0];
@@ -472,7 +475,8 @@ function spawn(room, p) {
   p.pos = [s[0], s[1], s[2]];
   p.vel = [0, 0, 0];
   if (p.pt != null) { p.pt = Math.max(p.pt + 1, Math.round(performance.now())); if (p.hist) p.hist.length = 0; } // respawn shows at once
-  p.hp = 100; p.alive = true; p.streak = 0; p.nades = 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0;
+  if (p.client?.perks) p.perks = p.client.perks;                                     // perk changes apply from the next life
+  p.hp = 100; p.armor = 0; p.alive = true; p.streak = 0; p.nades = 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0;
   p.protectUntil = Date.now() + 2000;
   p.damagers.clear();
   if (room.settings.mode === 'gungame') p.w = GUNGAME_LADDER[Math.min(p.gg, GUNGAME_LADDER.length - 1)];
@@ -496,6 +500,14 @@ function applyDamage(room, victim, attacker, amount, weaponId, head) {
   if (attacker && attacker !== victim && teamsOn(room) && attacker.team === victim.team) return; // no friendly fire
   if (attacker && attacker.ddUntil > Date.now()) amount *= 2; // double damage power-up
   if (room.settings.mode === 'infected' && victim.team === 1 && attacker !== victim) amount *= 0.5; // the horde is tough
+  const def = WEAPONS[weaponId];
+  if (victim.perks.includes('flak') && (def?.splash || def?.flame || ['molotov', 'flamer', 'airstrike', 'mortar'].includes(weaponId) || victim.burnUntil > Date.now())) amount *= 0.55;
+  if (victim.armor > 0 && weaponId !== 'fall') {                                       // Armor Up killstreak
+    const soak = Math.min(victim.armor, amount);
+    victim.armor -= soak; amount -= soak;
+    if (victim.client) sendTo(victim.client, { t: 'armor', v: Math.round(victim.armor) });
+    if (amount < 0.5) { if (attacker?.client && attacker !== victim) sendTo(attacker.client, { t: 'dmg', id: victim.id, by: attacker.id, amt: 0, hp: victim.hp, h: head ? 1 : 0, armor: 1 }); return; }
+  }
   amount = Math.max(1, Math.round(amount));
   victim.hp -= amount;
   victim.lastDmg = Date.now();
@@ -522,11 +534,15 @@ function kill(room, victim, attacker, weaponId, head) {
     if (victimStreak >= 5) giveXP(room, attacker, 100, 'BUZZKILL');
     if (!WEAPONS[weaponId]?.splash && dist3(attacker.pos, victim.pos) > 40) giveXP(room, attacker, 50, 'LONGSHOT');
     if (STREAK_XP[attacker.streak]) giveXP(room, attacker, STREAK_XP[attacker.streak], `${attacker.streak} KILL STREAK`);
-    if (attacker.streak === UAV_STREAK) {
-      room.uav = { team: attacker.team, by: attacker.id, until: now + UAV_TIME * 1000 };
-      roomBroadcast(room, { t: 'uav', by: attacker.id, team: attacker.team, dur: UAV_TIME });
+    if (attacker.streaks) {                                                           // chosen streaks: earned, then activated by the player
+      for (const id of attacker.streaks) if (attacker.streak === streakCost(id, attacker.perks)) {
+        attacker.ready.push(id);
+        if (attacker.client) sendTo(attacker.client, { t: 'streakready', id, ready: attacker.ready });
+      }
+    } else {                                                                          // bots and older games: automatic
+      if (attacker.streak === UAV_STREAK) activateStreak(room, attacker, 'radar', null, now);
+      if (attacker.streak === AIRSTRIKE_STREAK) callAirstrike(room, attacker, now);
     }
-    if (attacker.streak === AIRSTRIKE_STREAK) callAirstrike(room, attacker, now);
     victim.lastKiller = attacker.id;
   }
   for (const [id, t] of victim.damagers) {
@@ -767,7 +783,7 @@ function botThink(room, b, dt, now, losCheck) {
 
 // ------------------------------------------------------------------ projectiles
 function explode(room, ownerId, at, weaponId) {
-  const def = WEAPONS[weaponId], owner = room.ents.get(ownerId);
+  const def = weaponId === 'mortar' ? MORTAR : WEAPONS[weaponId], owner = room.ents.get(ownerId);
   roomBroadcast(room, { t: 'boom', p: at.map(r2) });
   for (const p of room.ents.values()) {
     if (!p.alive) continue;
@@ -947,6 +963,23 @@ function tickPickups(room, now) {
   }
 }
 
+// ------------------------------------------------------------------ killstreaks
+function activateStreak(room, e, id, aim, now) {
+  roomBroadcast(room, { t: 'streak', id, by: e.id, team: e.team });
+  if (id === 'radar' || id === 'aradar') {
+    const dur = id === 'aradar' ? 40 : UAV_TIME;
+    roomBroadcast(room, { t: 'uav', by: e.id, team: e.team, dur, adv: id === 'aradar' ? 1 : 0 });
+  } else if (id === 'jammer') roomBroadcast(room, { t: 'jam', by: e.id, team: e.team, dur: 20 });
+  else if (id === 'armor') { e.armor = 60; if (e.client) sendTo(e.client, { t: 'armor', v: 60 }); }
+  else if (id === 'airstrike') callAirstrike(room, e, now);
+  else if (id === 'mortar') {
+    let p = isVec(aim) ? aim.map(Number) : [e.pos[0], 0, e.pos[2]];
+    if (Math.hypot(p[0] - e.pos[0], p[2] - e.pos[2]) > 150) p = [e.pos[0], 0, e.pos[2]];
+    roomBroadcast(room, { t: 'mortar', by: e.id, p: p.map(r2) });
+    for (let i = 0; i < 6; i++) room.strikes.push({ owner: e.id, at: now + 2200 + i * 450, pos: [p[0] + rand(-5, 5), p[1] + 0.2, p[2] + rand(-5, 5)], w: 'mortar' });
+  }
+}
+
 // ------------------------------------------------------------------ airstrike + kill confirmed
 function callAirstrike(room, owner, now) {
   roomBroadcast(room, { t: 'airstrike', by: owner.id, team: owner.team });
@@ -962,7 +995,7 @@ function tickStrikes(room, now) {
     const s = room.strikes[i];
     if (now < s.at) continue;
     room.strikes.splice(i, 1);
-    if (room.state === 'playing') explode(room, s.owner, s.pos, 'airstrike');
+    if (room.state === 'playing') explode(room, s.owner, s.pos, s.w === 'mortar' ? 'mortar' : 'airstrike');
   }
 }
 function tickTags(room, now) {
@@ -1110,6 +1143,18 @@ wss.on('connection', ws => {
       case 'start': if (room && room.hostId === c.id && room.state === 'lobby') startMatch(room); break;
       case 'stop': if (room && room.hostId === c.id && room.state === 'playing') endMatch(room); break;
       case 'ping': if (typeof m.c === 'number') sendTo(c, { t: 'pong', c: m.c }); break;
+      case 'loadout': // perks + chosen killstreaks (apply from the next life; streaks list straight away)
+        c.perks = cleanPerks(m.perks); c.streaks = cleanStreaks(m.streaks);
+        if (e) { e.streaks = c.streaks; if (!e.alive) e.perks = c.perks; e.ready = e.ready.filter(id => c.streaks.includes(id)); }
+        break;
+      case 'usestreak': {
+        if (!e || !e.alive || room.state !== 'playing' || !STREAKS[m.id]) return;
+        const i = e.ready.indexOf(m.id); if (i < 0) return;
+        e.ready.splice(i, 1);
+        sendTo(c, { t: 'streakready', ready: e.ready });
+        activateStreak(room, e, m.id, m.aim, Date.now());
+        break;
+      }
       case 'feedback': // older clients: send a single message
         m = { items: [{ id: `old-${c.id}-${Date.now()}`, name: c.name, text: m.m, map: m.map, mode: m.mode, at: Date.now() }] };
         // falls through
@@ -1209,7 +1254,7 @@ wss.on('connection', ws => {
         roomBroadcast(room, { t: 'fx', id: e.id, w: def.id, e: ends, s: m.s ? 1 : 0 }, c.id);
         if (Array.isArray(m.hits)) {
           // allow for attachments: up to +25% damage (hollow points) and +60% range (long barrel / FMJ)
-          const cap = def.dmg * def.head * def.pellets * 1.25, maxRange = def.range * 1.6 + 4;
+          const cap = def.dmg * def.head * def.pellets * 1.25 * (e.perks.includes('stopping') ? 1.15 : 1), maxRange = def.range * 1.6 + 4;
           for (const h of m.hits.slice(0, 12)) {
             const v = room.ents.get(h.id);
             if (!v || v === e || !v.alive || dist3(v.pos, e.pos) > maxRange) continue;
