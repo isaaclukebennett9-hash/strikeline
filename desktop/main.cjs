@@ -315,7 +315,8 @@ function createWindow() {
     width: 1400, height: 860, minWidth: 960, minHeight: 600,
     backgroundColor: '#0b0e14', title: 'Strikeline', autoHideMenuBar: true,
     icon: path.join(__dirname, 'icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
+    // DevTools (Ctrl+Shift+I) only on the developer's PC: otherwise players could edit their progress from the console.
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false, devTools: !!devConfig() },
   });
   win.setMenuBarVisibility(false);
   win.setFullScreen(true); // start fullscreen (F11 still toggles)

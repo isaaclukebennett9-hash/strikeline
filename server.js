@@ -30,6 +30,52 @@ function lanAddresses() {
 }
 let APP_VERSION = '0.0.0';
 try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || APP_VERSION; } catch {}
+// ---------- feedback: every message ends up in feedback.txt in the developer's project folder (the one with .git).
+// Other servers keep a copy in their own feedback.txt and hold the rest in feedback-outbox.json until the
+// developer's app connects; players' apps also keep an outbox and hand it over when they join the developer's server.
+const FB_OWNER = fs.existsSync(path.join(ROOT, '.git'));
+const FB_TXT = path.join(ROOT, 'feedback.txt'), FB_OUT = path.join(ROOT, 'feedback-outbox.json'), FB_SEEN = path.join(ROOT, 'feedback-ids.json');
+const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+let fbOutbox = FB_OWNER ? [] : readJson(FB_OUT, null);
+const fbSeen = new Set(readJson(FB_SEEN, []));
+const saveOutbox = () => { try { fs.writeFileSync(FB_OUT, JSON.stringify(fbOutbox)); } catch {} };
+const saveSeen = () => { try { fs.writeFileSync(FB_SEEN, JSON.stringify([...fbSeen].slice(-3000))); } catch {} };
+if (!FB_OWNER && !fbOutbox) { // first run with relaying: pick up feedback written here before it existed
+  fbOutbox = [];
+  try {
+    const old = fs.readFileSync(FB_TXT, 'utf8');
+    const re = /^\[([0-9: -]{19})\] (.*?)(?: \(([^()\n]*)\))?:\n([\s\S]*?)(?=\n\n\[[0-9: -]{19}\] |\s*(?![\s\S]))/gm;
+    let x, i = 0;
+    while ((x = re.exec(old))) {
+      const [mp, md] = (x[3] || '').split(' / ');
+      fbOutbox.push({ id: `legacy-${os.hostname()}-${i++}-${x[1]}`, name: x[2].slice(0, 16), map: mp || '', mode: md || '', text: x[4].trim().slice(0, 1500), at: Date.parse(x[1].replace(' ', 'T') + 'Z') || Date.now() });
+    }
+  } catch {}
+  for (const f of fbOutbox) fbSeen.add(f.id);
+  saveOutbox(); saveSeen();
+}
+function cleanFb(f) {
+  if (!f || typeof f !== 'object') return null;
+  const text = String(f.text || '').replace(/\r/g, '').slice(0, 1500).trim();
+  const id = String(f.id || '').replace(/[^\w:.-]/g, '').slice(0, 80);
+  if (!text || !id) return null;
+  const s = (v, n) => typeof v === 'string' ? cleanText(v, n) : '';
+  return { id, name: s(f.name, 16) || 'Player', map: s(f.map, 20), mode: s(f.mode, 20), text, at: Number(f.at) || Date.now(), via: s(f.via, 40) };
+}
+function storeFeedback(items) {
+  let added = 0;
+  for (const f of items) {
+    if (fbSeen.has(f.id)) continue;
+    fbSeen.add(f.id); added++;
+    const where = [f.map, f.mode].filter(Boolean).join(' / ');
+    const when = new Date(f.at).toISOString().replace('T', ' ').slice(0, 19);
+    fs.appendFileSync(FB_TXT, `[${when}] ${f.name}${where ? ` (${where})` : ''}:\n${f.text}\n\n`);
+    if (!FB_OWNER) fbOutbox.push(f);
+    console.log(`[feedback] ${f.name}: ${f.text.slice(0, 80)}`);
+  }
+  if (added) { saveSeen(); if (!FB_OWNER) saveOutbox(); }
+  return added;
+}
 function setupFile() {
   const dir = process.env.STRIKELINE_SETUP_DIR;
   if (!dir) return null;
@@ -894,9 +940,17 @@ function tickRoom(room, now) {
   tickFire(room, now, TICK);
   tickStrikes(room, now);
   {
-    const ps = [];
-    for (const p of room.ents.values()) ps.push([p.id, r2(p.pos[0]), r2(p.pos[1]), r2(p.pos[2]), r2(p.ry), r2(p.rx), p.w, p.c, Math.ceil(p.hp), p.alive ? 1 : 0]);
-    const msg = { t: 'snap', k: Math.round(performance.now()), ps, r: room.rockets.map(r => [r.id, r2(r.pos[0]), r2(r.pos[1]), r2(r.pos[2]), r2(r.dir[0]), r2(r.dir[1]), r2(r.dir[2])]),
+    const ps = [], k = Math.round(performance.now());
+    // [.., pt, jit]: when that player was actually at this position (server clock) and how bumpy their upload is
+    // [.., hist]: the earlier updates that arrived since the last snapshot (only when a burst came in)
+    for (const p of room.ents.values()) {
+      const e = [p.id, r2(p.pos[0]), r2(p.pos[1]), r2(p.pos[2]), r2(p.ry), r2(p.rx), p.w, p.c, Math.ceil(p.hp), p.alive ? 1 : 0,
+        p.pt != null ? Math.round(p.pt) : k, Math.round(p.kjit || 0)];
+      if (p.hist && p.hist.length > 1) e.push(p.hist.slice(0, -1));
+      if (p.hist) p.hist.length = 0;
+      ps.push(e);
+    }
+    const msg = { t: 'snap', k, ps, r: room.rockets.map(r => [r.id, r2(r.pos[0]), r2(r.pos[1]), r2(r.pos[2]), r2(r.dir[0]), r2(r.dir[1]), r2(r.dir[2])]),
       g: room.nades.map(n => [n.id, r2(n.pos[0]), r2(n.pos[1]), r2(n.pos[2]), Math.max(0, THROWABLE_KINDS.indexOf(n.kind || 'frag'))]), time: Math.ceil(room.timeLeft), ts: room.teamScore };
     if (room.smokes.length) msg.sm = room.smokes.map(s => [s.id, r2(s.x), r2(s.y), r2(s.z), s.r]);
     if (room.fireZones.length) msg.fz = room.fireZones.map(f => [f.id, r2(f.x), r2(f.y), r2(f.z), f.r]);
@@ -924,7 +978,7 @@ wss.on('connection', ws => {
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
-        sendTo(c, { t: 'hi', id: c.id });
+        sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
         sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size });
         scheduleLobbies();
         break;
@@ -952,16 +1006,28 @@ wss.on('connection', ws => {
       case 'start': if (room && room.hostId === c.id && room.state === 'lobby') startMatch(room); break;
       case 'stop': if (room && room.hostId === c.id && room.state === 'playing') endMatch(room); break;
       case 'ping': if (typeof m.c === 'number') sendTo(c, { t: 'pong', c: m.c }); break;
-      case 'feedback': {
-        const text = String(m.m || '').replace(/\r/g, '').slice(0, 1500).trim();
+      case 'feedback': // older clients: send a single message
+        m = { items: [{ id: `old-${c.id}-${Date.now()}`, name: c.name, text: m.m, map: m.map, mode: m.mode, at: Date.now() }] };
+        // falls through
+      case 'fbsync': { // the client's feedback outbox; the developer's server keeps it, others hold it for relay
         const now = Date.now();
-        if (!text || now - (c.lastFeedback || 0) < 5000) break;
+        if (now - (c.lastFeedback || 0) < 1500) break;
         c.lastFeedback = now;
-        const where = [m.map, m.mode].filter(x => typeof x === 'string' && x).map(x => cleanText(x, 20)).join(' / ');
-        const line = `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${c.name || 'Player'}${where ? ` (${where})` : ''}:\n${text}\n\n`;
-        fs.appendFile(path.join(ROOT, 'feedback.txt'), line, () => {});
-        console.log(`[feedback] ${c.name}: ${text.slice(0, 80)}`);
-        sendTo(c, { t: 'toast', m: 'Feedback received — thanks!' });
+        const items = (Array.isArray(m.items) ? m.items : []).slice(0, 50).map(cleanFb).filter(Boolean);
+        if (!items.length) break;
+        const added = storeFeedback(items);
+        if (FB_OWNER) sendTo(c, { t: 'fback', ids: items.map(f => f.id) });
+        if (added) sendTo(c, { t: 'toast', m: FB_OWNER ? 'Feedback received — thanks!' : 'Feedback saved — thanks!' });
+        break;
+      }
+      case 'fbowner': // the developer's app connected here: hand over the feedback held for them
+        if (!FB_OWNER && fbOutbox.length) sendTo(c, { t: 'fbrelay', items: fbOutbox.slice(0, 50) });
+        break;
+      case 'fbrelayack': {
+        const ids = new Set(Array.isArray(m.ids) ? m.ids.map(String) : []);
+        const before = fbOutbox.length;
+        fbOutbox = fbOutbox.filter(f => !ids.has(f.id));
+        if (fbOutbox.length !== before) saveOutbox();
         break;
       }
       case 'fall': { // client reports a hard landing; damage from a ~4.5 m drop up, ~17 m is lethal
@@ -1006,6 +1072,18 @@ wss.on('connection', ws => {
           e.vel = [(np[0] - e.pos[0]) * 30, 0, (np[2] - e.pos[2]) * 30];
           e.pos = np;
         }
+        // Put this position on the server clock at the moment the player was actually there (their send time),
+        // not when it happened to arrive: bursty uploads then play back smoothly on everyone else's screen.
+        if (typeof m.k === 'number' && isFinite(m.k)) {
+          const now = performance.now(), target = now - m.k;
+          if (e.koff == null || Math.abs(target - e.koff) > 1500) { e.koff = target; e.kjit = 0; }
+          else if (target < e.koff) e.koff = target;          // quickest arrival so far: tighten
+          else e.koff += (target - e.koff) * 0.01;            // otherwise drift slowly (clock skew)
+          e.kjit = e.kjit * 0.95 + Math.abs(target - e.koff) * 0.05;
+          e.pt = Math.min(now, Math.max((e.pt || 0) + 1, m.k + e.koff));
+          // keep every update since the last snapshot: a burst of 8 then all reach other players, not just the newest
+          if (e.alive) { (e.hist || (e.hist = [])).push([Math.round(e.pt), r2(e.pos[0]), r2(e.pos[1]), r2(e.pos[2]), r2(+m.ry || 0), r2(+m.rx || 0), m.c ? 1 : 0]); if (e.hist.length > 16) e.hist.shift(); }
+        } else e.pt = undefined;
         e.ry = +m.ry || 0; e.rx = +m.rx || 0; e.c = m.c ? 1 : 0;
         if (WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade') e.w = m.w;
         break;
@@ -1070,12 +1148,21 @@ wss.on('connection', ws => {
 });
 
 const perf = { max: 0, sum: 0, n: 0 };
+// Windows timers only fire every ~15.6 ms, so setInterval(33) really ran every ~46 ms: the whole game (bots,
+// grenades, the match clock) went at ~72% speed with fewer updates. Instead, check often and run each tick
+// when it's due, catching up if one was late, for a true 30 ticks a second.
+let nextTick = performance.now();
 setInterval(() => {
-  const now = Date.now(), t0 = performance.now();
-  for (const room of rooms.values()) if (room.state !== 'lobby') tickRoom(room, now);
-  const dt = performance.now() - t0;
-  perf.max = Math.max(perf.max, dt); perf.sum += dt; perf.n++;
-}, TICK * 1000);
+  let n = 0;
+  while (performance.now() >= nextTick && n++ < 4) {
+    const now = Date.now(), t0 = performance.now();
+    for (const room of rooms.values()) if (room.state !== 'lobby') tickRoom(room, now);
+    const dt = performance.now() - t0;
+    perf.max = Math.max(perf.max, dt); perf.sum += dt; perf.n++;
+    nextTick += TICK * 1000;
+  }
+  if (performance.now() - nextTick > 500) nextTick = performance.now(); // after a long stall, don't fast-forward
+}, 4);
 if (process.env.STRIKE_PERF) setInterval(() => { console.log(`tick avg ${(perf.sum / Math.max(1, perf.n)).toFixed(2)}ms max ${perf.max.toFixed(1)}ms`); perf.max = perf.sum = perf.n = 0; }, 5000);
 
 // pre-build bot navigation for every map in the background so match starts are instant

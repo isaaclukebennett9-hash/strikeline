@@ -6,3 +6,5 @@ release/
 feedback.txt
 *.log
 CLAUDE.md
+feedback-outbox.json
+feedback-ids.json

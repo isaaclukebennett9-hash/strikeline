@@ -1245,9 +1245,11 @@ function netClock(k, now) {
   return st + net.off;
 }
 function updateRemotes(dt, now) {
-  const delay = window.__netOld ? 110 : clamp(80 + net.jitter * 2.5, 80, 320); // bigger buffer on bumpier connections
-  const renderT = now - delay;
+  const baseJit = net.jitter;
   for (const r of remotes.values()) {
+    // bigger buffer on bumpier connections: ours from the server, plus that player's upload to the server
+    const delay = window.__netOld ? 110 : clamp(80 + (baseJit + (r.jit || 0)) * 2.5, 80, 400);
+    const renderT = now - delay;
     const b = r.buf;
     if (!b.length) { r.model.visible = false; continue; }
     let a = b[0], c = b[0], ext = 0;
@@ -1324,7 +1326,17 @@ window.addEventListener('unhandledrejection', e => reportErr(`promise: ${e.reaso
 function handle(m) {
   const now = performance.now();
   switch (m.t) {
-    case 'hi': me.id = m.id; setNet(true, 'Online'); break;
+    case 'hi':
+      me.id = m.id; setNet(true, 'Online');
+      // Only the developer's own app (its local server) marks itself as the feedback owner.
+      if (m.fbOwner && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) PR.store.set(FB_OWNER_KEY, '1');
+      if (!m.fbOwner && PR.store.get(FB_OWNER_KEY) === '1') send({ t: 'fbowner' });
+      fbFlush();
+      break;
+    case 'fback': { const ids = new Set(m.ids || []); fbSave(fbLoad().filter(f => !ids.has(f.id))); break; }
+    case 'fbrelay': // feedback this server held for the developer: keep it and confirm, it's delivered at home
+      if (Array.isArray(m.items)) { fbAdd(m.items); send({ t: 'fbrelayack', ids: m.items.map(f => f.id) }); }
+      break;
     case 'lobbies': lobbies = m.list; online = m.online; setNet(true, `Online · ${online} player${online === 1 ? '' : 's'}`); renderLobbyList(); break;
     case 'err': toast(m.m); $('loading').classList.add('hidden'); break;
     case 'toast': toast(m.m); break;
@@ -1429,12 +1441,26 @@ function handle(m) {
     case 'snap': {
       if (!inGame) break;
       const st = netClock(m.k, now);
-      for (const [id, x, y, z, ry, rx, w, c, hp, alive] of m.ps) {
+      for (const [id, x, y, z, ry, rx, w, c, hp, alive, pt, jit, hist] of m.ps) {
         if (id === me.id) { if (me.alive) me.hp = hp; continue; }
         const r = remotes.get(id); if (!r) continue;
         if (r.alive || alive) {
-          if (r.buf.length && st <= r.buf[r.buf.length - 1].t) r.buf.length = 0; // clock reset (new match)
-          r.buf.push({ t: st, x, y, z, ry, rx, c }); if (r.buf.length > 40) r.buf.shift();
+          // the in-between updates of a burst, so their movement is replayed in full rather than cut corners
+          if (Array.isArray(hist) && typeof m.k === 'number' && !window.__netOld) for (const [ht, hx, hy, hz, hry, hrx, hc] of hist) {
+            const t = st + (ht - m.k);
+            if (r.buf.length && t <= r.buf[r.buf.length - 1].t) continue;
+            r.buf.push({ t, x: hx, y: hy, z: hz, ry: hry, rx: hrx, c: hc }); if (r.buf.length > 40) r.buf.shift();
+          }
+          // newer servers say when the player was really at this spot (their send time), so a burst of late
+          // updates from a laggy player plays back at the right pace instead of freeze → jump
+          const t = typeof pt === 'number' && typeof m.k === 'number' && !window.__netOld ? st + (pt - m.k) : st;
+          r.jit = typeof jit === 'number' ? jit : 0;
+          const lastT = r.buf.length ? r.buf[r.buf.length - 1].t : -Infinity;
+          if (t <= lastT) {
+            if (lastT - t > 1000) r.buf.length = 0; // clock reset (new match)
+            else { r.alive = !!alive; setRemoteGun(r, w); continue; } // nothing new from this player yet
+          }
+          r.buf.push({ t, x, y, z, ry, rx, c }); if (r.buf.length > 40) r.buf.shift();
         }
         r.alive = !!alive; setRemoteGun(r, w);
       }
@@ -1848,8 +1874,8 @@ function frame(now) {
     updateHud(now);
     sendAcc += dt;
     if (inGame && me.alive && sendAcc > 1 / 30) {
-      sendAcc = 0;
-      send({ t: 's', p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0 });
+      sendAcc = Math.min(sendAcc - 1 / 30, 1 / 30); // steady 30 a second (resetting to 0 gave an uneven ~20)
+      send({ t: 's', k: Math.round(performance.now()), p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0 });
     }
     renderer.clear();
     const showVm = inGame && me.alive && vmHolder.visible;
@@ -1890,7 +1916,13 @@ function openPanel(name) { if (!currentScreen?.startsWith('pnl-')) panelReturn =
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { SFX.initAudio(cfg.vol); SFX.uiBlip(); go(b.dataset.go); }));
 document.querySelectorAll('[data-panel]').forEach(b => b.addEventListener('click', () => { SFX.initAudio(cfg.vol); SFX.uiBlip(); openPanel(b.dataset.panel); }));
 document.querySelectorAll('.panel-back').forEach(b => b.addEventListener('click', () => { SFX.uiBlip(); go(panelReturn); }));
-// ---------- feedback (saved to feedback.txt on the hosting PC)
+// ---------- feedback: kept in an outbox (in the app's save, so it survives joining other hosts) until the
+// developer's server confirms it; servers that aren't the developer's hold a copy and relay it later.
+const FB_KEY = 'strikeline_fb_outbox', FB_OWNER_KEY = 'strikeline_fb_owner';
+const fbLoad = () => { try { const a = JSON.parse(PR.store.get(FB_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+const fbSave = (a) => PR.store.set(FB_KEY, JSON.stringify(a.slice(-100)));
+const fbFlush = () => { const a = fbLoad(); if (a.length) send({ t: 'fbsync', items: a.slice(0, 50) }); };
+const fbAdd = (items) => { const a = fbLoad(), have = new Set(a.map(f => f.id)); for (const f of items) if (f && f.id && !have.has(f.id)) a.push(f); fbSave(a); };
 const openFeedback = () => { $('modal-feedback').classList.remove('hidden'); $('fbMsg').textContent = ''; setTimeout(() => $('fbText').focus(), 0); };
 const closeFeedback = () => $('modal-feedback').classList.add('hidden');
 $('btnFeedback').addEventListener('click', () => { SFX.initAudio(cfg.vol); SFX.uiBlip(); openFeedback(); });
@@ -1898,8 +1930,8 @@ $('btnFbCancel').addEventListener('click', closeFeedback);
 $('btnFbSend').addEventListener('click', () => {
   const text = $('fbText').value.trim();
   if (text.length < 3) { $('fbMsg').textContent = 'Type a bit more first.'; return; }
-  if (!ws || ws.readyState !== 1) { $('fbMsg').textContent = 'Not connected to a server right now.'; return; }
-  send({ t: 'feedback', m: text, map: world?.map.id || '', mode: room?.settings?.mode || '' });
+  fbAdd([{ id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`, name: cfg.name || 'Player', text: text.slice(0, 1500), map: world?.map.id || '', mode: room?.settings?.mode || '', at: Date.now() }]);
+  fbFlush();
   $('fbText').value = ''; $('fbMsg').textContent = 'Thanks! Feedback sent.';
   SFX.uiBlip();
 });

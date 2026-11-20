@@ -16,10 +16,93 @@ export const store = {
   get: (k) => { try { return desk ? desk.get(k) ?? localStorage.getItem(k) : localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { if (desk) desk.set(k, v); else localStorage.setItem(k, v); } catch {} },
 };
+// ---------------------------------------------------------------- sealed save
+// The profile is saved scrambled and signed (HMAC-SHA256), so opening the save file and changing numbers
+// doesn't work: an edited save fails the check and is reset. The game runs on the player's own PC, so this
+// stops casual editing, not someone who rewrites the game's code.
+const SEAL_KEY = 'sl-7Qe!vR2#kzP9-strikeline-profile-seal-4bW0xN';
+const SEALED_MARK = 'strikeline_sealed';
+const K256 = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+function sha256(bytes) {
+  const len = bytes.length, padded = new Uint8Array(((len + 9 + 63) >> 6) << 6);
+  padded.set(bytes); padded[len] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 4, len * 8 >>> 0); dv.setUint32(padded.length - 8, Math.floor(len / 0x20000000));
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]), W = new Uint32Array(64);
+  const ror = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let o = 0; o < padded.length; o += 64) {
+    for (let i = 0; i < 16; i++) W[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = ror(W[i-15], 7) ^ ror(W[i-15], 18) ^ (W[i-15] >>> 3), s1 = ror(W[i-2], 17) ^ ror(W[i-2], 19) ^ (W[i-2] >>> 10);
+      W[i] = W[i-16] + s0 + W[i-7] + s1;
+    }
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      const t1 = h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K256[i] + W[i] >>> 0;
+      const t2 = (ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+      h = g; g = f; f = e; e = d + t1 >>> 0; d = c; c = b; b = a; a = t1 + t2 >>> 0;
+    }
+    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+  }
+  const out = new Uint8Array(32), odv = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) odv.setUint32(i * 4, H[i]);
+  return out;
+}
+const enc = new TextEncoder(), dec = new TextDecoder();
+const cat = (...arrs) => { const r = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0)); let o = 0; for (const a of arrs) { r.set(a, o); o += a.length; } return r; };
+function hmac(msg) {
+  let k = enc.encode(SEAL_KEY); if (k.length > 64) k = sha256(k);
+  const ik = new Uint8Array(64), ok = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) { ik[i] = (k[i] || 0) ^ 0x36; ok[i] = (k[i] || 0) ^ 0x5c; }
+  return sha256(cat(ok, sha256(cat(ik, msg))));
+}
+function keystream(nonce, n) {
+  const out = new Uint8Array(n), base = enc.encode(SEAL_KEY);
+  for (let i = 0, blk = 0; i < n; blk++) { const b = sha256(cat(base, nonce, enc.encode(':' + blk))); for (let j = 0; j < 32 && i < n; j++) out[i++] = b[j]; }
+  return out;
+}
+const b64 = u => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const hex = u => Array.from(u, b => b.toString(16).padStart(2, '0')).join('');
+function seal(obj) {
+  const data = enc.encode(JSON.stringify(obj)), nonce = new Uint8Array(12);
+  crypto.getRandomValues(nonce);
+  const ks = keystream(nonce, data.length);
+  for (let i = 0; i < data.length; i++) data[i] ^= ks[i];
+  const body = cat(nonce, data);
+  return 'SL1.' + b64(body) + '.' + hex(hmac(body));
+}
+function unseal(s) {
+  try {
+    const [tag, b, mac] = s.split('.');
+    if (tag !== 'SL1' || !b || !mac) return null;
+    const body = unb64(b);
+    if (body.length < 13 || hex(hmac(body)) !== mac) return null;
+    const nonce = body.subarray(0, 12), data = body.slice(12), ks = keystream(nonce, data.length);
+    for (let i = 0; i < data.length; i++) data[i] ^= ks[i];
+    const obj = JSON.parse(dec.decode(data));
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : null;
+  } catch { return null; }
+}
+const wasSealed = () => { try { return store.get(SEALED_MARK) === '1' || localStorage.getItem(SEALED_MARK) === '1'; } catch { return false; } };
+
 export let profile = DEFAULT();
 let migrate = false;
-try { const raw = JSON.parse(store.get(KEY) || '{}'); migrate = Object.keys(raw).length > 0 && !raw.v2; profile = Object.assign(DEFAULT(), raw); } catch {}
-export const saveProfile = () => store.set(KEY, JSON.stringify(profile));
+export let saveTampered = false; // the save had been edited outside the game, so progress was reset
+{
+  const rawStr = store.get(KEY);
+  let raw = null;
+  if (rawStr && rawStr.startsWith('SL1.')) raw = unseal(rawStr);
+  else if (rawStr && !wasSealed()) { try { raw = JSON.parse(rawStr); } catch {} } // older plain saves: taken once, then sealed
+  if (rawStr && !raw && rawStr !== '{}') { saveTampered = true; store.set(KEY + '_rejected', rawStr); }
+  if (raw) { migrate = Object.keys(raw).length > 0 && !raw.v2; profile = Object.assign(DEFAULT(), raw); }
+}
+export const saveProfile = () => {
+  store.set(KEY, seal(profile));
+  store.set(SEALED_MARK, '1');
+  try { localStorage.setItem(SEALED_MARK, '1'); } catch {}
+};
+saveProfile(); // seal existing plain saves straight away
 
 // Old saves: refund credits spent on the removed weapon upgrades and on buying weapons early (weapons now unlock by level).
 export let migrationRefund = 0;
