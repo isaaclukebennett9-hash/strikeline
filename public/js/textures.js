@@ -863,11 +863,23 @@ export function decalTexture() {
   x.fillStyle = g; x.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
 }
-export function nameTagTexture(name, color = '#ff5a5a') {
+export function nameTagTexture(name, color = '#ff5a5a', dev = false) {
   const [c, x] = mkCanvas(256); c.height = 64;
   x.font = 'bold 30px Rajdhani, Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,0.8)'; x.strokeText(name, 128, 32);
-  x.fillStyle = color; x.fillText(name, 128, 32);
+  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,0.8)';
+  let cx = 128;
+  if (dev) { // developer: glowing gold crown in front of the name
+    const crown = '♛', cw = 30, nw = Math.min(200, x.measureText(name).width), gap = 6;
+    const left = 128 - (cw + gap + nw) / 2;
+    x.font = 'bold 32px "Segoe UI Symbol", Arial';
+    x.shadowColor = 'rgba(255,200,40,0.9)'; x.shadowBlur = 10;
+    const g = x.createLinearGradient(0, 14, 0, 48); g.addColorStop(0, '#fff2a8'); g.addColorStop(0.5, '#ffc936'); g.addColorStop(1, '#d88a00');
+    x.fillStyle = g; x.fillText(crown, left + cw / 2, 31);
+    x.shadowBlur = 0; x.font = 'bold 30px Rajdhani, Arial';
+    cx = left + cw + gap + nw / 2;
+  }
+  x.strokeText(name, cx, 32, 200);
+  x.fillStyle = color; x.fillText(name, cx, 32, 200);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

@@ -4,6 +4,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { buildMap, MAPS, MAP_ORDER } from './shared/maps.js';
@@ -119,6 +120,12 @@ const server = http.createServer((req, res) => {
 const BOT_NAMES = ['Viper', 'Ghost', 'Havoc', 'Reaper', 'Nova', 'Blitz', 'Talon', 'Raptor', 'Echo', 'Frost', 'Jinx', 'Onyx'];
 const CHAR_SKINS = ['ranger', 'crimson', 'ghost', 'cobalt', 'shadow', 'desert', 'toxic', 'royal'];
 const DEV_CHAR_SKINS = ['dev', 'devgold'], DEV_W_SKINS = ['dev', 'glitch']; // accepted from players, never given to bots
+// Developer badge: a player who has entered the dev code (same code as the dev skins) shows a crown next to their name.
+// Only the SHA-256 of the code is here, so the badge can't be faked by typing a name.
+const DEV_CODE_SHA = '592825ecebd9678f878dfce975fbb0509465067ff1f8966038b7b36d7cf067e6';
+const isDevCode = code => { const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 64); return c.length >= 12 && crypto.createHash('sha256').update(c).digest('hex') === DEV_CODE_SHA; };
+const ename = e => (e.client?.dev ? '\u265B ' : '') + e.name;
+const dname = c => (c?.dev ? '\u265B ' : '') + (c?.name || '?'); // name for plain-text system messages
 const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno', 'desert', 'urban', 'jungle', 'hex', 'cobalt'];
 const DIFFICULTY = { easy: 0.22, normal: 0.36, hard: 0.55 };
 const DEFAULT_SETTINGS = { mode: 'ffa', map: 'town', bots: 4, difficulty: 'normal', scoreLimit: 30, timeLimit: 10, maxPlayers: 8 };
@@ -167,13 +174,13 @@ function roomInfo(room) {
   return {
     id: room.id, code: room.code, name: room.name, hostId: room.hostId, private: room.private, state: room.state,
     settings: room.settings, mapId: room.mapId || null,
-    members: [...room.members].map(id => { const c = clients.get(id); return { id, name: c.name, skin: c.skin, wskin: c.wskin, level: c.level, ready: room.ready.has(id) }; }),
+    members: [...room.members].map(id => { const c = clients.get(id); return { id, name: c.name, dev: c.dev ? 1 : 0, skin: c.skin, wskin: c.wskin, level: c.level, ready: room.ready.has(id) }; }),
   };
 }
 function sendRoom(room) { roomBroadcast(room, { t: 'room', room: roomInfo(room) }); scheduleLobbies(); }
 function lobbyList() {
   return [...rooms.values()].filter(r => !r.private).map(r => ({
-    id: r.id, name: r.name, host: clients.get(r.hostId)?.name || '?', map: r.state === 'lobby' ? r.settings.map : r.mapId, mode: r.settings.mode,
+    id: r.id, name: r.name, host: clients.get(r.hostId)?.name || '?', hdev: clients.get(r.hostId)?.dev ? 1 : 0, map: r.state === 'lobby' ? r.settings.map : r.mapId, mode: r.settings.mode,
     players: r.members.size, max: r.settings.maxPlayers, state: r.state, bots: r.settings.bots,
   }));
 }
@@ -201,7 +208,7 @@ async function findPublicUrl() { // cloudflared reports its quick-tunnel hostnam
   }
 }
 setInterval(findPublicUrl, 45000); setTimeout(findPublicUrl, 3000);
-const relayRoom = r => ({ c: r.code, n: r.name, h: clients.get(r.hostId)?.name || '?', m: r.state === 'lobby' ? r.settings.map : r.mapId, mo: r.settings.mode,
+const relayRoom = r => ({ c: r.code, n: r.name, h: clients.get(r.hostId)?.name || '?', hd: clients.get(r.hostId)?.dev ? 1 : 0, m: r.state === 'lobby' ? r.settings.map : r.mapId, mo: r.settings.mode,
   p: r.members.size, x: r.settings.maxPlayers, s: r.state, b: r.settings.bots, pr: r.private ? 1 : 0 });
 let lastAnnounce = '', lastAnnounceAt = 0, announceTimer = null;
 function announceSoon(ms = 2500) { if (!announceTimer) announceTimer = setTimeout(announce, ms); }
@@ -236,7 +243,7 @@ async function remoteLobbies() { // latest announcement from every other game, i
       for (const { time, a } of latest.values()) {
         if (now - time > 330) continue;
         for (const x of a.r.slice(0, 20)) if (x && typeof x.c === 'string' && /^[A-Z]{4}$/.test(x.c))
-          list.push({ url: a.u, code: x.c, name: cleanText(x.n, 28) || 'Lobby', host: cleanText(x.h, 16) || '?', map: String(x.m || '').slice(0, 24), mode: String(x.mo || 'ffa').slice(0, 16),
+          list.push({ url: a.u, code: x.c, name: cleanText(x.n, 28) || 'Lobby', host: cleanText(x.h, 16) || '?', hdev: x.hd ? 1 : 0, map: String(x.m || '').slice(0, 24), mode: String(x.mo || 'ffa').slice(0, 16),
             players: clampInt(x.p, 0, 64, 0), max: clampInt(x.x, 1, 64, 8), state: x.s === 'lobby' ? 'lobby' : 'playing', bots: clampInt(x.b, 0, 32, 0), private: !!x.pr });
       }
       relayCache = { at: Date.now(), list };
@@ -304,7 +311,7 @@ function joinRoom(c, room) {
   room.members.add(c.id);
   c.room = room;
   sendRoom(room);
-  roomBroadcast(room, { t: 'chat', n: '', m: `${c.name} joined the lobby` });
+  roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} joined the lobby` });
   if (room.state !== 'lobby') {
     const e = addEnt(room, c);
     balanceBots(room);
@@ -324,9 +331,9 @@ function leaveRoom(c, silent) {
   if (room.members.size === 0) { rooms.delete(room.id); scheduleLobbies(); return; }
   if (room.hostId === c.id) {
     room.hostId = [...room.members][0];
-    roomBroadcast(room, { t: 'chat', n: '', m: `${clients.get(room.hostId).name} is now the host` });
+    roomBroadcast(room, { t: 'chat', n: '', m: `${dname(clients.get(room.hostId))} is now the host` });
   }
-  roomBroadcast(room, { t: 'chat', n: '', m: `${c.name} left` });
+  roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} left` });
   sendRoom(room);
 }
 
@@ -353,7 +360,7 @@ function fireAllowed(e, def, now) {
   return true;
 }
 function publicInfo(e) {
-  return { id: e.id, name: e.name, bot: e.bot, skin: e.skin, wskin: e.wskin, team: e.team, kills: e.kills, deaths: e.deaths, score: e.score, gg: e.gg, alive: e.alive, w: e.w, pk: e.perks };
+  return { id: e.id, name: e.name, dv: e.client?.dev ? 1 : 0, bot: e.bot, skin: e.skin, wskin: e.wskin, team: e.team, kills: e.kills, deaths: e.deaths, score: e.score, gg: e.gg, alive: e.alive, w: e.w, pk: e.perks };
 }
 function smallerTeam(room) {
   const n = [0, 0];
@@ -437,7 +444,7 @@ function endMatch(room) {
     giveXP(room, e, 150, 'MATCH BONUS');
   }
   const sorted = all.slice().sort((a, b) => mode === 'gungame' ? (b.gg - a.gg || b.score - a.score) : (b.score - a.score || b.kills - a.kills));
-  const standings = sorted.map(e => [e.id, e.name, e.kills, e.deaths, e.bot ? 1 : 0, e.score, e.team, e.gg, e.assists]);
+  const standings = sorted.map(e => [e.id, e.name, e.kills, e.deaths, e.bot ? 1 : 0, e.score, e.team, e.gg, e.assists, e.client?.dev ? 1 : 0]);
   roomBroadcast(room, { t: 'end', standings, mode, winTeam, winId, teamScore: room.teamScore, back: room.endTimer });
   sendRoom(room);
 }
@@ -932,7 +939,7 @@ function infect(room, e, first) {
   if (e.bot) e.ai.target = null;
   roomBroadcast(room, { t: 'pj', p: publicInfo(e) });
   roomBroadcast(room, { t: 'infected', id: e.id, first: first ? 1 : 0 });
-  roomBroadcast(room, { t: 'chat', n: '', m: first ? `${e.name} is PATIENT ZERO — run!` : `${e.name} has been infected!` });
+  roomBroadcast(room, { t: 'chat', n: '', m: first ? `${ename(e)} is PATIENT ZERO — run!` : `${ename(e)} has been infected!` });
   updateInfectedScore(room);
 }
 function updateInfectedScore(room) {
@@ -957,7 +964,7 @@ function tickPickups(room, now) {
       if (p.kind === 'speed') e.spdUntil = now + POWER_TIME * 1000;
       p.readyAt = now + PICKUP_RESPAWN[p.kind] * 1000;
       roomBroadcast(room, { t: 'pick', id: p.id, by: e.id, kind: p.kind, dur: POWER_TIME });
-      if (p.kind === 'damage') roomBroadcast(room, { t: 'chat', n: '', m: `${e.name} has DOUBLE DAMAGE!` });
+      if (p.kind === 'damage') roomBroadcast(room, { t: 'chat', n: '', m: `${ename(e)} has DOUBLE DAMAGE!` });
       break;
     }
   }
@@ -1102,6 +1109,7 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'hello':
         c.name = cleanText(m.name, 16) || 'Player';
+        c.dev = isDevCode(m.dev);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
@@ -1200,11 +1208,12 @@ wss.on('connection', ws => {
       }
       case 'chat': {
         const text = String(m.m || '').slice(0, 120).trim();
-        if (text && room) roomBroadcast(room, { t: 'chat', n: c.name, m: text });
+        if (text && room) roomBroadcast(room, { t: 'chat', n: c.name, dv: c.dev ? 1 : 0, m: text });
         break;
       }
       case 'look':
         c.name = cleanText(m.name, 16) || c.name;
+        if (m.dev !== undefined) c.dev = isDevCode(m.dev);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         if (m.level) c.level = clampInt(m.level, 1, 99, c.level);

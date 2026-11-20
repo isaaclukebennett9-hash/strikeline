@@ -138,6 +138,10 @@ input[type=range] { width: 320px; accent-color: var(--accent); }
 .member .mname b { display: block; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .member .mname small { color: var(--muted); font-size: 12px; letter-spacing: 1.5px; font-weight: 700; }
 .member .tag-host { color: var(--accent-2); }
+/* developer badge (players who entered the dev code) */
+.devmark { display: inline-block; margin-right: 4px; color: #ffc936; font-family: "Segoe UI Symbol", sans-serif; font-weight: normal; text-shadow: 0 0 6px rgba(255, 190, 40, 0.85), 0 1px 0 #7a4a00; animation: devglow 2.4s ease-in-out infinite; }
+@keyframes devglow { 50% { text-shadow: 0 0 11px rgba(255, 215, 80, 1), 0 1px 0 #7a4a00; color: #ffe27a; } }
+.member .tag-dev { color: #ffc936; letter-spacing: 1px; text-shadow: 0 0 6px rgba(255, 190, 40, 0.6); }
 .member .rdy { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 8px; border: 1px solid var(--line-2); color: var(--muted); }
 .member .rdy.yes { color: var(--green); border-color: rgba(61, 220, 132, 0.5); background: rgba(61, 220, 132, 0.1); }
 .member.me { border-color: rgba(46, 230, 255, 0.35); }
