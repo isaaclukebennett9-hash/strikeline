@@ -613,7 +613,7 @@ function updateFx(dt) {
 
 // ================================================================ input
 const keys = {};
-let mouseL = false, mouseR = false, triggerFresh = true, locked = false, chatOpen = false, showBoard = false, wantLock = false;
+let mouseL = false, mouseR = false, mouseM = false, triggerFresh = true, locked = false, chatOpen = false, showBoard = false, wantLock = false;
 document.addEventListener('keydown', e => {
   if (chatOpen) {
     if (e.key === 'Enter') { const v = $('chatinput').value.trim(); if (v) send({ t: 'chat', m: v }); closeChat(); }
@@ -643,6 +643,7 @@ document.addEventListener('mousemove', e => {
     if (held && !mouseL) mouseL = true;
     else if (!held && mouseL && e.buttons !== undefined) { mouseL = false; triggerFresh = true; }
     mouseR = (e.buttons & 2) === 2;
+    mouseM = (e.buttons & 4) === 4;
   }
   if (!locked || !me.alive) return;
   const s = 0.0022 * cfg.sens * (camera.fov / cfg.fov) * (performance.now() < stunUntil ? 0.35 : 1);
@@ -655,8 +656,9 @@ document.addEventListener('mousedown', e => {
   if (!inGame || !locked) return;
   if (e.button === 0) mouseL = true;
   if (e.button === 2) mouseR = true;
+  if (e.button === 1) { mouseM = true; e.preventDefault(); } // middle click: slight zoom while held
 });
-document.addEventListener('mouseup', e => { if (e.button === 0) { mouseL = false; triggerFresh = true; } if (e.button === 2) mouseR = false; });
+document.addEventListener('mouseup', e => { if (e.button === 0) { mouseL = false; triggerFresh = true; } if (e.button === 2) mouseR = false; if (e.button === 1) mouseM = false; });
 document.addEventListener('wheel', e => { const n = me.weapons.length; if (locked && me.alive && n) switchSlot((me.slot + (e.deltaY > 0 ? 1 : n - 1)) % n); });
 document.addEventListener('contextmenu', e => { if (inGame) e.preventDefault(); });
 function lockPointer() { try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {} }
@@ -665,7 +667,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) { if (inGame || wantLock) hideUI(); }
   else {
     for (const k in keys) keys[k] = false;
-    mouseL = mouseR = false;
+    mouseL = mouseR = mouseM = false;
     if (chatOpen) closeChat();
     if (inGame) showPause();
     else if (!currentScreen) go(room ? 'scr-lobby' : 'scr-home');
@@ -1037,7 +1039,7 @@ function updateCamera(dt, now) {
   sky.position.copy(camera.position);
   const wantAds = mouseR && me.alive && def && !def.melee && w.reloadT <= 0 && drawT <= 0.1 && !(def.bolt && def.scope && w.actT > 0.08);
   adsT = clamp(adsT + (wantAds ? dt : -dt) / (def?.ads || 0.17), 0, 1);
-  const zoom = def ? lerp(1, def.zoom, adsT) : 1;
+  const zoom = (def ? lerp(1, def.zoom, adsT) : 1) * (mouseM && me.alive ? 1.2 : 1);
   const targetFov = (inGame ? cfg.fov / zoom + (isSprinting() ? 6 : 0) + slide.roll * 10 : 60);
   if (Math.abs(camera.fov - targetFov) > 0.01) { camera.fov = lerp(camera.fov, targetFov, Math.min(1, dt * 20)); camera.updateProjectionMatrix(); }
   const scoped = def?.scope && adsT > 0.85;
@@ -1775,13 +1777,7 @@ function renderLobbyList() {
 }
 $('btnJoinCode').addEventListener('click', () => { const code = $('codeInput').value.trim(); if (code.length === 4) send({ t: 'join', code }); else toast('Lobby codes are 4 letters.'); });
 $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoinCode').click(); });
-async function loadInfo() {
-  try {
-    const info = await (await fetch('/info')).json();
-    $('lanlist').innerHTML = info.lan.length ? info.lan.map(ip => `<div>http://${ip}:${info.port}</div>`).join('') : '<div>No network found</div>';
-    $('inviteHint').innerHTML = info.lan.length ? `Friend on your Wi-Fi? They open <b>http://${info.lan[0]}:${info.port}</b>, click PLAY, then join with the code above.` : '';
-  } catch {}
-}
+async function loadInfo() {} // (local network addresses are no longer shown in the menus)
 
 // ---------- settings form (create modal + lobby)
 const CHOICES = { bots: [0, 2, 4, 6, 8, 10, 12, 14], difficulty: ['easy', 'normal', 'hard'], scoreLimit: [10, 20, 30, 50], timeLimit: [5, 10, 15, 20], maxPlayers: [2, 4, 6, 8, 12, 16] };
