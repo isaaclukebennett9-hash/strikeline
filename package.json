@@ -1,0 +1,60 @@
+{
+  "name": "strikeline",
+  "productName": "Strikeline",
+  "version": "1.2.0",
+  "description": "Strikeline - multiplayer arena FPS",
+  "author": "Welsh",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "node server.js",
+    "app": "electron .",
+    "dist": "node desktop/prebuild.cjs && node desktop/build.cjs",
+    "release": "node desktop/release.cjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.strikeline.game",
+    "productName": "Strikeline",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "server.js",
+      "shared/**",
+      "public/**",
+      "desktop/*.cjs",
+      "desktop/*.html",
+      "desktop/*.png",
+      "desktop/source.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/bin/cloudflared.exe",
+        "to": "cloudflared.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "desktop/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Strikeline"
+    }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}

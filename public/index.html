@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strikeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="game"></div>
+
+<!-- ============================ HUD ============================ -->
+<div id="hud" class="hidden">
+  <div id="vignette"></div>
+  <div id="lowhp"></div>
+  <div id="scope"><div class="reticle"></div></div>
+  <div id="xh"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><b></b></div>
+  <div id="netgraph"></div>
+  <div id="burnfx"></div><div id="stunfx"></div><div id="flashfx"></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="dmgdirs"></div>
+  <div id="topbar">
+    <div id="lead"><span id="myscore">0</span><small>YOU</small></div>
+    <div id="timer">10:00</div>
+    <div id="lead2"><span id="topscore">0</span><small id="topname">LEADER</small></div>
+    <div id="mapname"></div>
+  </div>
+  <div id="killfeed"></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="health"><div class="label">HEALTH</div><div class="bar"><div id="hpfill"></div></div><div id="hpnum">100</div></div>
+  <div id="ammo"><div id="wname">AR-7 FALCON</div><div><span id="mag">30</span><span id="reserve">/ 180</span></div><div id="slots"></div><div id="nades"></div></div>
+  <div id="modebar"></div>
+  <div id="powerups"></div>
+  <div id="zonebar" class="hidden"><div class="zlabel" id="zlabel">HARDPOINT</div><div class="ztime" id="ztime"></div></div>
+  <div id="ggbar" class="hidden"></div>
+  <div id="uavtag" class="hidden">◉ RADAR ONLINE</div>
+  <div id="xpfeed"></div>
+  <div id="vaulthint" class="hidden">SPACE — CLIMB</div>
+  <div id="reloadbar"><div></div></div>
+  <div id="announce"></div>
+  <div id="subannounce"></div>
+  <div id="chatlog"></div>
+  <input id="chatinput" maxlength="120" placeholder="Say something… (Enter to send, Esc to cancel)" autocomplete="off">
+  <div id="deathscreen" class="hidden">
+    <div class="killedby">ELIMINATED BY</div><div id="killer">—</div><div id="killerweapon"></div>
+    <div id="respawn">Respawning in 3</div><div class="tip">Press <b>Esc</b> to change your loadout</div>
+  </div>
+  <div id="scoreboard" class="hidden"><h2 id="sbTitle">SCOREBOARD</h2><table><thead><tr><th>#</th><th>Player</th><th>Score</th><th>Kills</th><th>Deaths</th><th>Assists</th></tr></thead><tbody></tbody></table></div>
+  <div id="endscreen" class="hidden">
+    <div class="end-title">MATCH OVER</div>
+    <div id="winner"></div>
+    <div id="podium"></div>
+    <table><tbody></tbody></table>
+    <div id="xpsum"></div>
+    <div id="backin"></div>
+  </div>
+</div>
+
+<!-- ============================ MENUS ============================ -->
+<div id="ui">
+  <div class="shade"></div>
+  <header id="topnav">
+    <div class="mini-logo">STRIKE<span>LINE</span></div>
+    <div class="spacer"></div>
+    <div id="netstatus"><i></i><span>Connecting…</span></div>
+    <div id="playerchip"><div class="av"></div><span id="chipname">Player</span></div>
+  </header>
+
+  <!-- HOME -->
+  <section id="scr-home" class="screen active">
+    <div class="home-left">
+      <div class="logo">STRIKE<span>LINE</span></div>
+      <div class="tag">MULTIPLAYER ARENA SHOOTER</div>
+      <div class="menu-buttons">
+        <button class="mbtn primary" data-go="scr-browser"><b>PLAY</b><small>Find a lobby or host your own</small><i>›</i></button>
+        <button class="mbtn soon" id="btnCampaign"><b>CAMPAIGN <span class="soon-tag">COMING SOON</span></b><small>Story missions — in development</small><i>🔒</i></button>
+        <button class="mbtn" data-panel="loadout"><b>ARMORY</b><small>Weapons, unlocks &amp; upgrades</small><i>›</i></button>
+        <button class="mbtn" data-panel="challenges"><b>CHALLENGES</b><small id="chHint">Complete for credits &amp; XP</small><i>›</i></button>
+        <button class="mbtn" data-panel="skins"><b>SKINS</b><small>Weapon finishes &amp; operators</small><i>›</i></button>
+        <button class="mbtn" data-panel="settings"><b>SETTINGS</b><small>Mouse, FOV, audio, graphics</small><i>›</i></button>
+        <button class="mbtn" id="btnFeedback"><b>FEEDBACK</b><small>Report a bug or suggest something</small><i>✎</i></button>
+      </div>
+      <div class="controls-hint">WASD move · Shift sprint · <b>Shift + C slide</b> · Space jump / <b>climb &amp; vault windows</b> · <b>G grenade</b> · R reload · Right-click aim · T chat · Tab scores</div>
+    </div>
+    <div class="home-right">
+      <div class="pv-slot" id="pv-home"></div>
+      <div class="operator-card">
+        <div class="profile-row">
+          <div class="lvl-badge" id="lvlBadge">1</div>
+          <div class="lvl-info"><div class="lvl-top"><b>LEVEL <span id="lvlNum">1</span></b><span id="lvlXp">0 / 400 XP</span></div><div class="xpbar"><div id="xpFill"></div></div></div>
+          <div class="credits" title="Credits — spend in the Armory and Skins"><i>◆</i><span id="creditNum">0</span></div>
+        </div>
+        <label>CALLSIGN</label>
+        <input id="name" maxlength="16" autocomplete="off" spellcheck="false">
+        <div id="loadoutSummary"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVER BROWSER -->
+  <section id="scr-browser" class="screen">
+    <div class="scr-head">
+      <button class="back" data-go="scr-home">‹ BACK</button>
+      <h1>SERVER BROWSER</h1>
+      <div class="spacer"></div>
+      <div class="joincode"><input id="codeInput" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false"><button id="btnJoinCode" class="btn">JOIN BY CODE</button></div>
+      <button id="btnCreate" class="btn primary">+ CREATE LOBBY</button>
+    </div>
+    <div class="browser-body">
+      <div class="lobby-list-wrap">
+        <div class="list-head"><span>LOBBY</span><span>MAP</span><span>PLAYERS</span><span>STATUS</span><span></span></div>
+        <div id="lobbyList"></div>
+      </div>
+      <aside class="invite-box">
+        <h3>PLAY WITH A FRIEND</h3>
+        <p>1. Create a lobby here.</p>
+        <p>2. Your friend opens this address in their browser:</p>
+        <div id="lanlist" class="addr"></div>
+        <p>3. They click <b>PLAY</b> and join your lobby from the list, or type your lobby code.</p>
+        <p class="hint">Not on the same Wi-Fi? Run <code>npx localtunnel --port 3080</code> on this PC and send them the link it prints.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- LOBBY ROOM -->
+  <section id="scr-lobby" class="screen">
+    <div class="scr-head">
+      <button class="back" id="btnLeave">‹ LEAVE</button>
+      <h1 id="lobbyName">Lobby</h1>
+      <div class="spacer"></div>
+      <div class="code-pill" id="codePill" title="Click to copy">LOBBY CODE <b id="lobbyCode">----</b></div>
+    </div>
+    <div class="lobby-grid">
+      <div class="panel">
+        <h3>PLAYERS <span id="playerCount"></span></h3>
+        <div id="memberList"></div>
+        <div class="hint" id="inviteHint"></div>
+      </div>
+      <div class="panel settings-panel">
+        <div class="map-hero"><img id="mapHero" alt=""><div class="map-hero-text"><small>MAP</small><b id="mapHeroName"></b><span id="mapHeroDesc"></span></div></div>
+        <div id="lobbySettings"></div>
+      </div>
+      <div class="panel chat-panel">
+        <h3>LOBBY CHAT</h3>
+        <div id="lobbyChat"></div>
+        <input id="lobbyChatInput" maxlength="120" placeholder="Type a message and press Enter" autocomplete="off">
+      </div>
+    </div>
+    <div class="lobby-bar">
+      <button class="btn ghost" data-panel="loadout">LOADOUT</button>
+      <button class="btn ghost" data-panel="skins">SKINS</button>
+      <div class="spacer"></div>
+      <div id="lobbyStatus"></div>
+      <button id="btnReady" class="btn big">READY UP</button>
+      <button id="btnStart" class="btn primary big">START MATCH</button>
+    </div>
+  </section>
+
+  <!-- PAUSE -->
+  <section id="scr-pause" class="screen">
+    <div class="pause-card">
+      <div class="pause-title" id="pauseTitle">PAUSED</div>
+      <div class="pause-sub" id="pauseSub"></div>
+      <button class="btn primary big wide" id="btnResume">RESUME</button>
+      <div class="pause-row">
+        <button class="btn ghost" data-panel="loadout">LOADOUT</button>
+        <button class="btn ghost" data-panel="skins">SKINS</button>
+        <button class="btn ghost" data-panel="settings">SETTINGS</button>
+      </div>
+      <button class="btn danger wide" id="btnEndMatch">END MATCH (HOST)</button>
+      <button class="btn ghost wide" id="btnQuit">LEAVE LOBBY</button>
+    </div>
+  </section>
+
+  <!-- LOADOUT PANEL -->
+  <section id="pnl-loadout" class="screen">
+    <div class="scr-head"><button class="back panel-back">‹ BACK</button><h1>ARMORY</h1><div class="spacer"></div><span class="hint">Changes apply on your next respawn</span><div class="credits big"><i>◆</i><span class="creditNum">0</span></div></div>
+    <div class="split">
+      <div class="lists">
+        <label>PRIMARY</label><div id="armTabs" class="chips armtabs"></div><div id="primaries" class="wlist"></div>
+        <label>SECONDARY</label><div id="secondaries" class="wlist"></div>
+        <div class="throwrow">
+          <div><label>LETHAL <small>(G)</small></label><div id="lethals" class="wlist small"></div></div>
+          <div><label>TACTICAL <small>(Q)</small></label><div id="tacticals" class="wlist small"></div></div>
+        </div>
+      </div>
+      <div class="preview-col">
+        <div class="pv-slot" id="pv-loadout"></div><div id="wstats"></div>
+        <div id="gsHead" class="gs-head"></div><div id="gunsmith" class="gunsmith"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SKINS PANEL -->
+  <section id="pnl-skins" class="screen">
+    <div class="scr-head"><button class="back panel-back">‹ BACK</button><h1>SKINS</h1><div class="spacer"></div><div class="credits big"><i>◆</i><span class="creditNum">0</span></div></div>
+    <div class="split">
+      <div class="lists">
+        <label>WEAPON FINISH <small>(applies to all your guns)</small></label><div id="wskins" class="skingrid"></div>
+        <label>OPERATOR</label><div id="cskins" class="skingrid"></div>
+      </div>
+      <div class="preview-col"><div class="pv-slot" id="pv-skins"></div><div id="skininfo"></div></div>
+    </div>
+  </section>
+
+  <!-- CHALLENGES PANEL -->
+  <section id="pnl-challenges" class="screen">
+    <div class="scr-head"><button class="back panel-back">‹ BACK</button><h1>CHALLENGES</h1><div class="spacer"></div><div class="credits big"><i>◆</i><span class="creditNum">0</span></div></div>
+    <div class="ch-wrap">
+      <div id="challengeList"></div>
+      <aside class="career panel">
+        <h3>CAREER</h3>
+        <div id="careerStats"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- SETTINGS PANEL -->
+  <section id="pnl-settings" class="screen">
+    <div class="scr-head"><button class="back panel-back">‹ BACK</button><h1>SETTINGS</h1></div>
+    <div class="settings-body">
+      <label>MOUSE SENSITIVITY</label><div class="row"><input type="range" id="sens" min="0.1" max="3" step="0.05"><span id="sensval"></span></div>
+      <label>FIELD OF VIEW</label><div class="row"><input type="range" id="fov" min="65" max="110" step="1"><span id="fovval"></span></div>
+      <label>VOLUME</label><div class="row"><input type="range" id="vol" min="0" max="1" step="0.05"><span id="volval"></span></div>
+      <label>GRAPHICS</label><div id="gfx" class="chips"><button data-g="low">Performance</button><button data-g="high">Quality</button></div>
+      <label class="check"><input type="checkbox" id="invert"> Invert mouse Y</label>
+      <label>SIGHT RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
+      <label>HIP-FIRE CROSSHAIR</label><div id="xhStyle" class="chips"></div><div id="xhColor" class="chips" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- CREATE LOBBY MODAL -->
+  <div id="modal-create" class="modal hidden">
+    <div class="modal-card">
+      <h2>CREATE LOBBY</h2>
+      <label>LOBBY NAME</label>
+      <input id="createName" maxlength="28" autocomplete="off">
+      <div id="createSettings"></div>
+      <label class="check"><input type="checkbox" id="createPrivate"> Private — hidden from the list, join by code only</label>
+      <div class="modal-actions"><button class="btn ghost" id="btnCancelCreate">CANCEL</button><button class="btn primary big" id="btnConfirmCreate">CREATE</button></div>
+    </div>
+  </div>
+  <div id="modal-feedback" class="modal hidden">
+    <div class="modal-card">
+      <h2>FEEDBACK</h2>
+      <label>WHAT SHOULD WE FIX OR ADD?</label>
+      <textarea id="fbText" maxlength="1500" rows="6" placeholder="e.g. the Kodiak sights are too big, add a flamethrower, Downtown stairs are buggy…" style="width:100%;resize:vertical;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:inherit;font:600 16px Rajdhani,sans-serif;padding:10px 12px;outline:none"></textarea>
+      <div id="fbMsg" style="min-height:20px;margin-top:8px;color:var(--muted,#8a93a6);font-weight:600"></div>
+      <div class="modal-actions"><button class="btn ghost" id="btnFbCancel">CLOSE</button><button class="btn primary big" id="btnFbSend">SEND</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="loading" class="hidden"><div class="spinner"></div><div id="loadingText">Connecting…</div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

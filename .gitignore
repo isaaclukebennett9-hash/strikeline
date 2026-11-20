@@ -1,0 +1,7 @@
+node_modules/
+dist/
+desktop/bin/
+desktop/source.json
+release/
+feedback.txt
+*.log

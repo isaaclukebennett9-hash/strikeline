@@ -1,0 +1,35 @@
+// Run before packaging: remembers this project folder (so the app on this PC runs the live code),
+// draws the app icon, and checks the online-hosting tool is present.
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
+
+const root = path.join(__dirname, '..');
+fs.writeFileSync(path.join(__dirname, 'source.json'), JSON.stringify({ source: root, setupDir: path.join(require('os').homedir(), 'StrikelineBuild') }, null, 2));
+
+// --- icon: orange crosshair on a dark rounded square, 256x256 PNG
+const N = 256, px = Buffer.alloc(N * N * 4);
+for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+  const i = (y * N + x) * 4, cx = x - 127.5, cy = y - 127.5, r = Math.hypot(cx, cy);
+  const corner = Math.max(Math.abs(cx) - 88, 0) ** 2 + Math.max(Math.abs(cy) - 88, 0) ** 2 > 40 * 40;
+  let c = corner ? [0, 0, 0, 0] : [16, 20, 30, 255];
+  if (!corner) {
+    const t = y / N; c = [Math.round(14 + 10 * t), Math.round(18 + 8 * t), Math.round(28 + 12 * t), 255];
+    const ring = Math.abs(r - 70) < 9;
+    const bar = (Math.abs(cx) < 7 && Math.abs(cy) > 28 && Math.abs(cy) < 104) || (Math.abs(cy) < 7 && Math.abs(cx) > 28 && Math.abs(cx) < 104);
+    const dot = r < 11;
+    if (ring || bar) c = [255, 122, 26, 255];
+    if (dot) c = [255, 210, 160, 255];
+  }
+  px.set(c, i);
+}
+const raw = Buffer.alloc(N * (N * 4 + 1));
+for (let y = 0; y < N; y++) { raw[y * (N * 4 + 1)] = 0; px.copy(raw, y * (N * 4 + 1) + 1, y * N * 4, (y + 1) * N * 4); }
+const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc = (b) => { let c = 0xffffffff; for (const v of b) c = crcTable[(c ^ v) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const cr = Buffer.alloc(4); cr.writeUInt32BE(crc(td)); return Buffer.concat([len, td, cr]); };
+const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(N, 0); ihdr.writeUInt32BE(N, 4); ihdr[8] = 8; ihdr[9] = 6;
+fs.writeFileSync(path.join(__dirname, 'icon.png'), Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]));
+
+if (!fs.existsSync(path.join(__dirname, 'bin', 'cloudflared.exe'))) { console.error('Missing desktop/bin/cloudflared.exe'); process.exit(1); }
+console.log('Prebuild done.');
