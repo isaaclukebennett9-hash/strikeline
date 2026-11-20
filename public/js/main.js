@@ -546,7 +546,7 @@ hbMat.userData.shared = hbHeadGeo.userData.shared = hbBodyGeo.userData.shared = 
 function addRemote(info) {
   if (info.id === me.id) { myName = info.name; return; }
   let r = remotes.get(info.id);
-  if (r && (r.info.skin !== info.skin || r.info.wskin !== info.wskin || r.info.name !== info.name || r.info.team !== info.team)) { removeRemote(info.id); r = null; }
+  if (r && (r.info.skin !== info.skin || r.info.wskin !== info.wskin || r.info.name !== info.name || r.info.dv !== info.dv || r.info.team !== info.team)) { removeRemote(info.id); r = null; }
   if (r) { r.info = info; return; }
   const model = buildSoldier(info.skin);
   if (info.team >= 0) { // team armband + helmet stripe
@@ -560,7 +560,7 @@ function addRemote(info) {
   model.add(hbHead, hbBody);
   const mate = teamsMode() && info.team === myTeam;
   const tagCol = mate ? '#8fc0ff' : teamsMode() ? '#ff6a6a' : info.bot ? '#ffb27a' : '#ff5a5a';
-  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTagTexture(info.name, tagCol), depthTest: false, transparent: true }));
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTagTexture(info.name, tagCol, !!info.dv), depthTest: false, transparent: true }));
   tag.scale.set(1.6, 0.4, 1); tag.position.y = 2.25; tag.renderOrder = 10;
   model.add(tag);
   const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flash, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
@@ -588,6 +588,12 @@ function setRemoteGun(r, wid) {
   r.gunId = wid;
 }
 const nameOf = id => id === me.id ? myName : (remotes.get(id)?.info.name || '???');
+// developer badge: a gold crown next to the names of players who entered the dev code (checked by the server)
+const DEV_MARK = '<span class="devmark" title="Strikeline developer">\u265B</span>';
+const isDevId = id => id === me.id ? PR.isDev() : !!remotes.get(id)?.info.dv;
+const devTxt = (name, dev) => (dev ? '\u265B ' : '') + name; // plain-text places
+const devHTML = (name, dev) => (dev ? DEV_MARK : '') + esc(name); // HTML places
+const dnameOf = id => devTxt(nameOf(id), isDevId(id));
 
 // ================================================================ fx
 const fx = { parts: [], tracers: [], decals: [], sprites: [], rockets: new Map(), nades: new Map(), tags: new Map() };
@@ -975,6 +981,7 @@ function fireShot(w, now) {
   if (def.flame) SFX.flame?.(); else SFX.shot(def.snd, def.suppressed ? 0.45 : 1, 0);
   if (def.bolt || def.pump) { w.actT = def.bolt || Math.min(0.55, 60 / def.rpm * 0.85); w.actTotal = w.actT; setTimeout(() => SFX.click(), 140); }
   if (def.projectile && vm?.gun.userData.warhead) vm.gun.userData.warhead.visible = false;
+  if (w.ammo <= 0 && def.ping) setTimeout(() => SFX.reloadSfx?.('ping'), 60);           // Garand clip ejects with a ping
   if (w.ammo <= 0 && w.reserve > 0) setTimeout(() => { if (curW() === w && w.ammo <= 0) startReload(); }, 250);
 }
 function melee(w, now) {
@@ -1449,7 +1456,7 @@ function connect() {
   if (location.protocol === 'file:') { setNet(false, 'Open via http://localhost:3080'); return; }
   setNet(false, 'Connecting…');
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  ws.onopen = () => send({ t: 'hello', name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level });
+  ws.onopen = () => send({ t: 'hello', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level });
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     ws = null;
@@ -1563,7 +1570,7 @@ function handle(m) {
     }
     case 'infected':
       if (m.id === me.id) { announce(m.first ? 'PATIENT ZERO' : 'YOU ARE INFECTED', 'Knife the survivors — one hit kills, and you are faster'); SFX.hurt(); }
-      else subAnnounce(`${nameOf(m.id).toUpperCase()} ${m.first ? 'IS PATIENT ZERO' : 'WAS INFECTED'}`);
+      else subAnnounce(`${dnameOf(m.id).toUpperCase()} ${m.first ? 'IS PATIENT ZERO' : 'WAS INFECTED'}`);
       break;
     case 'pick': {
       const pm = world?.pickupMeshes?.[m.id]; if (pm) pm.visible = false;
@@ -1604,7 +1611,7 @@ function handle(m) {
       break;
     case 'airstrike':
       if (m.by === me.id) { announce('AIRSTRIKE INBOUND', 'Bombs away!'); Announcer.say('airstrike'); }
-      else if (teamsMode() && m.team === myTeam) { subAnnounce(`FRIENDLY AIRSTRIKE — ${nameOf(m.by).toUpperCase()}`); Announcer.say('airstrike'); }
+      else if (teamsMode() && m.team === myTeam) { subAnnounce(`FRIENDLY AIRSTRIKE — ${dnameOf(m.by).toUpperCase()}`); Announcer.say('airstrike'); }
       else { announce('ENEMY AIRSTRIKE', 'Take cover!'); Announcer.say('enemyair'); }
       SFX.jet();
       break;
@@ -1758,7 +1765,7 @@ function handle(m) {
     case 'sc': for (const [id, k, d, s, tm, gg, a] of m.s) scores.set(id, [k, d, s, tm, gg, a]); if (m.ts) teamScore = m.ts; if (showBoard) renderScoreboard(); break;
     case 'boom': if (inGame) explosionFx(m.p); break;
     case 'end': showEnd(m); break;
-    case 'chat': chat(m.n, m.m); break;
+    case 'chat': chat(m.n, m.m, m.dv); break;
   }
 }
 
@@ -1772,12 +1779,12 @@ function endGameView() {
 function onKill(m) {
   const fell = m.w === 'fall';
   if (fell && !m.k) m.k = m.v; // plain fall = "self" in the kill feed
-  const kName = m.k ? nameOf(m.k) : 'World', vName = nameOf(m.v), wName = fell ? 'Fall' : WEAPONS[m.w]?.name || m.w;
+  const kName = m.k ? dnameOf(m.k) : 'World', vName = dnameOf(m.v), wName = fell ? 'Fall' : WEAPONS[m.w]?.name || m.w;
   const div = document.createElement('div');
   div.className = 'kf' + (m.k === me.id ? ' me' : m.v === me.id ? ' died' : '');
   const who = (id) => id === me.id ? 'me' : teamsMode() && scores.get(id)?.[3] === myTeam ? 'mate' : 'foe';
-  div.innerHTML = m.k === m.v ? `<span class="${who(m.v)}">${esc(vName)}</span><span class="w">${esc(wName)}</span><span class="self">SELF</span>`
-    : `<span class="${who(m.k)}">${esc(kName)}</span><span class="w">${esc(wName)}</span>${m.h ? '<span class="hs">HS</span>' : ''}<span class="${who(m.v)}">${esc(vName)}</span>`;
+  div.innerHTML = m.k === m.v ? `<span class="${who(m.v)}">${devHTML(nameOf(m.v), isDevId(m.v))}</span><span class="w">${esc(wName)}</span><span class="self">SELF</span>`
+    : `<span class="${who(m.k)}">${m.k ? devHTML(nameOf(m.k), isDevId(m.k)) : 'World'}</span><span class="w">${esc(wName)}</span>${m.h ? '<span class="hs">HS</span>' : ''}<span class="${who(m.v)}">${devHTML(nameOf(m.v), isDevId(m.v))}</span>`;
   const kf = $('killfeed'); kf.prepend(div);
   while (kf.children.length > 6) kf.lastChild.remove();
   setTimeout(() => div.classList.add('out'), 5500);
@@ -1851,10 +1858,10 @@ function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add(
 function hitmarker(cls) { const h = $('hitmarker'); h.className = cls; h.style.opacity = 1; clearTimeout(hmTimer); hmTimer = setTimeout(() => { h.style.opacity = 0; }, cls === 'kill' ? 350 : 150); }
 function announce(text, sub) { const a = $('announce'); a.textContent = text; a.classList.add('show'); clearTimeout(annTimer); annTimer = setTimeout(() => a.classList.remove('show'), 2200); if (sub) subAnnounce(sub); }
 function subAnnounce(text) { const s = $('subannounce'); s.textContent = text; s.classList.add('show'); clearTimeout(subTimer); subTimer = setTimeout(() => s.classList.remove('show'), 1800); }
-function chat(name, msg) {
+function chat(name, msg, dev) {
   for (const id of ['chatlog', 'lobbyChat']) {
     const log = $(id), d = document.createElement('div');
-    if (name) d.innerHTML = `<b>${esc(name)}:</b> ${esc(msg)}`; else { d.className = 'sys'; d.textContent = msg; }
+    if (name) d.innerHTML = `<b>${devHTML(name, dev)}:</b> ${esc(msg)}`; else { d.className = 'sys'; d.textContent = msg; }
     log.appendChild(d);
     if (id === 'chatlog') { while (log.children.length > 7) log.firstChild.remove(); setTimeout(() => { d.style.opacity = 0; }, 9000); setTimeout(() => d.remove(), 10000); }
     else { while (log.children.length > 80) log.firstChild.remove(); log.scrollTop = log.scrollHeight; }
@@ -1890,10 +1897,10 @@ function updateDamageHud(dt) {
   $('vignette').style.opacity = me.alive ? hurtFlash.toFixed(3) : 0;
 }
 function renderScoreboard() {
-  const rows = [...scores.entries()].map(([id, [k, d, s, tm, gg, a]]) => ({ id, k, d, s: s || 0, tm: tm ?? -1, gg: gg || 0, a: a || 0, name: nameOf(id), bot: remotes.get(id)?.info.bot }))
+  const rows = [...scores.entries()].map(([id, [k, d, s, tm, gg, a]]) => ({ id, k, d, s: s || 0, tm: tm ?? -1, gg: gg || 0, a: a || 0, name: nameOf(id), dev: isDevId(id), bot: remotes.get(id)?.info.bot }))
     .sort((a, b) => (teamsMode() ? a.tm - b.tm : 0) || (mode === 'gungame' ? b.gg - a.gg : 0) || b.s - a.s || b.k - a.k);
   $('sbTitle').textContent = `${MODES[mode].name.toUpperCase()}${teamsMode() ? ` — ${teamName(mode, 0)} ${teamScore[0]} : ${teamScore[1]} ${teamName(mode, 1)}` : ''}`;
-  $('scoreboard').querySelector('tbody').innerHTML = rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''} ${r.bot ? 'bot' : ''}"><td>${i + 1}</td><td class="${r.tm >= 0 ? 't' + r.tm : ''}">${esc(r.name)}</td><td>${r.s}</td><td>${mode === 'gungame' ? 'gun ' + (r.gg + 1) : r.k}</td><td>${r.d}</td><td>${r.a}</td></tr>`).join('');
+  $('scoreboard').querySelector('tbody').innerHTML = rows.map((r, i) => `<tr class="${r.id === me.id ? 'me' : ''} ${r.bot ? 'bot' : ''}"><td>${i + 1}</td><td class="${r.tm >= 0 ? 't' + r.tm : ''}">${devHTML(r.name, r.dev)}</td><td>${r.s}</td><td>${mode === 'gungame' ? 'gun ' + (r.gg + 1) : r.k}</td><td>${r.d}</td><td>${r.a}</td></tr>`).join('');
   $('scoreboard').classList.remove('hidden');
 }
 function showEnd(m) {
@@ -1904,11 +1911,11 @@ function showEnd(m) {
   const winner = m.standings.find(s => s[0] === m.winId);
   $('winner').textContent = teamsMode()
     ? (m.winTeam < 0 ? `DRAW — ${m.teamScore[0]} : ${m.teamScore[1]}` : `${won ? 'VICTORY' : 'DEFEAT'} — TEAM ${teamName(mode, m.winTeam)} WINS ${m.teamScore[m.winTeam]} : ${m.teamScore[1 - m.winTeam]}`)
-    : won ? 'VICTORY — YOU WON THE MATCH!' : `${winner ? winner[1] : '—'} wins`;
+    : won ? 'VICTORY — YOU WON THE MATCH!' : `${winner ? devTxt(winner[1], winner[9]) : '—'} wins`;
   $('winner').style.color = teamsMode() && m.winTeam >= 0 ? teamColor(mode, m.winTeam) : '';
-  $('podium').innerHTML = [1, 0, 2].map(i => m.standings[i] ? `<div class="p${i + 1}"><small>#${i + 1}</small><b>${esc(m.standings[i][1])}</b><span>${m.standings[i][5]}</span><small>points</small></div>` : '').join('');
-  $('endscreen').querySelector('tbody').innerHTML = m.standings.slice(0, 10).map(([id, n, k, d, , s, tm, gg, a], i) =>
-    `<tr class="${id === me.id ? 'me' : ''}"><td>${i + 1}</td><td class="${tm >= 0 ? 't' + tm : ''}">${esc(n)}</td><td>${s} pts</td><td>${mode === 'gungame' ? `gun ${gg + 1}` : `${k} K`}</td><td>${d} D</td><td>${a} A</td></tr>`).join('');
+  $('podium').innerHTML = [1, 0, 2].map(i => m.standings[i] ? `<div class="p${i + 1}"><small>#${i + 1}</small><b>${devHTML(m.standings[i][1], m.standings[i][9])}</b><span>${m.standings[i][5]}</span><small>points</small></div>` : '').join('');
+  $('endscreen').querySelector('tbody').innerHTML = m.standings.slice(0, 10).map(([id, n, k, d, , s, tm, gg, a, dv], i) =>
+    `<tr class="${id === me.id ? 'me' : ''}"><td>${i + 1}</td><td class="${tm >= 0 ? 't' + tm : ''}">${devHTML(n, dv)}</td><td>${s} pts</td><td>${mode === 'gungame' ? `gun ${gg + 1}` : `${k} K`}</td><td>${d} D</td><td>${a} A</td></tr>`).join('');
   // progression
   const st = PR.profile.stats;
   st.matches++; if (won) st.wins++;
@@ -1956,7 +1963,7 @@ function levelUp(lvl) {
   const unlocks = PR.newUnlocksAt(lvl).map(k => k.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === k.slice(3))?.name : k.startsWith('op:') ? charSkin(k.slice(3)).name : WEAPONS[k]?.name).filter(Boolean);
   if (inGame) announce(`LEVEL ${lvl}`, unlocks.length ? `Unlocked: ${unlocks.join(', ')}` : 'Level up!');
   toast(`LEVEL UP — you reached level ${lvl}${unlocks.length ? ' · Unlocked ' + unlocks.join(', ') : ''}`);
-  send({ t: 'look', name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: lvl });
+  send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: lvl });
 }
 function challengeToasts(list) {
   for (const c of list) {
@@ -2023,7 +2030,7 @@ function updateHud(now) {
     L1.querySelector('small').textContent = mode === 'gungame' ? `YOU · GUN /${GUNGAME_LADDER.length}` : target ? `YOU /${target}` : 'YOUR KILLS';
     let top = null;
     for (const [id, s] of scores) if (id !== me.id && (!top || s[idx] > top.v)) top = { id, v: s[idx] || 0 };
-    $('topscore').textContent = top ? top.v + (mode === 'gungame' ? 1 : 0) : 0; $('topname').textContent = top ? nameOf(top.id) : '—';
+    $('topscore').textContent = top ? top.v + (mode === 'gungame' ? 1 : 0) : 0; $('topname').textContent = top ? dnameOf(top.id) : '—';
   }
   if (mode === 'hardpoint' && zone) {
     const zb = $('zonebar');
@@ -2207,9 +2214,10 @@ document.addEventListener('keydown', e => {
 // ---------- home
 $('btnCampaign').addEventListener('click', () => { SFX.initAudio(cfg.vol); SFX.click(); toast('Campaign is coming soon — stay tuned!'); });
 $('name').value = cfg.name;
-$('chipname').textContent = cfg.name;
-$('name').addEventListener('input', () => { cfg.name = $('name').value.replace(/[^\w \-\[\]\.!?']/g, '').slice(0, 16) || 'Operator'; $('chipname').textContent = cfg.name; saveCfg(); });
-$('name').addEventListener('change', () => send({ t: 'look', name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin }));
+const setChip = () => { $('chipname').innerHTML = devHTML(cfg.name, PR.isDev()); };
+setChip();
+$('name').addEventListener('input', () => { cfg.name = $('name').value.replace(/[^\w \-\[\]\.!?']/g, '').slice(0, 16) || 'Operator'; setChip(); saveCfg(); });
+$('name').addEventListener('change', () => send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin }));
 function updateChip() { const s = charSkin(cfg.cskin); document.querySelector('#playerchip .av').style.background = `linear-gradient(135deg, ${s.body} 60%, ${s.visor} 60%)`; }
 function renderLoadoutSummary() {
   $('loadoutSummary').innerHTML = `<div><small>PRIMARY</small><b>${WEAPONS[cfg.primary].name}</b></div><div><small>SECONDARY</small><b>${WEAPONS[cfg.secondary].name}</b></div>`;
@@ -2222,7 +2230,7 @@ function renderLobbyList() {
   el.innerHTML = lobbies.map(l => {
     const mapName = l.map === 'random' ? 'Random' : MAPS[l.map]?.name || l.map;
     const full = l.players >= l.max;
-    return `<div class="lobby-row"><div class="lname"><b>${esc(l.name)}<span class="mode-pill">${MODES[l.mode]?.name.toUpperCase() || ''}</span></b><small>Host: ${esc(l.host)} · ${l.bots} bots${l.remote ? " · friend's game" : ''}</small></div>
+    return `<div class="lobby-row"><div class="lname"><b>${esc(l.name)}<span class="mode-pill">${MODES[l.mode]?.name.toUpperCase() || ''}</span></b><small>Host: ${devHTML(l.host, l.hdev)} · ${l.bots} bots${l.remote ? " · friend's game" : ''}</small></div>
       <div class="lmap"><img src="${mapThumb(l.map)}" alt=""><span>${esc(mapName)}</span></div>
       <div class="lplayers">${l.players}/${l.max}</div>
       <div><span class="badge ${l.state === 'lobby' ? 'lobby' : 'playing'}">${l.state === 'lobby' ? 'IN LOBBY' : 'IN MATCH'}</span></div>
@@ -2278,7 +2286,7 @@ function renderLobby() {
   $('memberList').innerHTML = room.members.map(mb => {
     const s = charSkin(mb.skin), isH = mb.id === room.hostId;
     return `<div class="member ${mb.id === me.id ? 'me' : ''}"><div class="av" style="background:linear-gradient(135deg, ${s.body} 55%, ${s.visor} 55%)"></div>
-      <div class="mname"><b><span class="lvl">${mb.level || 1}</span>${esc(mb.name)}</b><small>${isH ? '<span class="tag-host">★ HOST</span>' : s.name.toUpperCase()}${mb.id === me.id ? ' · YOU' : ''}</small></div>
+      <div class="mname"><b><span class="lvl">${mb.level || 1}</span>${devHTML(mb.name, mb.dev)}</b><small>${mb.dev ? '<span class="tag-dev">\u265B DEV</span> · ' : ''}${isH ? '<span class="tag-host">★ HOST</span>' : s.name.toUpperCase()}${mb.id === me.id ? ' · YOU' : ''}</small></div>
       ${isH ? '' : `<span class="rdy ${mb.ready ? 'yes' : ''}">${mb.ready ? 'READY' : 'NOT READY'}</span>`}</div>`;
   }).join('') + (room.settings.bots ? `<div class="member slot">+ ${room.settings.bots} bot${room.settings.bots > 1 ? 's' : ''} will join the match</div>` : '');
   const mapId = room.settings.map;
@@ -2329,13 +2337,13 @@ function tryBuy(key, label) {
   return false;
 }
 function buildArmory() {
-  const tabs = ['all', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special'];
-  $('armTabs').innerHTML = tabs.map(t => `<button data-t="${t}" class="${armTab === t ? 'on' : ''}">${t === 'all' ? 'ALL' : CLASS_NAMES[t].toUpperCase()}</button>`).join('');
+  const tabs = ['all', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special', 'era'];
+  $('armTabs').innerHTML = tabs.map(t => `<button data-t="${t}" class="${armTab === t ? 'on' : ''}">${t === 'all' ? 'ALL' : t === 'era' ? 'WW1 & WW2' : CLASS_NAMES[t].toUpperCase()}</button>`).join('');
   $('armTabs').querySelectorAll('button').forEach(b => b.onclick = () => { armTab = b.dataset.t; buildArmory(); SFX.uiBlip(); });
   const card = (id, selected, small) => {
     const d = WEAPONS[id], open = PR.isUnlocked(id);
     const lvl = d.slot !== 'grenade' && open ? `<span class="mastery">LV ${PR.weaponLevel(id)}</span>` : '';
-    return `<button data-w="${id}" class="${selected ? 'on' : ''} ${open ? '' : 'locked'}">${lvl}<b>${d.name}</b><small>${(small ? d.desc : d.type).toUpperCase()}</small>${open ? '' : `<span class="lk">${lockText(id)}</span>`}</button>`;
+    return `<button data-w="${id}" class="${selected ? 'on' : ''} ${open ? '' : 'locked'}">${lvl}<b>${d.name}</b><small>${(small ? d.desc : d.type).toUpperCase()}${d.era ? ` · ${d.era.toUpperCase()}` : ''}</small>${open ? '' : `<span class="lk">${lockText(id)}</span>`}</button>`;
   };
   const mk = (ids, key, el, small = false) => {
     el.innerHTML = ids.map(id => card(id, cfg[key] === id, small)).join('');
@@ -2348,7 +2356,7 @@ function buildArmory() {
       if (!small) b.onmouseenter = () => { if (previewWeapon === b.dataset.w) return; previewWeapon = b.dataset.w; gsOpen = null; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); renderGunsmith(); };
     });
   };
-  mk(PRIMARIES.filter(id => armTab === 'all' || WEAPONS[id].cls === armTab).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
+  mk(PRIMARIES.filter(id => armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era)).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
   mk(SECONDARIES, 'secondary', $('secondaries'));
   mk(LETHALS, 'lethal', $('lethals'), true);
   mk(TACTICALS, 'tactical', $('tacticals'), true);
@@ -2456,7 +2464,7 @@ function renderChallenges() {
 }
 const submitDevCode = () => {
   const el = $('devcode');
-  if (PR.tryDevCode(el.value)) { toast('Dev skins unlocked!'); SFX.killConfirm(); buildSkins(); }
+  if (PR.tryDevCode(el.value)) { toast('Dev skins and dev badge unlocked!'); SFX.killConfirm(); buildSkins(); setChip(); send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin }); }
   else toast('Wrong dev code');
   el.value = '';
 };
@@ -2516,7 +2524,7 @@ $('buyGo').addEventListener('click', () => { const c = buyCtx; if (!c) return; c
 function applyLook() {
   saveCfg(); buildSkins(); rebuildPreview(); SFX.uiBlip();
   if (me.alive && inGame) equipViewmodel();
-  send({ t: 'look', name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin });
+  send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin });
 }
 
 // ---------- settings

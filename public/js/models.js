@@ -1358,6 +1358,262 @@ function buildGunInner(model, S, att, g) {
       break;
     }
 
+    // ============================================================ WW1 / WW2
+    case 'm1911': {
+      // M1911: blued slide with rear cocking grooves, exposed hammer, grip safety, chequered wood panels
+      prof(g, [[0.036, 0.018], [0.036, 0.054], ['q', 0.036, 0.058, 0.032, 0.058], [-0.15, 0.058], ['q', -0.16, 0.058, -0.16, 0.048], [-0.16, 0.018]], 0.034, M.blued, 0, 0.005);   // slide
+      for (let i = 0; i < 7; i++) box(g, 0.0355, 0.026, 0.0025, M.black, 0, 0.038, 0.006 + i * 0.0045);
+      box(g, 0.003, 0.014, 0.034, M.black, 0.0175, 0.045, -0.04);                   // ejection port
+      cyl(g, 0.007, 0.004, M.black, 0, 0.038, -0.1605);
+      cyl(g, 0.0095, 0.012, M.blued, 0, 0.026, -0.152);                              // barrel bushing
+      prof(g, [[0.04, 0.02], [0.04, 0.004], [0.02, -0.002], [-0.11, -0.002], [-0.154, 0.004], [-0.154, 0.02]], 0.032, M.blued, 0, 0.004);   // frame
+      guard(g, -0.04, 0.0, M.blued);
+      grip(g, -0.002, 0.0, M.blued, 0.03, 0.098, 0.031, 0.046);
+      for (const s of [-1, 1]) prof(g, [[0.006, -0.01], [0.03, -0.088], [0.064, -0.088], [0.044, -0.01]], 0.004, M.wood, s * 0.0165, 0.001);   // wood panels
+      box(g, 0.012, 0.016, 0.012, M.blued, 0, 0.052, 0.04, -0.6);                    // hammer
+      box(g, 0.014, 0.04, 0.012, M.blued, 0, -0.02, 0.05, 0.3);                      // grip safety
+      box(g, 0.004, 0.008, 0.016, M.blued, 0.018, 0.012, -0.03);                     // slide stop
+      ironSights(g, 0.068, 0.02, -0.148, M.dotGreen, 'pistol');
+      muzzleZ = -0.17; muzzleY = 0.038; sightY = 0.066; left = [-0.01, -0.07, 0.0];
+      break;
+    }
+    case 'luger': {
+      // Luger P08: long slim barrel, toggle-lock with round knurled knobs on top, steeply raked grip
+      cyl(g, 0.0085, 0.15, M.blued, 0, 0.042, -0.12, 14);                            // barrel
+      cyl(g, 0.0115, 0.03, M.blued, 0, 0.042, -0.04, 14);                            // barrel shank
+      prof(g, [[0.06, 0.018], [0.06, 0.052], [-0.03, 0.052], [-0.03, 0.03], [-0.05, 0.03], [-0.05, 0.018]], 0.03, M.blued, 0, 0.004);   // receiver
+      { const tg = part('slide', 0, 0.058, 0.03);                                    // toggle (lifts on reload)
+        pcyl(tg, 0.008, 0.06, M.blued, 0, 0.058, 0.03, 12);
+        for (const s of [-1, 1]) { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.01, 12), M.blued); k.rotation.z = Math.PI / 2; k.position.set(s * 0.018, 0, 0.022); tg.add(k); } }
+      prof(g, [[0.07, 0.02], [0.07, 0.0], [-0.04, 0.0], [-0.05, 0.02]], 0.03, M.blued, 0, 0.003);   // frame
+      guard(g, -0.03, 0.002, M.blued);
+      grip(g, 0.0, 0.002, M.blued, 0.06, 0.095, 0.03, 0.05);
+      for (const s of [-1, 1]) prof(g, [[0.008, -0.01], [0.062, -0.085], [0.096, -0.085], [0.046, -0.01]], 0.004, M.wood, s * 0.0165, 0.001);
+      box(g, 0.026, 0.01, 0.02, M.wood, 0, -0.098, 0.064);                           // mag base knob
+      ironSights(g, 0.066, 0.05, -0.19, M.dotGreen, 'pistol');
+      muzzleZ = -0.2; muzzleY = 0.042; sightY = 0.064; left = [-0.01, -0.07, 0.02];
+      break;
+    }
+    case 'mp40': {
+      // MP40: round receiver tube, bakelite lower, long straight mag ahead of the grip, resting bar under the barrel,
+      // underfolding steel stock
+      cyl(g, 0.022, 0.3, S, 0, 0.045, -0.06, 18);                                    // receiver tube (-0.21 .. 0.09)
+      for (let i = 0; i < 6; i++) box(g, 0.046, 0.004, 0.01, M.black, 0, 0.045, -0.15 + i * 0.03);   // ribs
+      prof(g, [[0.09, 0.026], [0.09, -0.004], [0.06, -0.014], [-0.075, -0.014], [-0.09, 0.026]], 0.04, M.polyBlack, 0, 0.005);   // bakelite lower
+      box(g, 0.036, 0.04, 0.04, S, 0, 0.0, -0.12);                                   // mag well
+      magObj = mag(g, -0.12, 0.2, 0.0, 0.026, 0.032, M.dark, -0.02);                // straight 32-round mag
+      cyl(g, 0.011, 0.15, M.dark, 0, 0.045, -0.28, 14);                              // barrel
+      box(g, 0.03, 0.014, 0.03, M.dark, 0, 0.022, -0.33);                            // resting bar
+      cyl(g, 0.016, 0.02, M.dark, 0, 0.045, -0.35, 14); cyl(g, 0.0075, 0.004, M.black, 0, 0.045, -0.3605);
+      box(g, 0.018, 0.026, 0.016, M.dark, 0, 0.068, -0.34);                          // front sight hood base
+      { const bp = part('bolt', -0.03, 0.045, -0.06); pbox(bp, 0.02, 0.012, 0.012, M.steel, -0.032, 0.045, -0.06); }   // cocking knob (left)
+      box(g, 0.003, 0.01, 0.15, M.black, -0.022, 0.045, -0.08);                      // cocking slot
+      triggerGroup(g, 0.035, M.polyBlack, 0.25, -0.012);
+      for (const s of [-1, 1]) box(g, 0.006, 0.008, 0.24, M.dark, s * 0.016, 0.004, 0.21);   // folding stock struts
+      box(g, 0.036, 0.016, 0.02, M.dark, 0, 0.01, 0.09);                             // stock hinge
+      prof(g, [[0.32, 0.02], [0.34, 0.02], [0.34, -0.06], [0.32, -0.06]], 0.04, M.dark, 0, 0.004);   // butt plate
+      box(g, 0.042, 0.06, 0.012, M.grip, 0, -0.02, 0.344);
+      box(g, 0.032, 0.012, 0.03, M.dark, 0, 0.07, 0.04);                             // rear sight base
+      sling(g, 0.02, 0.07, 0.022);
+      irons = { cy: 0.09, zr: 0.04, zf: -0.34 };
+      optic(0.11, -0.05, 0.078, -0.14, 0.04); spot.side = true;
+      muzzleZ = -0.362; muzzleY = 0.045; left = [-0.01, -0.05, -0.12];
+      break;
+    }
+    case 'sten': {
+      // Sten: bare steel tube receiver, perforated barrel shroud, magazine sticking out to the LEFT, skeleton tube stock
+      cyl(g, 0.021, 0.28, M.dark, 0, 0.045, -0.04, 16);                              // receiver tube (-0.18 .. 0.1)
+      cyl(g, 0.018, 0.12, M.dark, 0, 0.045, -0.24, 14);                              // barrel shroud
+      for (let i = 0; i < 4; i++) for (const a of [0.6, 1.6, 2.6, -0.6, -1.6, -2.6]) box(g, 0.006, 0.003, 0.012, M.black, Math.cos(a) * 0.0178, 0.045 + Math.sin(a) * 0.0178, -0.2 - i * 0.026, 0, 0, a - Math.PI / 2);
+      cyl(g, 0.012, 0.04, M.dark, 0, 0.045, -0.32, 12); cyl(g, 0.007, 0.004, M.black, 0, 0.045, -0.3405);
+      box(g, 0.04, 0.03, 0.05, M.dark, -0.03, 0.045, -0.12);                         // mag housing (left)
+      { const mp = magObj = part('mag', -0.05, 0.045, -0.12);                       // side mag
+        pbox(mp, 0.17, 0.026, 0.036, M.dark, -0.13, 0.045, -0.12);
+        pbox(mp, 0.008, 0.03, 0.04, M.black, -0.215, 0.045, -0.12);
+        for (let i = 0; i < 3; i++) pbox(mp, 0.004, 0.028, 0.03, M.black, -0.08 - i * 0.04, 0.045, -0.12); }
+      box(g, 0.03, 0.036, 0.09, M.dark, 0, 0.012, 0.04);                             // trigger housing
+      guard(g, 0.03, -0.006);
+      { const bp = part('bolt', 0.03, 0.045, 0.0); pbox(bp, 0.02, 0.012, 0.012, M.steel, 0.03, 0.045, 0.0); }
+      box(g, 0.003, 0.008, 0.12, M.black, 0.021, 0.045, 0.02);
+      cyl(g, 0.009, 0.24, M.dark, 0, 0.03, 0.21, 10).rotation.x = Math.PI / 2 + 0.12;   // tube stock
+      box(g, 0.04, 0.08, 0.012, M.dark, 0, 0.0, 0.33);                               // butt T
+      box(g, 0.036, 0.012, 0.02, M.dark, 0, 0.068, 0.07); box(g, 0.012, 0.024, 0.01, M.dark, 0, 0.068, -0.29);
+      irons = { cy: 0.085, zr: 0.07, zf: -0.29 };
+      muzzleZ = -0.342; muzzleY = 0.045; left = [-0.06, 0.03, -0.12];
+      break;
+    }
+    case 'mp18': {
+      // MP18: rifle-style wooden stock, round receiver, perforated barrel jacket, side-mounted magazine (left)
+      prof(g, [[-0.16, 0.03], [0.04, 0.03], [0.1, 0.022], [0.34, 0.0], [0.342, -0.094], ['q', 0.33, -0.1, 0.315, -0.098], [0.13, -0.034], [0.08, -0.04], [0.04, -0.032], [-0.16, -0.026]], 0.05, M.wood, 0, 0.007);
+      prof(g, [[0.34, 0.002], [0.352, 0.002], [0.352, -0.098], [0.34, -0.098]], 0.052, M.dark, 0, 0.003);
+      cyl(g, 0.022, 0.28, S, 0, 0.05, -0.02, 16);                                    // receiver
+      cyl(g, 0.021, 0.2, M.dark, 0, 0.05, -0.26, 16);                                // barrel jacket
+      for (let i = 0; i < 5; i++) for (const a of [0.5, 1.5, 2.6, -0.5, -1.5, -2.6]) box(g, 0.007, 0.003, 0.014, M.black, Math.cos(a) * 0.0208, 0.05 + Math.sin(a) * 0.0208, -0.19 - i * 0.032, 0, 0, a - Math.PI / 2);
+      cyl(g, 0.012, 0.03, M.dark, 0, 0.05, -0.375, 12); cyl(g, 0.007, 0.004, M.black, 0, 0.05, -0.391);
+      box(g, 0.036, 0.03, 0.05, S, -0.03, 0.05, -0.13);                              // mag housing (left)
+      { const mp = magObj = part('mag', -0.05, 0.05, -0.13);
+        pbox(mp, 0.16, 0.024, 0.034, M.dark, -0.12, 0.05, -0.13); pbox(mp, 0.008, 0.028, 0.038, M.black, -0.2, 0.05, -0.13); }
+      guard(g, 0.04, -0.03);
+      { const bp = part('bolt', 0.03, 0.05, 0.04); pbox(bp, 0.018, 0.012, 0.012, M.steel, 0.03, 0.05, 0.04); }
+      box(g, 0.026, 0.012, 0.03, M.dark, 0, 0.076, 0.02); box(g, 0.01, 0.022, 0.01, M.dark, 0, 0.074, -0.36);
+      sling(g, -0.05, 0.25);
+      irons = { cy: 0.094, zr: 0.02, zf: -0.36 };
+      muzzleZ = -0.393; muzzleY = 0.05; left = [-0.02, -0.03, -0.2];
+      break;
+    }
+    case 'stg44': {
+      // StG 44: stamped steel receiver, long curved 30-round mag, gas cylinder under the barrel, wooden stock
+      prof(g, [[0.08, 0.014], [0.08, 0.062], ['q', 0.08, 0.072, 0.07, 0.072], [-0.22, 0.072], [-0.24, 0.05], [-0.24, 0.014]], 0.044, S, 0, 0.005);   // upper
+      prof(g, [[0.08, 0.016], [0.08, -0.008], [0.06, -0.014], [-0.06, -0.014], [-0.075, 0.016]], 0.046, S, 0, 0.004);   // trigger housing
+      cyl(g, 0.017, 0.2, S, 0, 0.026, -0.34, 14);                                    // gas cylinder
+      cyl(g, 0.011, 0.28, M.dark, 0, 0.05, -0.37, 14);                               // barrel
+      cyl(g, 0.014, 0.03, M.dark, 0, 0.05, -0.5); cyl(g, 0.0075, 0.004, M.black, 0, 0.05, -0.5155);
+      box(g, 0.03, 0.05, 0.03, M.dark, 0, 0.036, -0.45);                             // front sight / gas block
+      box(g, 0.05, 0.04, 0.05, S, 0, 0.0, -0.1);                                     // mag well
+      magObj = mag(g, -0.1, 0.22, 0.04, 0.028, 0.044, M.dark, -0.012, 0.06);          // long curved mag
+      triggerGroup(g, 0.03, M.wood, 0.3, -0.012);
+      solidStock(g, 0.08, 0.34, 0.064, 0.05, 0.0, -0.07, M.wood, 0.042);
+      box(g, 0.03, 0.016, 0.06, M.dark, 0, 0.078, -0.06);                            // tangent rear sight
+      { const bp = part('bolt', -0.03, 0.05, -0.16); pbox(bp, 0.02, 0.01, 0.012, M.steel, -0.03, 0.05, -0.16); }
+      seams(g, 0.022, [0.03, 0.06], -0.22, 0.07); rivets(g, 0.022, 0.04, [-0.2, -0.14, 0.05]);
+      ejectPort(g, 0.022, 0.05, -0.06, 0.05); sling(g, 0.0, 0.25);
+      irons = { cy: 0.1, zr: -0.06, zf: -0.45 };
+      optic(0.118, -0.1, 0.085, -0.2, 0.04); spot.side = true;
+      under = { y: 0.008, z: -0.32 };
+      muzzleZ = -0.518; muzzleY = 0.05; left = [-0.02, -0.02, -0.3];
+      break;
+    }
+    case 'garand': {
+      // M1 Garand: long wooden stock and upper handguards, receiver with the op-rod handle on the right,
+      // aperture rear sight at the back of the receiver, gas cylinder at the muzzle, en-bloc clip
+      prof(g, [[-0.5, 0.03], [-0.04, 0.03], [0.07, 0.024], [0.13, 0.02], [0.4, 0.002], [0.402, -0.1], ['q', 0.39, -0.108, 0.374, -0.106], [0.17, -0.052], [0.12, -0.066], ['q', 0.1, -0.07, 0.09, -0.05], [0.08, -0.032], [-0.06, -0.03], [-0.5, -0.006]], 0.052, M.wood, 0, 0.007);
+      prof(g, [[0.399, 0.004], [0.41, 0.004], [0.41, -0.104], [0.399, -0.104]], 0.054, M.dark, 0, 0.003);
+      box(g, 0.038, 0.06, 0.2, S, 0, 0.042, 0.0);                                    // receiver
+      box(g, 0.036, 0.018, 0.17, M.wood, 0, 0.06, -0.2); box(g, 0.036, 0.018, 0.12, M.wood, 0, 0.06, -0.39);   // upper handguards
+      cyl(g, 0.011, 0.42, M.dark, 0, 0.045, -0.4); cyl(g, 0.016, 0.06, M.dark, 0, 0.032, -0.6);   // barrel + gas cylinder
+      box(g, 0.054, 0.07, 0.014, M.dark, 0, 0.025, -0.3); box(g, 0.054, 0.06, 0.012, M.dark, 0, 0.03, -0.46);   // bands
+      { const bp = part('bolt', 0.024, 0.04, 0.02); pbox(bp, 0.012, 0.016, 0.03, M.steel, 0.026, 0.04, 0.02); pbox(bp, 0.006, 0.006, 0.2, M.dark, 0.022, 0.03, -0.1); }   // op-rod + handle
+      { const clip = part('mag', 0, 0.06, -0.01); pbox(clip, 0.024, 0.016, 0.05, M.brass, 0, 0.068, -0.01); for (let i = 0; i < 4; i++) pbox(clip, 0.026, 0.004, 0.012, M.dark, 0, 0.074, -0.03 + i * 0.013); }
+      guard(g, 0.06, -0.028);
+      box(g, 0.02, 0.026, 0.02, M.dark, 0, 0.062, -0.63);                            // front sight base
+      box(g, 0.05, 0.012, 0.09, M.dark, 0, -0.03, 0.02);                             // trigger housing
+      sling(g, -0.08, 0.27, 0.024); box(g, 0.02, 0.012, 0.02, M.steel, 0, -0.03, -0.44);
+      irons = { cy: 0.098, zr: 0.085, zf: -0.63 };
+      optic(0.12, 0.0, 0.08, -0.08, 0.06); spot.side = true;
+      muzzleZ = -0.64; muzzleY = 0.045; left = [-0.02, -0.04, -0.32];
+      break;
+    }
+    case 'bar': {
+      // BAR M1918: long steel receiver, wooden stock and gas-tube handguard, 20-round box mag, folded bipod, cone flash hider
+      box(g, 0.05, 0.064, 0.32, S, 0, 0.04, -0.04);                                  // receiver (-0.2 .. 0.12)
+      prof(g, [[-0.2, 0.024], [-0.43, 0.024], ['q', -0.44, 0.024, -0.44, 0.014], [-0.44, -0.012], ['q', -0.44, -0.02, -0.43, -0.02], [-0.2, -0.016]], 0.05, M.wood, 0, 0.006);   // handguard
+      for (let z = -0.42; z < -0.22; z += 0.025) box(g, 0.052, 0.03, 0.006, M.black, 0, 0.004, z);
+      cyl(g, 0.013, 0.36, M.dark, 0, 0.05, -0.38); cyl(g, 0.017, 0.07, M.black, 0, 0.05, -0.59, 14, 0.012);   // barrel + cone
+      cyl(g, 0.012, 0.24, M.dark, 0, 0.02, -0.33);                                   // gas tube
+      for (const s of [-1, 1]) box(g, 0.008, 0.008, 0.24, M.dark, s * 0.014, 0.02, -0.4, 0.05);   // folded bipod
+      box(g, 0.03, 0.02, 0.02, M.dark, 0, 0.036, -0.52);
+      magObj = mag(g, -0.05, 0.12, 0.0, 0.032, 0.07, M.dark, 0.012);
+      triggerGroup(g, 0.07, M.wood, 0.25, 0.008);
+      solidStock(g, 0.12, 0.4, 0.068, 0.055, 0.012, -0.075, M.wood, 0.044);
+      { const bp = part('bolt', -0.03, 0.04, -0.1); pbox(bp, 0.02, 0.014, 0.014, M.steel, -0.032, 0.04, -0.1); }
+      box(g, 0.034, 0.016, 0.04, M.dark, 0, 0.078, 0.08); box(g, 0.012, 0.026, 0.012, M.dark, 0, 0.074, -0.56);
+      seams(g, 0.025, [0.02, 0.06], -0.18, 0.1); rivets(g, 0.025, 0.04, [-0.18, 0.02, 0.1]);
+      ejectPort(g, 0.025, 0.05, -0.04, 0.06); sling(g, -0.02, 0.28);
+      irons = { cy: 0.104, zr: 0.08, zf: -0.56 };
+      optic(0.12, -0.04, 0.086, -0.15, 0.06); spot.side = true;
+      muzzleZ = -0.625; muzzleY = 0.05; left = [-0.02, -0.03, -0.33];
+      break;
+    }
+    case 'mg42': {
+      // MG 42: stamped receiver with a hinged top cover, square perforated barrel jacket with an oval side opening,
+      // muzzle booster, polymer stock, 50-round drum, folded bipod
+      box(g, 0.052, 0.066, 0.28, S, 0, 0.045, -0.02);                                // receiver (-0.16 .. 0.12)
+      { const cv = part('cover', 0, 0.08, 0.1); pbox(cv, 0.054, 0.014, 0.2, S, 0, 0.083, 0.0); pbox(cv, 0.034, 0.012, 0.03, M.dark, 0, 0.094, -0.06); }   // top cover (+ rear sight)
+      box(g, 0.05, 0.05, 0.4, M.dark, 0, 0.05, -0.36);                               // barrel jacket (-0.56 .. -0.16)
+      for (let i = 0; i < 6; i++) for (const s of [-1, 1]) box(g, 0.003, 0.016, 0.03, M.black, s * 0.0255, 0.05, -0.2 - i * 0.05);   // oval holes
+      for (let i = 0; i < 6; i++) box(g, 0.03, 0.003, 0.03, M.black, 0, 0.0755, -0.2 - i * 0.05);
+      box(g, 0.003, 0.03, 0.18, M.black, 0.0255, 0.048, -0.4);                       // barrel change opening
+      cyl(g, 0.022, 0.05, M.black, 0, 0.05, -0.585, 14, 0.014);                      // muzzle booster
+      for (const s of [-1, 1]) box(g, 0.008, 0.008, 0.26, M.dark, s * 0.018, 0.02, -0.42, 0.05);   // folded bipod
+      box(g, 0.05, 0.02, 0.03, M.dark, 0, 0.02, -0.53);
+      { const dm = magObj = part('mag', -0.06, 0.02, -0.06);                        // belt drum (left)
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.05, 20), M.dark); drum.rotation.z = Math.PI / 2; drum.position.set(-0.01, -0.02, 0); dm.add(drum);
+        pbox(dm, 0.03, 0.03, 0.04, M.dark, -0.035, 0.035, -0.06); }
+      triggerGroup(g, 0.06, M.polyBlack, 0.3, 0.012);
+      solidStock(g, 0.12, 0.42, 0.074, 0.06, 0.016, -0.06, M.polyBlack, 0.044);
+      { const bp = part('bolt', 0.035, 0.045, -0.08); pbox(bp, 0.02, 0.016, 0.02, M.steel, 0.036, 0.045, -0.08); }
+      box(g, 0.012, 0.04, 0.012, M.dark, 0, 0.09, -0.53);                            // tall front post base
+      seams(g, 0.026, [0.03], -0.15, 0.1); sling(g, 0.0, 0.3);
+      irons = { cy: 0.11, zr: -0.06, zf: -0.53 };
+      optic(0.125, -0.04, 0.092, -0.14, 0.08);
+      muzzleZ = -0.61; muzzleY = 0.05; left = [-0.02, -0.03, -0.06];
+      break;
+    }
+    case 'lewis': {
+      // Lewis Gun: fat cooling shroud over the barrel, flat pan magazine on top, wooden stock and grip, bipod
+      box(g, 0.05, 0.07, 0.26, S, 0, 0.035, 0.0);                                    // receiver (-0.13 .. 0.13)
+      cyl(g, 0.042, 0.44, M.dark, 0, 0.04, -0.35, 22);                               // cooling shroud
+      for (let i = 0; i < 4; i++) cyl(g, 0.0435, 0.008, M.black, 0, 0.04, -0.17 - i * 0.12, 22);
+      cyl(g, 0.028, 0.05, M.dark, 0, 0.04, -0.59, 18, 0.042);                        // shroud nose
+      cyl(g, 0.012, 0.04, M.dark, 0, 0.04, -0.63);
+      { const pm = magObj = part('mag', 0, 0.1, -0.02);                             // pan magazine
+        const pan = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.03, 26), M.dark); pan.castShadow = true; pm.add(pan);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.036, 12), M.steel); pm.add(hub);
+        for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; pbox(pm, 0.01, 0.034, 0.06, M.black, Math.cos(a) * 0.05, 0.1, -0.02 + Math.sin(a) * 0.05, 0, a, 0); } }
+      box(g, 0.03, 0.03, 0.03, M.dark, 0, 0.075, -0.02);                             // pan post
+      triggerGroup(g, 0.08, M.wood, 0.25, 0.0);
+      solidStock(g, 0.13, 0.42, 0.06, 0.05, 0.004, -0.07, M.wood, 0.044);
+      for (const s of [-1, 1]) box(g, 0.009, 0.009, 0.28, M.dark, s * 0.026, -0.02, -0.46, 0.09);   // bipod
+      { const bp = part('bolt', 0.03, 0.03, 0.04); pbox(bp, 0.02, 0.016, 0.016, M.steel, 0.032, 0.03, 0.04); }
+      box(g, 0.012, 0.07, 0.014, M.dark, 0, 0.11, 0.1); box(g, 0.012, 0.07, 0.012, M.dark, 0, 0.11, -0.56);   // tall sight posts (clear the pan)
+      sling(g, -0.02, 0.3);
+      irons = { cy: 0.15, zr: 0.1, zf: -0.56 };
+      muzzleZ = -0.65; muzzleY = 0.04; left = [-0.02, -0.03, -0.3];
+      break;
+    }
+    case 'trench': {
+      // M97 trench gun: humpback receiver with exposed hammer, ventilated heat shield over the barrel,
+      // tube magazine, ribbed wooden pump, bayonet lug
+      prof(g, [[0.07, 0.0], [0.07, 0.05], [0.04, 0.072], [-0.14, 0.072], [-0.15, 0.0]], 0.044, S, 0, 0.005);   // receiver
+      box(g, 0.012, 0.02, 0.014, S, 0, 0.068, 0.07, -0.5);                           // hammer
+      cyl(g, 0.013, 0.46, M.dark, 0, 0.05, -0.38);                                   // barrel
+      prof(g, [[-0.16, 0.074], [-0.5, 0.074], ['q', -0.51, 0.074, -0.51, 0.06], [-0.51, 0.036], [-0.16, 0.036]], 0.036, M.dark, 0, 0.004);   // heat shield
+      for (let i = 0; i < 7; i++) for (const s of [-1, 1]) box(g, 0.003, 0.014, 0.022, M.black, s * 0.0185, 0.056, -0.19 - i * 0.045);
+      cyl(g, 0.011, 0.36, M.dark, 0, 0.016, -0.32);                                  // tube mag
+      { const pp = part('pump', 0, 0.016, -0.24); pcyl(pp, 0.022, 0.14, M.wood, 0, 0.016, -0.24, 14); for (let i = 0; i < 6; i++) pcyl(pp, 0.0225, 0.006, M.black, 0, 0.016, -0.3 + i * 0.022, 14); }
+      box(g, 0.02, 0.03, 0.03, M.dark, 0, 0.03, -0.53);                              // bayonet lug
+      guard(g, 0.03, 0.0);
+      prof(g, [[0.07, 0.05], [0.12, 0.044], [0.36, 0.026], [0.362, -0.08], ['q', 0.35, -0.088, 0.334, -0.086], [0.14, -0.024], [0.07, 0.0]], 0.046, M.wood, 0, 0.007);   // stock
+      buttPad(g, 0.044, 0.1, -0.026, 0.37);
+      sling(g, -0.03, 0.26);
+      irons = { cy: 0.086, zr: 0.03, zf: -0.5 };
+      muzzleZ = -0.615; muzzleY = 0.05; left = [-0.01, -0.02, -0.24];
+      break;
+    }
+    case 'enfield': {
+      // Lee-Enfield No.4: two-piece wood stock with handguard nearly to the muzzle, 10-round box mag, protected
+      // aperture rear sight on the receiver bridge, front blade with ears
+      prof(g, [[-0.56, 0.03], [-0.04, 0.03], [0.07, 0.024], [0.12, 0.02], [0.39, 0.002], [0.392, -0.1], ['q', 0.38, -0.108, 0.364, -0.106], [0.17, -0.05], [0.12, -0.064], ['q', 0.1, -0.068, 0.09, -0.05], [0.08, -0.032], [-0.06, -0.03], [-0.56, -0.006]], 0.05, M.wood, 0, 0.007);
+      prof(g, [[0.389, 0.004], [0.4, 0.004], [0.4, -0.104], [0.389, -0.104]], 0.052, M.steel, 0, 0.003);
+      box(g, 0.034, 0.016, 0.42, M.wood, 0, 0.054, -0.34);                           // full-length upper handguard
+      cyl(g, 0.019, 0.22, S, 0, 0.042, -0.02);                                       // receiver
+      cyl(g, 0.011, 0.12, M.dark, 0, 0.042, -0.62); cyl(g, 0.016, 0.03, M.dark, 0, 0.042, -0.57);   // muzzle + nose cap
+      for (const zz of [-0.25, -0.45]) box(g, 0.054, 0.068, 0.012, M.dark, 0, 0.024, zz);
+      box(g, 0.034, 0.05, 0.08, M.dark, 0, -0.034, -0.03);                           // box magazine
+      { const bp = part('bolt', 0.02, 0.045, 0.07);
+        pcyl(bp, 0.007, 0.07, M.steel, 0.0, 0.045, 0.06); pbox(bp, 0.045, 0.008, 0.008, M.steel, 0.028, 0.04, 0.075, 0, 0, -0.35);
+        const kn = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), M.steel); kn.position.set(0.032, -0.012, 0.005); bp.add(kn); }
+      guard(g, 0.05, -0.026);
+      for (const s of [-1, 1]) box(g, 0.005, 0.024, 0.02, M.dark, s * 0.012, 0.075, 0.08);   // rear sight protectors
+      box(g, 0.02, 0.022, 0.02, M.dark, 0, 0.06, -0.63);
+      for (const s of [-1, 1]) box(g, 0.004, 0.02, 0.012, M.dark, s * 0.009, 0.076, -0.63);   // front sight ears
+      sling(g, -0.08, 0.26, 0.024);
+      irons = { cy: 0.09, zr: 0.08, zf: -0.63 };
+      optic(0.112, -0.05, 0.077, -0.14, 0.04); spot.side = true;
+      muzzleZ = -0.682; muzzleY = 0.042; left = [-0.02, -0.04, -0.34];
+      break;
+    }
+
     case 'knife': {
       box(g, 0.006, 0.035, 0.2, M.steel, 0, 0.01, -0.13);
       for (let i = 0; i < 6; i++) box(g, 0.007, 0.006, 0.01, M.dark, 0, 0.03, -0.06 - i * 0.016); // serrated spine

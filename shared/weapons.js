@@ -139,6 +139,44 @@ export const WEAPONS = {
     dmg: 38, head: 1.5, rpm: 150, pellets: 2, mag: 8, reserve: 32, reload: 2.2, spread: 0.05, adsSpread: 0.03, moveSpread: 0.01, recoil: 0.04, range: 35,
     falloff: [8, 25, 0.5], speed: 1.03, zoom: 1.15, snd: { f: 650, d: 0.12, b: 210, v: 0.6 } }),
 
+  // =========================================================== WW1 / WW2 (era: shown in their own Armory tab and in their class tab)
+  m1911: W({ id: 'm1911', name: 'M1911', slot: 'secondary', cls: 'pistol', type: 'Pistol', model: 'm1911', era: 'ww2',
+    dmg: 38, head: 1.9, rpm: 300, mag: 7, reserve: 49, reload: 1.5, spread: 0.015, adsSpread: 0.004, moveSpread: 0.022, recoil: 0.038, range: 75,
+    falloff: [16, 45, 0.6], speed: 1.04, zoom: 1.2, ads: 0.13, snd: { f: 2200, d: 0.24, b: 120, v: 0.85 } }),
+  luger: W({ id: 'luger', name: 'Luger P08', slot: 'secondary', cls: 'pistol', type: 'Pistol', model: 'luger', era: 'ww2',
+    dmg: 30, head: 2, rpm: 400, mag: 8, reserve: 56, reload: 1.4, spread: 0.012, adsSpread: 0.003, moveSpread: 0.02, recoil: 0.024, range: 80,
+    falloff: [18, 50, 0.6], speed: 1.05, zoom: 1.25, ads: 0.12, snd: { f: 3000, d: 0.2, b: 150, v: 0.75 } }),
+  mp40: W({ id: 'mp40', name: 'MP40', slot: 'primary', cls: 'smg', type: 'SMG', model: 'mp40', era: 'ww2',
+    dmg: 23, head: 1.5, rpm: 550, auto: true, mag: 32, reserve: 192, reload: 2.2, spread: 0.022, adsSpread: 0.005, moveSpread: 0.012, recoil: 0.008, range: 75,
+    falloff: [14, 40, 0.6], speed: 1.06, zoom: 1.25, ads: 0.15, snd: { f: 2600, d: 0.15, b: 130, v: 0.72 } }),
+  sten: W({ id: 'sten', name: 'Sten Mk II', slot: 'primary', cls: 'smg', type: 'SMG', model: 'sten', era: 'ww2',
+    dmg: 21, head: 1.5, rpm: 560, auto: true, mag: 32, reserve: 192, reload: 2.0, spread: 0.026, adsSpread: 0.007, moveSpread: 0.011, recoil: 0.01, range: 65,
+    falloff: [12, 34, 0.55], speed: 1.1, zoom: 1.2, ads: 0.13, snd: { f: 2500, d: 0.14, b: 125, v: 0.7 } }),
+  mp18: W({ id: 'mp18', name: 'MP18', slot: 'primary', cls: 'smg', type: 'SMG', model: 'mp18', era: 'ww1',
+    dmg: 25, head: 1.5, rpm: 480, auto: true, mag: 32, reserve: 160, reload: 2.6, spread: 0.024, adsSpread: 0.005, moveSpread: 0.013, recoil: 0.011, range: 80,
+    falloff: [16, 44, 0.6], speed: 1.0, zoom: 1.25, ads: 0.17, snd: { f: 2400, d: 0.16, b: 120, v: 0.75 } }),
+  stg44: W({ id: 'stg44', name: 'StG 44', slot: 'primary', cls: 'ar', type: 'Assault Rifle', model: 'stg44', era: 'ww2',
+    dmg: 32, head: 1.8, rpm: 560, auto: true, mag: 30, reserve: 180, reload: 2.5, spread: 0.027, adsSpread: 0.0035, moveSpread: 0.03, recoil: 0.02, range: 150,
+    falloff: [30, 85, 0.72], speed: 0.93, zoom: 1.35, ads: 0.19, snd: { f: 2150, d: 0.24, b: 100, v: 0.92 } }),
+  garand: W({ id: 'garand', name: 'M1 Garand', slot: 'primary', cls: 'ar', type: 'Semi-Auto Rifle', model: 'garand', era: 'ww2', anim: 'clip', ping: true,
+    dmg: 52, head: 2, rpm: 380, mag: 8, reserve: 64, reload: 2.2, spread: 0.026, adsSpread: 0.0015, moveSpread: 0.035, recoil: 0.034, range: 200,
+    falloff: [45, 120, 0.8], speed: 0.92, zoom: 1.5, ads: 0.2, snd: { f: 1800, d: 0.32, b: 88, v: 1.0 } }),
+  bar: W({ id: 'bar', name: 'BAR M1918', slot: 'primary', cls: 'lmg', type: 'Automatic Rifle', model: 'bar', era: 'ww2',
+    dmg: 34, head: 1.8, rpm: 520, auto: true, mag: 20, reserve: 160, reload: 2.5, spread: 0.032, adsSpread: 0.005, moveSpread: 0.04, recoil: 0.022, range: 170,
+    falloff: [35, 95, 0.75], speed: 0.86, zoom: 1.35, ads: 0.23, snd: { f: 1900, d: 0.3, b: 90, v: 0.98 } }),
+  mg42: W({ id: 'mg42', name: 'MG 42', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'mg42', era: 'ww2', anim: 'belt',
+    dmg: 24, rpm: 1150, auto: true, mag: 75, reserve: 150, reload: 4.6, spread: 0.04, adsSpread: 0.008, moveSpread: 0.045, recoil: 0.012, range: 160,
+    falloff: [30, 85, 0.7], speed: 0.8, zoom: 1.3, ads: 0.27, snd: { f: 2600, d: 0.18, b: 110, v: 0.85 } }),
+  lewis: W({ id: 'lewis', name: 'Lewis Gun', slot: 'primary', cls: 'lmg', type: 'LMG', model: 'lewis', era: 'ww1',
+    dmg: 29, rpm: 560, auto: true, mag: 47, reserve: 141, reload: 3.6, spread: 0.036, adsSpread: 0.006, moveSpread: 0.042, recoil: 0.016, range: 160,
+    falloff: [32, 90, 0.72], speed: 0.82, zoom: 1.3, ads: 0.25, snd: { f: 2000, d: 0.26, b: 95, v: 0.92 } }),
+  trench: W({ id: 'trench', name: 'M97 Trench Gun', slot: 'primary', cls: 'shotgun', type: 'Pump Shotgun', model: 'trench', era: 'ww1', anim: 'shells', pump: true, shellTime: 0.48,
+    dmg: 15, head: 1.4, rpm: 95, pellets: 9, mag: 5, reserve: 35, reload: 2.4, spread: 0.07, adsSpread: 0.052, moveSpread: 0.01, recoil: 0.085, range: 38,
+    falloff: [7, 22, 0.32], speed: 1.0, zoom: 1.15, snd: { f: 1300, d: 0.5, b: 66, v: 1.15 } }),
+  enfield: W({ id: 'enfield', name: 'Lee-Enfield No.4', slot: 'primary', cls: 'sniper', type: 'Bolt-Action Rifle', model: 'enfield', era: 'ww2', bolt: 0.55, anim: 'clip',
+    dmg: 92, head: 2.2, rpm: 85, mag: 10, reserve: 40, reload: 2.8, spread: 0.06, adsSpread: 0.0, moveSpread: 0.05, recoil: 0.065, range: 230,
+    falloff: [55, 140, 0.88], speed: 0.97, zoom: 1.6, ads: 0.19, snd: { f: 1750, d: 0.48, b: 72, v: 1.1 } }),
+
   // =========================================================== THROWABLES (G = lethal, Q = tactical)
   frag: W({ id: 'frag', name: 'Frag Grenade', slot: 'grenade', throwable: 'lethal', desc: 'Bounces, explodes after 2.4s', type: 'Grenade', model: 'none',
     dmg: 135, splash: 5.5, fuse: 2.4, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 40, falloff: [40, 41, 1], snd: { f: 900, d: 0.6, b: 55, v: 1.0 } }),
@@ -163,13 +201,15 @@ export const WEAPONS = {
     falloff: [10, 11, 1], speed: 1.15, zoom: 1, snd: { f: 5000, d: 0.08, b: 0, v: 0.3 } }),
 };
 
+for (const id of ['tommy', 'ppsh', 'kar98']) WEAPONS[id].era = 'ww2';
+export const ERA_NAMES = { ww1: 'WW1', ww2: 'WW2' };
 export const CLASS_NAMES = { ar: 'Assault Rifles', smg: 'SMGs', lmg: 'LMGs', shotgun: 'Shotguns', dmr: 'Marksman', sniper: 'Snipers', special: 'Special', pistol: 'Secondaries' };
 export const PRIMARIES = Object.values(WEAPONS).filter(w => w.slot === 'primary').map(w => w.id);
 export const SECONDARIES = Object.values(WEAPONS).filter(w => w.slot === 'secondary').map(w => w.id);
 export const LETHALS = ['frag', 'semtex', 'molotov', 'tknife'];
 export const TACTICALS = ['smoke', 'flash', 'stun'];
 export const THROWABLE_KINDS = ['frag', 'semtex', 'molotov', 'tknife', 'smoke', 'flash', 'stun'];
-export const BOT_WEAPONS = ['falcon', 'vector', 'marksman', 'hammer', 'kestrel', 'tri', 'ak47', 'mp5', 'm249', 'g36c', 'famas', 'scarh', 'ppsh', 'tommy', 'aug', 'galil', 'r4c', 'bizon'];
+export const BOT_WEAPONS = ['falcon', 'vector', 'marksman', 'hammer', 'kestrel', 'tri', 'ak47', 'mp5', 'm249', 'g36c', 'famas', 'scarh', 'ppsh', 'tommy', 'aug', 'galil', 'r4c', 'bizon', 'mp40', 'stg44', 'bar', 'sten'];
 
 export function falloffMult(def, dist) {
   const [a, b, m] = def.falloff;
@@ -186,6 +226,7 @@ const IRONS = {
   viper: 'pistol', magnum: 'pistol', hawk: 'pistol', stinger: 'notch', sawedoff: 'bead', dbarrel: 'bead',
   ppsh: 'ring', mp5: 'ring', tommy: 'aperture', bizon: 'notch', skorpion: 'notch', ak47: 'notch', pkm: 'notch', asval: 'notch',
   hammer: 'notch', breacher: 'ghost', ksg: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
+  m1911: 'pistol', luger: 'pistol', mp40: 'notch', mp18: 'notch', stg44: 'notch', mg42: 'notch', trench: 'bead',
 };
 for (const w of Object.values(WEAPONS)) if (!w.throwable && !w.melee) w.irons = IRONS[w.id] || 'aperture';
 

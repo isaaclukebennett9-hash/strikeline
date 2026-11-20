@@ -101,5 +101,6 @@ export function reloadSfx(kind) {
   else if (kind === 'in') { noiseBurst(o, t, 0.05, 2600, 'bandpass', 4, 1); tone(o, t + 0.01, 0.06, 420, 260, 'square', 0.35); }
   else if (kind === 'bolt') { noiseBurst(o, t, 0.08, 3200, 'highpass', 1, 0.9); noiseBurst(o, t + 0.09, 0.07, 2200, 'bandpass', 3, 0.9); }
   else if (kind === 'shell') { tone(o, t, 0.05, 900, 500, 'triangle', 0.35); noiseBurst(o, t, 0.04, 3000, 'bandpass', 3, 0.6); }
+  else if (kind === 'ping') { tone(o, t, 0.5, 2900, 2700, 'sine', 0.5); tone(o, t, 0.35, 5800, 5400, 'sine', 0.2); }
   else if (kind === 'pin') { tone(o, t, 0.04, 3800, 3000, 'sine', 0.35); noiseBurst(o, t + 0.03, 0.05, 5000, 'highpass', 1, 0.5); }
 }

@@ -139,6 +139,7 @@ const WEAPON_LEVELS = {
   tommy: 13, molotov: 13, famas: 14, scorpion: 15, longbow: 16, aug: 17, sawedoff: 18, bizon: 19,
   thumper: 20, scarh: 21, dbarrel: 22, m249: 23, ak12: 24, kar98: 25, skorpion: 26, tcsg: 27,
   asval: 28, fal: 30, pkm: 32, r4c: 34, dartshotgun: 36, flamer: 38, dartsniper: 40,
+  m1911: 5, mp40: 6, sten: 9, luger: 10, stg44: 12, trench: 14, garand: 16, bar: 20, enfield: 24, mg42: 29, mp18: 33, lewis: 37,
 };
 export const UNLOCKS = {
   ...Object.fromEntries(Object.entries(WEAPON_LEVELS).map(([k, l]) => [k, { level: l }])),
@@ -163,6 +164,7 @@ export const isDev = () => {
   if (devCache === null) { try { devCache = checkCode(localStorage.getItem(DEV_KEY)); } catch { devCache = false; } }
   return devCache;
 };
+export const devCode = () => { try { return isDev() ? localStorage.getItem(DEV_KEY) || '' : ''; } catch { return ''; } };
 export function tryDevCode(code) {
   if (!checkCode(code)) return false;
   try { localStorage.setItem(DEV_KEY, normCode(code)); localStorage.removeItem('strikeline_dev'); } catch {}
@@ -254,7 +256,7 @@ export const ATTACHMENTS = {
     { id: 'sleight', name: 'Sleight of Hand', lvl: 20, pros: ['-30% reload time'], m: { reload: -0.3 } },
   ],
 };
-const NO_UNDER = new Set(['tommy', 'bizon', 'aug', 'ksg', 'kar98', 'pkm', 'tri', 'kestrel', 'longbow', 'breacher', 'hammer', 'dbarrel', 'sawedoff', 'magnum', 'viper', 'hawk', 'stinger']);
+const NO_UNDER = new Set(['sten', 'mp18', 'mp40', 'lewis', 'trench', 'garand', 'enfield', 'mg42', 'bar', 'tommy', 'bizon', 'aug', 'ksg', 'kar98', 'pkm', 'tri', 'kestrel', 'longbow', 'breacher', 'hammer', 'dbarrel', 'sawedoff', 'magnum', 'viper', 'hawk', 'stinger']);
 // Which Gunsmith slots a weapon has
 export function slotsFor(wid) {
   const d = WEAPONS[wid];
