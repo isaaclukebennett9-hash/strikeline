@@ -8,8 +8,10 @@ import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
 import { THEMES, getMaterial, MAT_COLORS, WEAPON_SKINS, CHAR_SKINS, RARITY_COLORS, charSkin, radialSprite, flashSprite, decalTexture, nameTagTexture } from './textures.js';
 import { buildGun, buildWeapon, buildArms, buildSoldier, buildRocket, setReticle, RETICLE_STYLES, RETICLE_COLORS } from './models.js';
 import * as SFX from './audio.js';
+import * as Announcer from './announcer.js';
 import { MODES, MODE_ORDER, TEAM_NAMES, TEAM_COLORS, GUNGAME_LADDER, targetScore, teamName, teamColor, POWER_TIME } from '/shared/modes.js';
 import * as PR from './progress.js';
+import { PERKS, STREAKS, STREAK_IDS, DEFAULT_PERKS, DEFAULT_STREAKS, cleanPerks, cleanStreaks, streakCost, perkInfo } from '/shared/loadout.js';
 
 const $ = id => document.getElementById(id);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -24,6 +26,9 @@ try { Object.assign(cfg, JSON.parse(PR.store.get('strikeline') || '{}')); } catc
 if (!WEAPONS[cfg.primary] || WEAPONS[cfg.primary].slot !== 'primary') cfg.primary = 'falcon';
 if (!WEAPONS[cfg.secondary] || WEAPONS[cfg.secondary].slot !== 'secondary') cfg.secondary = 'viper';
 if (!LETHALS.includes(cfg.lethal)) cfg.lethal = 'frag';
+cfg.perks = cleanPerks(cfg.perks); cfg.streaks = cleanStreaks(cfg.streaks);
+if (cfg.announcer === undefined) cfg.announcer = true;
+Announcer.setEnabled(cfg.announcer); Announcer.setVolume(Math.min(1, cfg.vol * 1.4));
 if (!TACTICALS.includes(cfg.tactical)) cfg.tactical = 'smoke';
 setReticle(cfg.reticle, cfg.reticleColor);
 const saveCfg = () => PR.store.set('strikeline', JSON.stringify(cfg));
@@ -471,6 +476,7 @@ let inGame = false, ws = null, myName = cfg.name, room = null, lobbies = [], onl
 let vmRoll = 0, adsT = 0, drawT = 0, bloom = 0, recoilAcc = 0, shake = 0, kickZ = 0, bobPhase = 0, stepDist = 0, swayX = 0, swayY = 0;
 let sprintLock = 0, meleeAnim = 0, lastShotTime = 0, deathTime = 0, respawnAt = 0, timeLeft = 600, scoreLimit = 30, matchEnded = false, endBackAt = 0;
 const scores = new Map();
+let uavAdvanced = false, jamUntil = 0, myStreaks = [], streakReady = [], myArmor = 0;
 let mode = 'ffa', target = 30, teamScore = [0, 0], myTeam = -1, zone = null, uavUntil = 0, ggWeapon = null, nadesLeft = 2, tacsLeft = 2;
 let stunUntil = 0, burnUntil = 0;
 const smokes = new Map(), fires = new Map(); // active smoke clouds / fire pools from the server
@@ -478,10 +484,20 @@ let matchXP = 0, matchStart = null; const matchXPReasons = {};
 const teamsMode = () => MODES[mode]?.teams;
 const teamOf = id => id === me.id ? myTeam : (remotes.get(id)?.info.team ?? -1);
 const isMate = id => teamsMode() && teamOf(id) === myTeam;
-const makeWeapon = id => { const def = mode === 'gungame' ? PR.attachedDef(id, {}) : PR.attachedDef(id); return { def, ammo: def.mag, reserve: mode === 'gungame' ? 999 : def.reserve, reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
+let lifePerks = [...cfg.perks];
+const hasPerk = id => lifePerks.includes(id);
+const perkDef = (d) => {
+  if (!d || d.melee) return d;
+  d = { ...d };
+  if (hasPerk('quickhands')) { d.reload *= 0.75; if (d.shellTime) d.shellTime *= 0.75; d.swap = true; }
+  if (hasPerk('steadyaim')) { d.spread *= 0.65; d.moveSpread *= 0.8; d.recoil *= 0.85; }
+  if (hasPerk('stopping')) d.dmg *= 1.15;
+  return d;
+};
+const makeWeapon = id => { const def = perkDef(mode === 'gungame' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' ? 999 : def.reserve, reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
 let ddUntil = 0, spdUntil = 0;
 const isZombie = () => mode === 'infected' && myTeam === 1;
-const makeWeapons = () => isZombie() ? ['knife'].map(makeWeapon) : mode === 'gungame' ? [ggWeapon || GUNGAME_LADDER[0], 'knife'].map(makeWeapon)
+const makeWeapons = () => (lifePerks = [...cfg.perks], isZombie()) ? ['knife'].map(makeWeapon) : mode === 'gungame' ? [ggWeapon || GUNGAME_LADDER[0], 'knife'].map(makeWeapon)
   : [PR.isUnlocked(cfg.primary) ? cfg.primary : 'falcon', PR.isUnlocked(cfg.secondary) ? cfg.secondary : 'viper', 'knife'].map(makeWeapon);
 const curW = () => me.weapons[me.slot];
 const isHost = () => room && room.hostId === me.id;
@@ -810,6 +826,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Digit2') switchSlot(1);
   if (e.code === 'Digit3') switchSlot(2);
   if (e.code === 'KeyV') { switchSlot(me.weapons.length - 1); drawT = 0.05; mouseL = true; setTimeout(() => { mouseL = false; }, 60); }
+  if (e.code === 'Digit5' || e.code === 'Digit6' || e.code === 'Digit7') useStreak(myStreaks[+e.code.slice(5) - 5]);
   if (e.code === 'KeyG') throwNade('lethal');
   if (e.code === 'KeyQ') throwNade('tactical');
   if (e.code === 'KeyT' || e.code === 'Enter') { e.preventDefault(); openChat(); }
@@ -1102,7 +1119,7 @@ function updateMovement(dt) {
   let wx = -sy * fwd + cy * str, wz = -cy * fwd - sy * str;
   const wl = Math.hypot(wx, wz); if (wl > 0) { wx /= wl; wz /= wl; }
   const sprint = isSprinting();
-  let speed = (sprint ? 8.4 : me.crouch ? 3.0 : 5.6) * (w ? w.def.speed : 1) * (adsT > 0.5 ? 0.62 : 1);
+  let speed = (sprint ? 8.4 : me.crouch ? 3.0 : 5.6) * (w ? w.def.speed : 1) * (adsT > 0.5 ? 0.62 : 1) * (hasPerk('lightweight') ? 1.07 : 1);
   if (matchEnded) speed *= 0.6;
   if (isZombie()) speed *= 1.25;
   if (performance.now() < spdUntil) speed *= 1.3;
@@ -1145,7 +1162,7 @@ function updateMovement(dt) {
   if (me.onGround && !wasGround && fallVel < -7) { SFX.land(); kickZ += 0.03; }
   // fall damage: starts at a ~4.5 m drop, lethal around 17 m (jump-pad flights don't count)
   if (me.onGround && !wasGround) {
-    if (fallVel < -FALL_SAFE && !padFlight && !matchEnded) { send({ t: 'fall', v: +(-fallVel).toFixed(2) }); kickZ += 0.08; shake = Math.max(shake, 0.25); }
+    if (fallVel < -FALL_SAFE && !padFlight && !matchEnded && !hasPerk('lightweight')) { send({ t: 'fall', v: +(-fallVel).toFixed(2) }); kickZ += 0.08; shake = Math.max(shake, 0.25); }
     padFlight = false;
   }
   wasGround = me.onGround;
@@ -1330,7 +1347,7 @@ function updateRemotes(dt, now) {
         r.losT = 0.15;
         const head = [x, y + 1.7, z], o = camera.position.toArray();
         const d = [head[0] - o[0], head[1] - o[1], head[2] - o[2]], L = Math.hypot(...d);
-        r.tag.visible = r.mate ? L < 120 : L < 45 && !raycastBoxes(o, d.map(v => v / L), L, world.map.query(o[0], o[2], head[0], head[2]));
+        r.tag.visible = r.mate ? L < 120 : !r.info.pk?.includes('coldblood') && L < 45 && !raycastBoxes(o, d.map(v => v / L), L, world.map.query(o[0], o[2], head[0], head[2]));
       }
     } else {
       r.deathT += dt;
@@ -1387,6 +1404,7 @@ function handle(m) {
   const now = performance.now();
   switch (m.t) {
     case 'hi':
+      sendLoadout();
       me.id = m.id; setNet(true, onFriendsGame ? "Online · in a friend's game" : 'Online'); friendLostAt = 0;
       if (pendingJoin) { send({ t: 'join', code: pendingJoin }); pendingJoin = null; }
       // Only the developer's own app (its local server) marks itself as the feedback owner.
@@ -1427,6 +1445,8 @@ function handle(m) {
       mode = m.mode || 'ffa'; target = m.target ?? scoreLimit; teamScore = m.teamScore || [0, 0];
       zone = m.zone ? { x: m.zone[0], z: m.zone[1], r: m.zone[2], state: -1, ttm: 60 } : null;
       uavUntil = 0; matchXP = 0; for (const k in matchXPReasons) delete matchXPReasons[k];
+      streakReady = []; jamUntil = 0; myArmor = 0; sendLoadout(); renderArmor(); leadState = 0;
+      if (m.phase !== 'ended') setTimeout(() => Announcer.say('start'), 1200);
       matchStart = { level: PR.levelInfo().level, credits: PR.profile.credits, wl: Object.fromEntries([...PRIMARIES, ...SECONDARIES].map(w => [w, PR.weaponLevel(w)])) };
       const mine = m.players.find(p => p.id === m.id);
       myTeam = mine ? mine.team : -1;
@@ -1444,6 +1464,8 @@ function handle(m) {
       break;
     }
     case 'xp': {
+      if (m.r === 'FIRST BLOOD') Announcer.say('firstblood');
+      if (m.r === 'PAYBACK') Announcer.say('revenge');
       const gain = Math.max(1, Math.round(m.a * PR.XP_RATE));
       matchXP += gain;
       matchXPReasons[m.r] = (matchXPReasons[m.r] || 0) + gain;
@@ -1493,15 +1515,31 @@ function handle(m) {
       }
       break;
     }
+    case 'jam':
+      if ((m.team >= 0 && m.team === myTeam) || m.by === me.id) { announce('JAMMER ONLINE', 'Enemy minimaps are scrambled'); Announcer.say('jammer'); }
+      else { jamUntil = performance.now() + m.dur * 1000; subAnnounce('YOUR MINIMAP IS BEING JAMMED'); Announcer.say('jammed'); }
+      break;
+    case 'armor': myArmor = m.v; renderArmor(); break;
+    case 'streakready':
+      streakReady = m.ready || [];
+      if (m.id) { announce(`${STREAKS[m.id].name.toUpperCase()} READY`, `Press ${5 + myStreaks.indexOf(m.id)} to use it`); SFX.announce(); Announcer.say('ready'); }
+      renderStreakHud(); break;
+    case 'streak':
+      if (m.id === 'armor' && m.by === me.id) { announce('ARMOR UP', 'Your armour soaks up the next 60 damage'); Announcer.say('armor'); }
+      break;
+    case 'mortar':
+      if (m.by === me.id) { announce('MORTAR BARRAGE', 'Shells incoming on your target'); Announcer.say('mortar'); }
+      else if (!teamsMode() || nameTeam(m.by) !== myTeam) { subAnnounce('ENEMY MORTAR BARRAGE INBOUND'); Announcer.say('enemymortar'); }
+      break;
     case 'airstrike':
-      if (m.by === me.id) { announce('AIRSTRIKE INBOUND', '7 kill streak — bombs away!'); }
-      else if (teamsMode() && m.team === myTeam) subAnnounce(`FRIENDLY AIRSTRIKE — ${nameOf(m.by).toUpperCase()}`);
-      else { announce('ENEMY AIRSTRIKE', 'Take cover!'); }
+      if (m.by === me.id) { announce('AIRSTRIKE INBOUND', 'Bombs away!'); Announcer.say('airstrike'); }
+      else if (teamsMode() && m.team === myTeam) { subAnnounce(`FRIENDLY AIRSTRIKE — ${nameOf(m.by).toUpperCase()}`); Announcer.say('airstrike'); }
+      else { announce('ENEMY AIRSTRIKE', 'Take cover!'); Announcer.say('enemyair'); }
       SFX.jet();
       break;
     case 'uav':
-      if ((m.team >= 0 && m.team === myTeam) || m.by === me.id) { uavUntil = performance.now() + m.dur * 1000; announce('RADAR ONLINE', 'Enemies are revealed on your minimap'); SFX.announce(); }
-      else if (!teamsMode() || m.team !== myTeam) subAnnounce('ENEMY RADAR IS UP');
+      if ((m.team >= 0 && m.team === myTeam) || m.by === me.id) { uavUntil = performance.now() + m.dur * 1000; uavAdvanced = !!m.adv; announce(m.adv ? 'ADVANCED RADAR ONLINE' : 'RADAR ONLINE', 'Enemies are revealed on your minimap'); SFX.announce(); Announcer.say(m.adv ? 'advradar' : 'radar'); }
+      else if (!teamsMode() || m.team !== myTeam) { subAnnounce('ENEMY RADAR IS UP'); Announcer.say('enemyradar'); }
       break;
     case 'lobby': endGameView(); go('scr-lobby'); renderLobby(); break;
     case 'pj': if (!inGame) break;
@@ -1569,7 +1607,9 @@ function handle(m) {
       if (m.ts) teamScore = m.ts;
       if (m.pk && world?.pickupMeshes) for (let i = 0; i < m.pk.length; i++) if (world.pickupMeshes[i]) world.pickupMeshes[i].visible = m.pk[i] === '1';
       if (m.z) zone = { x: m.z[0], z: m.z[1], r: m.z[2], state: m.z[3], ttm: m.z[4] };
+      if (timeLeft > 60 && m.time <= 60 && !matchEnded) Announcer.say('minute');
       timeLeft = m.time;
+      checkLead();
       break;
     }
     case 'spawn':
@@ -1577,7 +1617,7 @@ function handle(m) {
       if (m.id === me.id) {
         me.pos = [...m.p]; me.vel = [0, 0, 0]; me.yaw = m.ry; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false;
         if (m.w) ggWeapon = m.w;
-        me.weapons = makeWeapons(); me.slot = 0; me.streak = 0; recoilAcc = 0; deathTime = 0; slide.t = 0; mantle = null; nadesLeft = 2; tacsLeft = 2; stunUntil = burnUntil = flashUntil = 0;
+        me.weapons = makeWeapons(); me.slot = 0; me.streak = 0; myArmor = 0; renderArmor(); renderStreakHud(); recoilAcc = 0; deathTime = 0; slide.t = 0; mantle = null; nadesLeft = 2; tacsLeft = 2; stunUntil = burnUntil = flashUntil = 0;
         equipViewmodel();
         $('deathscreen').classList.add('hidden');
       } else {
@@ -1681,17 +1721,57 @@ function onKill(m) {
   if (m.v === me.id && m.k !== me.id) { PR.profile.stats.deaths++; PR.saveProfile(); }
   if (m.k === me.id && m.v !== me.id) {
     hitmarker('kill'); SFX.killConfirm();
-    me.streak = m.st;
+    me.streak = m.st; renderStreakHud();
+    if (hasPerk('scavenger')) {
+      for (const w of me.weapons) if (!w.def.melee && w.reserve < 999) w.reserve = Math.min(w.def.reserve * 2, w.reserve + w.def.mag);
+      nadesLeft = Math.min(2, nadesLeft + 1);
+      subAnnounce('SCAVENGER — AMMO REFILLED');
+    }
     const st = PR.profile.stats;
     st.kills++; if (m.h) st.headshots++; st.bestStreak = Math.max(st.bestStreak, m.st);
     PR.profile.wkills[m.w] = (PR.profile.wkills[m.w] || 0) + 1;
     challengeToasts(PR.challengeEvent('kill', { w: m.w, head: !!m.h, mode, map: world?.map.id, sliding: slide.t > 0 || slide.roll > 0.3 }));
     challengeToasts(PR.challengeEvent('streak', {}, m.st));
     const names = { 2: 'DOUBLE KILL', 3: 'TRIPLE KILL', 5: 'KILLING SPREE', 7: 'RAMPAGE', 10: 'UNSTOPPABLE', 15: 'GODLIKE' };
-    if (names[m.st]) { announce(names[m.st], `${m.st} kill streak`); SFX.announce(); }
+    if (names[m.st]) { announce(names[m.st], `${m.st} kill streak`); SFX.announce(); Announcer.say({ 2: 'double', 3: 'triple', 5: 'spree', 7: 'rampage', 10: 'unstoppable', 15: 'godlike' }[m.st], 800); }
     else subAnnounce(`${m.h ? 'HEADSHOT — ' : ''}ELIMINATED ${vName.toUpperCase()}`);
   }
 }
+
+// ================================================================ perks + killstreaks
+const nameTeam = id => scores.get(id)?.[3];
+// "you have the lead" / "lost the lead" (free-for-all: by points; teams: by team score)
+let leadState = 0, leadCheckT = 0;
+function checkLead() {
+  const now = performance.now(); if (now - leadCheckT < 1500 || matchEnded) return; leadCheckT = now;
+  let lead = 0;
+  if (teamsMode()) { if (myTeam >= 0 && teamScore[myTeam] !== teamScore[1 - myTeam]) lead = teamScore[myTeam] > teamScore[1 - myTeam] ? 1 : -1; }
+  else { const mine = scores.get(me.id)?.[2] || 0; const best = Math.max(0, ...[...scores].filter(([id]) => id !== me.id).map(([, s]) => s[2] || 0)); if (mine > 0 || best > 0) lead = mine > best ? 1 : -1; }
+  if (lead === 1 && leadState === -1) Announcer.say('lead', 15000);
+  if (lead === -1 && leadState === 1) Announcer.say('lostlead', 15000);
+  if (lead) leadState = lead;
+}
+function sendLoadout() { myStreaks = [...cfg.streaks]; send({ t: 'loadout', perks: cfg.perks, streaks: cfg.streaks }); renderStreakHud(); }
+function useStreak(id) {
+  if (!id || !inGame || !me.alive) return;
+  const s = STREAKS[id];
+  if (!streakReady.includes(id)) { subAnnounce(`${s.name.toUpperCase()} — ${me.streak || 0}/${streakCost(id, lifePerks)} KILLS`); return; }
+  let aim = null;
+  if (id === 'mortar') {
+    const { f } = camVectors(), o = camera.position.toArray(), d = f.toArray();
+    const hit = raycastBoxes(o, d, 150, world.map.query(Math.min(o[0], o[0] + d[0] * 150), Math.min(o[2], o[2] + d[2] * 150), Math.max(o[0], o[0] + d[0] * 150), Math.max(o[2], o[2] + d[2] * 150)));
+    aim = (hit ? hit.point : o.map((v, i) => v + d[i] * 60)).map(v => +v.toFixed(2)); aim[1] = Math.max(0, aim[1]);
+  }
+  send({ t: 'usestreak', id, aim });
+}
+function renderStreakHud() {
+  const el = $('streakhud'); if (!el) return;
+  el.innerHTML = myStreaks.map((id, i) => {
+    const s = STREAKS[id], cost = streakCost(id, lifePerks), ready = streakReady.includes(id), n = Math.min(cost, me.streak || 0);
+    return `<div class="sk ${ready ? 'ready' : ''}"><kbd>${5 + i}</kbd><b>${s.name}</b><span>${ready ? 'READY' : `${n}/${cost}`}</span></div>`;
+  }).join('');
+}
+function renderArmor() { const el = $('armornum'); if (el) { el.textContent = myArmor > 0 ? `ARMOR ${myArmor}` : ''; el.classList.toggle('hidden', myArmor <= 0); } }
 
 // ================================================================ HUD
 let hmTimer = 0, annTimer = 0, subTimer = 0, toastTimer = 0;
@@ -1748,6 +1828,7 @@ function showEnd(m) {
   matchEnded = true;
   endBackAt = performance.now() + (m.back || 10) * 1000;
   const won = teamsMode() ? m.winTeam === myTeam : m.winId === me.id;
+  Announcer.say(won ? 'win' : 'lose');
   const winner = m.standings.find(s => s[0] === m.winId);
   $('winner').textContent = teamsMode()
     ? (m.winTeam < 0 ? `DRAW — ${m.teamScore[0]} : ${m.teamScore[1]}` : `${won ? 'VICTORY' : 'DEFEAT'} — TEAM ${teamName(mode, m.winTeam)} WINS ${m.teamScore[m.winTeam]} : ${m.teamScore[1 - m.winTeam]}`)
@@ -1897,11 +1978,17 @@ function drawMinimap(now) {
   if (!world) return;
   // Radar killstreak: the minimap zooms out and sweeps, and enemies beyond its edge show as markers on the rim
   // (before, the minimap only covered ~30 m around you, so radar showed almost nobody on the big maps).
-  const uavOn = now < uavUntil;
+  const uavOn = now < uavUntil, uavAdv = uavOn && uavAdvanced;
   const c = $('minimap'), x = c.getContext('2d'), { canvas, H, ms } = world.minimap, k = uavOn ? 1.9 : 3.2;
   x.clearRect(0, 0, 200, 200);
   x.save();
   x.beginPath(); x.arc(100, 100, 100, 0, Math.PI * 2); x.clip();
+  if (now < jamUntil) {                                                              // jammed: static instead of a map
+    x.fillStyle = '#1b2230'; x.fillRect(0, 0, 200, 200);
+    for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(200,220,255,${Math.random() * 0.35})`; x.fillRect(Math.random() * 200, Math.random() * 200, 2 + Math.random() * 10, 2); }
+    x.restore(); x.fillStyle = '#ff6b6b'; x.font = '800 13px Orbitron, sans-serif'; x.textAlign = 'center'; x.fillText('JAMMED', 100, 104); x.textAlign = 'start';
+    return;
+  }
   x.translate(100, 100); x.rotate(me.yaw); x.scale(k / ms, k / ms);
   x.translate(-(me.pos[0] + H) * ms, -(me.pos[2] + H) * ms);
   x.drawImage(canvas, 0, 0);
@@ -1921,7 +2008,8 @@ function drawMinimap(now) {
   const uav = uavOn, rim = [];
   for (const r of remotes.values()) {
     if (!r.alive) continue;
-    if (!r.mate && !uav && now - r.lastFired > 2500) continue;
+    const ghost = !r.mate && r.info.pk?.includes('ghost') && !uavAdv;
+    if (!r.mate && (ghost || !uav) && (ghost || now - r.lastFired > 2500)) continue;
     const p = r.model.position;
     if (uav && !r.mate && Math.hypot(p.x - me.pos[0], p.z - me.pos[2]) * k > 92) { rim.push(p); continue; }
     x.fillStyle = r.mate ? '#5aa2ff' : '#ff3b3b'; x.beginPath(); x.arc((p.x + H) * ms, (p.z + H) * ms, 4.5 * ms / k, 0, Math.PI * 2); x.fill();
@@ -2192,9 +2280,35 @@ function buildArmory() {
   mk(SECONDARIES, 'secondary', $('secondaries'));
   mk(LETHALS, 'lethal', $('lethals'), true);
   mk(TACTICALS, 'tactical', $('tacticals'), true);
+  buildPerkPickers();
   $('wstats').innerHTML = statBars(PR.attachedDef(previewWeapon));
   renderGunsmith();
   updateProfileUI();
+}
+// Perks (one per slot) and killstreaks (pick three). Perks apply from your next life; streaks straight away.
+function buildPerkPickers() {
+  const lvl = PR.levelInfo().level;
+  $('perkRows').innerHTML = [1, 2, 3].map(s => `<div class="perkrow"><span class="pslot">PERK ${s}</span>` + PERKS[s].map(p => {
+    const open = lvl >= p.lvl, on = cfg.perks[s - 1] === p.id;
+    return `<button data-ps="${s}" data-p="${p.id}" class="${on ? 'on' : ''} ${open ? '' : 'locked'}"><b>${p.name}</b><small>${esc(p.desc)}</small>${open ? '' : `<span class="lk">Level ${p.lvl}</span>`}</button>`;
+  }).join('') + '</div>').join('');
+  $('perkRows').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const p = perkInfo(b.dataset.p);
+    if (lvl < p.lvl) { toast(`${p.name} unlocks at level ${p.lvl}`); return; }
+    cfg.perks[+b.dataset.ps - 1] = p.id; saveCfg(); sendLoadout(); buildPerkPickers(); SFX.uiBlip();
+  });
+  $('streakList').innerHTML = STREAK_IDS.map(id => {
+    const s = STREAKS[id], open = lvl >= s.lvl, on = cfg.streaks.includes(id);
+    return `<button data-s="${id}" class="${on ? 'on' : ''} ${open ? '' : 'locked'}"><span class="mastery">${s.kills} KILLS</span><b>${s.name}</b><small>${esc(s.desc).toUpperCase()}</small>${open ? '' : `<span class="lk">Level ${s.lvl}</span>`}</button>`;
+  }).join('');
+  $('streakList').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const id = b.dataset.s, s = STREAKS[id];
+    if (lvl < s.lvl) { toast(`${s.name} unlocks at level ${s.lvl}`); return; }
+    if (cfg.streaks.includes(id)) { if (cfg.streaks.length <= 1) return; cfg.streaks = cfg.streaks.filter(x => x !== id); }
+    else if (cfg.streaks.length >= 3) { toast('You can take three killstreaks: click one of yours to drop it first'); return; }
+    else cfg.streaks = [...cfg.streaks, id].sort((a, b) => STREAKS[a].kills - STREAKS[b].kills);
+    saveCfg(); sendLoadout(); buildPerkPickers(); SFX.uiBlip();
+  });
 }
 // Gunsmith: one row per attachment slot; open a row to pick (attachments unlock with weapon level)
 function renderGunsmith() {
@@ -2289,9 +2403,11 @@ function bindRange(id, key, fmt, onChange) {
 }
 bindRange('sens', 'sens', v => v.toFixed(2));
 bindRange('fov', 'fov', v => v + '°');
-bindRange('vol', 'vol', v => Math.round(v * 100) + '%', () => SFX.setVolume(cfg.vol));
+bindRange('vol', 'vol', v => Math.round(v * 100) + '%', () => { SFX.setVolume(cfg.vol); Announcer.setVolume(Math.min(1, cfg.vol * 1.4)); });
 $('invert').checked = cfg.invert;
 $('invert').addEventListener('change', () => { cfg.invert = $('invert').checked; saveCfg(); });
+$('announcerOn').checked = cfg.announcer;
+$('announcerOn').addEventListener('change', () => { cfg.announcer = $('announcerOn').checked; saveCfg(); Announcer.setEnabled(cfg.announcer); if (cfg.announcer) Announcer.say('ready', 0); });
 const updateGfxChips = () => {
   document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
   $('gfxnote').textContent = (cfg.gfx === 'ultra') !== ULTRA ? 'Restart Strikeline to ' + (ULTRA ? 'turn Ultra off.' : 'turn Ultra on.')

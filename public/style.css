@@ -461,3 +461,24 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 #xpsum .xprew { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; font-weight: 600; }
 #xpsum .xprew span { color: var(--muted); margin-right: 4px; }
 #xpsum .xprew i { font-style: normal; background: rgba(255, 210, 122, 0.14); border: 1px solid rgba(255, 210, 122, 0.4); color: #ffd27a; padding: 2px 8px; }
+
+/* killstreak HUD (bottom left, above health) + armour */
+#streakhud { position: absolute; left: 24px; bottom: 110px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#streakhud .sk { display: flex; align-items: center; gap: 8px; background: rgba(12, 16, 22, 0.62); border: 1px solid rgba(255, 255, 255, 0.12); padding: 3px 10px 3px 4px; font: 700 12px Rajdhani, sans-serif; color: #c9d2de; min-width: 190px; }
+#streakhud .sk kbd { font: 800 11px Orbitron, sans-serif; background: rgba(255, 255, 255, 0.1); padding: 2px 6px; color: #fff; }
+#streakhud .sk b { flex: 1; letter-spacing: 1px; text-transform: uppercase; }
+#streakhud .sk span { font-family: Orbitron, sans-serif; font-size: 11px; color: #8fa0b5; }
+#streakhud .sk.ready { border-color: #ffb347; background: rgba(255, 140, 30, 0.22); color: #fff; animation: pulse 0.8s infinite alternate; }
+#streakhud .sk.ready span { color: #ffd27a; }
+#armornum { position: absolute; left: 24px; bottom: 92px; font: 800 13px Orbitron, sans-serif; letter-spacing: 2px; color: #8fd0ff; text-shadow: 0 0 6px #3a8cff; }
+
+/* Armory: perk rows */
+.perkrows { display: flex; flex-direction: column; gap: 6px; }
+.perkrow { display: grid; grid-template-columns: 58px repeat(3, 1fr); gap: 6px; align-items: stretch; }
+.perkrow .pslot { font: 800 11px Orbitron, sans-serif; color: var(--muted); align-self: center; letter-spacing: 1px; }
+.perkrow button { position: relative; text-align: left; background: var(--panel); border: 1px solid var(--line); color: #e6ebf2; padding: 8px 10px; cursor: pointer; font-family: inherit; }
+.perkrow button b { display: block; font-size: 15px; }
+.perkrow button small { display: block; color: var(--muted); font-size: 12px; line-height: 1.25; margin-top: 2px; }
+.perkrow button.on { border-color: #ff7a1a; background: rgba(255, 122, 26, 0.16); }
+.perkrow button.locked { opacity: 0.5; }
+.perkrow button .lk { position: absolute; top: 6px; right: 8px; font-size: 11px; color: #ffd27a; }

@@ -92,3 +92,14 @@ export function flame(vol = 1, pan = 0) { if (!ctx) return; const t = ctx.curren
 export function flashbang() { if (!ctx) return; const t = ctx.currentTime; const o = out(0.5); noiseBurst(o, t, 0.25, 3000, 'highpass', 0.7, 1); tone(o, t + 0.05, 2.8, 3900, 3700, 'sine', 0.18); }
 export function uiBlip() { if (!ctx) return; const t = ctx.currentTime; tone(out(0.2), t, 0.06, 1200, 1600, 'sine', 0.6); }
 export function announce() { if (!ctx) return; const t = ctx.currentTime, o = out(0.35); tone(o, t, 0.15, 520, 520, 'sawtooth', 0.25); tone(o, t + 0.12, 0.15, 780, 780, 'sawtooth', 0.25); tone(o, t + 0.24, 0.35, 1040, 1040, 'sawtooth', 0.25); }
+// radio squelch before an announcer line
+export function radio() { if (!ctx) return; const t = ctx.currentTime, o = out(0.18); noiseBurst(o, t, 0.09, 2400, 'bandpass', 2, 0.9); tone(o, t + 0.02, 0.05, 1800, 1400, 'square', 0.25); }
+// reload sounds: mag out / mag in / bolt / shell
+export function reloadSfx(kind) {
+  if (!ctx) return; const t = ctx.currentTime, o = out(0.32);
+  if (kind === 'out') { noiseBurst(o, t, 0.06, 1800, 'bandpass', 3, 0.8); tone(o, t, 0.05, 700, 400, 'triangle', 0.4); }
+  else if (kind === 'in') { noiseBurst(o, t, 0.05, 2600, 'bandpass', 4, 1); tone(o, t + 0.01, 0.06, 420, 260, 'square', 0.35); }
+  else if (kind === 'bolt') { noiseBurst(o, t, 0.08, 3200, 'highpass', 1, 0.9); noiseBurst(o, t + 0.09, 0.07, 2200, 'bandpass', 3, 0.9); }
+  else if (kind === 'shell') { tone(o, t, 0.05, 900, 500, 'triangle', 0.35); noiseBurst(o, t, 0.04, 3000, 'bandpass', 3, 0.6); }
+  else if (kind === 'pin') { tone(o, t, 0.04, 3800, 3000, 'sine', 0.35); noiseBurst(o, t + 0.03, 0.05, 5000, 'highpass', 1, 0.5); }
+}
