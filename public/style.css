@@ -254,12 +254,22 @@ input[type=range] { width: 320px; accent-color: var(--accent); }
 #burnfx { background: radial-gradient(ellipse at center, transparent 45%, rgba(255,110,20,0.55) 100%); }
 #netgraph .bad { color: #ff6a6a; } #netgraph .warn { color: #ffd36a; } #netgraph .good { color: #5cff9d; }
 #mapname { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; background: none !important; border: none !important; font-size: 13px; letter-spacing: 3px; color: var(--muted); white-space: nowrap; font-weight: 700; }
-#killfeed { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
-#killfeed .kf { background: var(--panel); padding: 4px 10px; font-size: 16px; font-weight: 600; border-left: 3px solid transparent; animation: kfIn .25s ease-out; }
-#killfeed .kf.me { border-left-color: var(--cyan); background: rgba(46, 230, 255, 0.15); }
-#killfeed .kf .w { color: var(--muted); margin: 0 8px; font-size: 13px; }
-#killfeed .kf .hs { color: var(--red); font-size: 12px; margin-right: 6px; }
-@keyframes kfIn { from { transform: translateX(30px); opacity: 0; } }
+/* kill feed: left side under the minimap */
+#killfeed { position: absolute; top: 214px; left: 16px; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+#killfeed .kf { display: flex; align-items: center; gap: 8px; padding: 5px 34px 5px 11px; font: 700 15px Rajdhani, sans-serif; letter-spacing: .4px; text-shadow: 0 1px 2px #000;
+  background: linear-gradient(90deg, rgba(10, 13, 20, 0.9), rgba(10, 13, 20, 0.6) 70%, rgba(10, 13, 20, 0)); border-left: 3px solid rgba(255, 255, 255, 0.28);
+  animation: kfIn .28s cubic-bezier(.2, .9, .3, 1.2); transition: opacity .5s, transform .5s; }
+#killfeed .kf.me { border-left-color: var(--accent); background: linear-gradient(90deg, rgba(255, 122, 26, 0.32), rgba(10, 13, 20, 0.6) 70%, rgba(10, 13, 20, 0)); }
+#killfeed .kf.died { border-left-color: var(--red); background: linear-gradient(90deg, rgba(255, 59, 74, 0.28), rgba(10, 13, 20, 0.6) 70%, rgba(10, 13, 20, 0)); }
+#killfeed .kf.out { opacity: 0; transform: translateX(-14px); }
+#killfeed .kf .me { color: var(--cyan); }
+#killfeed .kf .mate { color: #8fc0ff; }
+#killfeed .kf .foe { color: #ff8a80; }
+#killfeed .kf .w { font: 700 10px Orbitron, sans-serif; letter-spacing: 1.5px; text-transform: uppercase; color: #d6dce8; text-shadow: none;
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); padding: 3px 7px; clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+#killfeed .kf .hs { font: 900 10px Orbitron, sans-serif; letter-spacing: 1px; color: #fff; background: var(--red); padding: 3px 5px; text-shadow: none; }
+#killfeed .kf .self { font: 700 11px Orbitron, sans-serif; letter-spacing: 1.5px; color: var(--muted); }
+@keyframes kfIn { from { transform: translateX(-28px); opacity: 0; } }
 #minimap { position: absolute; top: 16px; left: 16px; width: 180px; height: 180px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); background: rgba(10, 12, 18, 0.65); box-shadow: 0 0 20px rgba(0,0,0,0.5); }
 #health { position: absolute; left: 24px; bottom: 24px; width: 280px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%); }
 #health .label { font-size: 12px; letter-spacing: 2px; color: var(--muted); font-weight: 700; }
@@ -354,6 +364,10 @@ tr.bot td:nth-child(2) { color: var(--muted); }
 .pips i { flex: 1; height: 5px; background: rgba(255,255,255,0.1); }
 .pips i.on { background: var(--accent); }
 .skingrid button.locked { opacity: 0.7; }
+.devbox { margin-top: 14px; }
+.devrow { display: flex; gap: 8px; max-width: 360px; }
+.devrow input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--line-2); color: var(--text); padding: 8px 10px; font: 600 15px Rajdhani, sans-serif; letter-spacing: 2px; }
+.devrow button { background: rgba(57, 255, 156, 0.12); border: 1px solid #39ff9c; color: #39ff9c; padding: 8px 16px; font: 700 13px Orbitron, sans-serif; letter-spacing: 2px; }
 .skingrid button .lk { display: block; font-size: 11px; color: var(--accent-2); font-weight: 700; margin-top: 2px; }
 .ch-wrap { display: flex; gap: 22px; align-items: flex-start; }
 #challengeList { flex: 1; display: flex; flex-direction: column; gap: 10px; }

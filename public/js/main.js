@@ -1403,12 +1403,14 @@ function onKill(m) {
   if (fell && !m.k) m.k = m.v; // plain fall = "self" in the kill feed
   const kName = m.k ? nameOf(m.k) : 'World', vName = nameOf(m.v), wName = fell ? 'Fall' : WEAPONS[m.w]?.name || m.w;
   const div = document.createElement('div');
-  div.className = 'kf' + (m.k === me.id || m.v === me.id ? ' me' : '');
-  div.innerHTML = m.k === m.v ? `<span>${esc(vName)}</span><span class="w">[${esc(wName)}]</span><span>self</span>`
-    : `<span>${esc(kName)}</span><span class="w">[${esc(wName)}]</span>${m.h ? '<span class="hs">HEADSHOT</span>' : ''}<span>${esc(vName)}</span>`;
+  div.className = 'kf' + (m.k === me.id ? ' me' : m.v === me.id ? ' died' : '');
+  const who = (id) => id === me.id ? 'me' : teamsMode() && scores.get(id)?.[3] === myTeam ? 'mate' : 'foe';
+  div.innerHTML = m.k === m.v ? `<span class="${who(m.v)}">${esc(vName)}</span><span class="w">${esc(wName)}</span><span class="self">SELF</span>`
+    : `<span class="${who(m.k)}">${esc(kName)}</span><span class="w">${esc(wName)}</span>${m.h ? '<span class="hs">HS</span>' : ''}<span class="${who(m.v)}">${esc(vName)}</span>`;
   const kf = $('killfeed'); kf.prepend(div);
   while (kf.children.length > 6) kf.lastChild.remove();
-  setTimeout(() => div.remove(), 6000);
+  setTimeout(() => div.classList.add('out'), 5500);
+  setTimeout(() => div.remove(), 6100);
   if (m.v === me.id) {
     me.alive = false; me.hp = 0; deathTime = performance.now(); respawnAt = deathTime + 3500; ddUntil = spdUntil = 0;
     mouseL = mouseR = false;
@@ -1861,7 +1863,7 @@ function statBars(def) {
     rows.map(([n, v]) => `<div class="stat"><span>${n}</span><div class="sb"><div style="width:${(v * 100).toFixed(0)}%"></div></div></div>`).join('');
 }
 let previewWeapon = cfg.primary, armTab = 'all', gsOpen = null;
-const lockText = key => { const u = PR.UNLOCKS[key]; if (!u) return ''; return u.price ? `◆${u.price}${u.level > 1 ? ` · needs level ${u.level}` : ''}` : `🔒 Level ${u.level}`; };
+const lockText = key => { const u = PR.UNLOCKS[key]; if (!u) return ''; if (u.dev) return '🔒 DEV ONLY'; return u.price ? `◆${u.price}${u.level > 1 ? ` · needs level ${u.level}` : ''}` : `🔒 Level ${u.level}`; };
 function tryBuy(key, label) {
   const u = PR.UNLOCKS[key];
   if (PR.buy(key)) { toast(`Unlocked ${label}!`); SFX.killConfirm(); updateProfileUI(); return true; }
@@ -1938,6 +1940,14 @@ function renderChallenges() {
     ['Best streak', s.bestStreak], ['Matches', s.matches], ['Wins', s.wins], ['Challenges done', PR.profile.done]].map(([a, b]) => `<div class="row2"><span>${a}</span><b>${b}</b></div>`).join('');
   updateProfileUI();
 }
+const submitDevCode = () => {
+  const el = $('devcode');
+  if (PR.tryDevCode(el.value)) { toast('Dev skins unlocked!'); SFX.killConfirm(); buildSkins(); }
+  else toast('Wrong dev code');
+  el.value = '';
+};
+$('devgo').onclick = submitDevCode;
+$('devcode').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') submitDevCode(); });
 function buildSkins() {
   const card = (s, key, dataAttr, sw, selected) => {
     const open = PR.isUnlocked(key), u = PR.UNLOCKS[key];
@@ -1948,6 +1958,7 @@ function buildSkins() {
   const pickSkin = (key, label, apply) => {
     if (!PR.isUnlocked(key)) {
       const u = PR.UNLOCKS[key];
+      if (u?.dev) { toast(`${label} is a dev skin — enter the dev code below`); $('devcode').focus(); return; }
       if (u?.level && PR.levelInfo().level < u.level) { toast(`${label} needs level ${u.level} (then ◆${u.price})`); return; }
       if (!(u?.price && confirm(`Buy ${label} for ◆${u.price}? You have ◆${PR.profile.credits}.`) && tryBuy(key, label))) return;
     }
@@ -1955,7 +1966,8 @@ function buildSkins() {
   };
   $('wskins').querySelectorAll('button').forEach(b => b.onclick = () => pickSkin('ws:' + b.dataset.s, WEAPON_SKINS.find(s => s.id === b.dataset.s).name, () => { cfg.wskin = b.dataset.s; }));
   $('cskins').querySelectorAll('button').forEach(b => b.onclick = () => pickSkin('op:' + b.dataset.c, charSkin(b.dataset.c).name, () => { cfg.cskin = b.dataset.c; }));
-  const ws_ = WEAPON_SKINS.find(s => s.id === cfg.wskin), cs = charSkin(cfg.cskin);
+  $('devbox').classList.toggle('hidden', PR.isDev());
+  const ws_ = WEAPON_SKINS.find(s => s.id === cfg.wskin) || WEAPON_SKINS[0], cs = charSkin(cfg.cskin);
   $('skininfo').innerHTML = `<span style="color:${RARITY_COLORS[ws_.rarity]}">${ws_.name}</span> · <span style="color:${RARITY_COLORS[cs.rarity]}">${cs.name}</span>`;
   updateChip();
 }

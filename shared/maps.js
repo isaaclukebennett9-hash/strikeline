@@ -134,7 +134,19 @@ function building(c, o) {
       }
     } else for (const [side, axis, a0, a1, fixed, center, len] of sides) {
       const doors = f === 0 ? doorOps(side) : [];
-      const ops = [...doors, ...winOps(len, doors)].map(op => ({ ...op, a: op.a + center, b: op.b + center }));
+      // no windows that open straight onto the staircase (north wall / back of the side walls) or onto a partition wall
+      const stairsHere = f < flights, sx1 = sx + run + 0.1;
+      const px = o.partition !== undefined ? x + o.partition : null, pzEnd = flights > 0 ? iz1 - 2.5 : iz1;
+      const blocked = (wa, wb) => {
+        if (side === 's' || side === 'n') {
+          if (side === 'n' && stairsHere && wb > sx - 0.4 && wa < sx1 + 0.4) return true;
+          if (px !== null && wb > px - 0.5 && wa < px + 0.5 && (side === 's' || pzEnd >= iz1 - 0.01)) return true;
+          return false;
+        }
+        return stairsHere && wb > iz1 - 2.6;
+      };
+      const wins = winOps(len, doors).filter(op => !blocked(op.a + center, op.b + center));
+      const ops = [...doors, ...wins].map(op => ({ ...op, a: op.a + center, b: op.b + center }));
       wallRun(c, axis, a0, a1, fixed, y, fh, ops, m);
     }
     if (f > 0) { slab(c, x0, z0, x1, z1, y, fm, holes[f]); band(c, x0, z0, x1, z1, y - 0.34, y + 0.05, 0.08, 'trim'); }
@@ -409,6 +421,31 @@ function tank(c, x, z, rot) {
   [w, d] = S(0.28, 3.8); push(c.deco, B(rot ? x - 2.6 : x, rot ? z : z - 2.6, w, d, 0.28, 'tank', 2.0));
   push(c.deco, B(x + (rot ? 0.4 : 0.5), z + (rot ? 0.5 : 0.8), 0.6, 0.6, 0.35, 'metal_dark', 2.6));
 }
+// Army cargo truck facing -z: hood + cab with windows, canvas-covered cargo bed, six wheels, bumper and lights.
+function armyTruck(c, x, z) {
+  const zf = z - 3.7; // front bumper line
+  push(c.boxes, R(x - 1.05, 0.35, zf + 0.15, x + 1.05, 0.95, z + 3.5, 'metal_dark'));            // chassis
+  for (const dz of [0.95, 4.6, 5.95]) for (const s of [-1, 1])                                   // wheels + hubs
+    { push(c.deco, B(x + s * 1.0, zf + dz, 0.38, 1.0, 1.0, 'tire')); push(c.deco, B(x + s * 1.2, zf + dz, 0.04, 0.4, 0.4, 'metal', 0.3)); }
+  push(c.boxes, R(x - 1.05, 0.95, zf + 0.15, x + 1.05, 1.75, zf + 1.35, 'tank'));                // hood
+  push(c.deco, R(x - 0.7, 1.0, zf + 0.11, x + 0.7, 1.6, zf + 0.15, 'metal_dark'));                // grille
+  for (const s of [-1, 1]) push(c.deco, B(x + s * 0.85, zf + 0.12, 0.22, 0.04, 0.16, 'headlight', 1.35));
+  push(c.boxes, R(x - 1.15, 0.45, zf, x + 1.15, 0.75, zf + 0.15, 'metal_dark'));                  // bumper
+  push(c.boxes, R(x - 1.15, 0.95, zf + 1.35, x + 1.15, 2.85, zf + 3.1, 'tank'));                  // cab
+  push(c.deco, R(x - 0.95, 2.0, zf + 1.31, x + 0.95, 2.65, zf + 1.35, 'car_glass'));             // windscreen
+  push(c.deco, R(x - 0.06, 2.0, zf + 1.29, x + 0.06, 2.65, zf + 1.35, 'tank'));                  // centre pillar
+  for (const s of [-1, 1]) {
+    push(c.deco, R(x + s * 1.15 - 0.02, 1.95, zf + 1.6, x + s * 1.15 + 0.02, 2.6, zf + 2.75, 'car_glass')); // side windows
+    push(c.deco, R(x + s * 1.15 - 0.02, 1.0, zf + 2.7, x + s * 1.15 + 0.02, 1.85, zf + 2.75, 'metal_dark')); // door seam
+    push(c.deco, B(x + s * 1.3, zf + 1.55, 0.06, 0.06, 0.25, 'metal_dark', 2.3));                         // mirror
+  }
+  push(c.deco, R(x - 1.17, 2.85, zf + 1.33, x + 1.17, 2.92, zf + 3.12, 'metal_dark'));            // cab roof cap
+  push(c.boxes, R(x - 1.2, 0.95, zf + 3.2, x + 1.2, 1.3, z + 3.6, 'tank'));                       // cargo bed floor
+  push(c.boxes, R(x - 1.2, 1.3, zf + 3.2, x + 1.2, 3.05, z + 3.6, 'tent'));                       // canvas cover
+  for (let k = 0; k < 4; k++) { const rz = zf + 3.35 + k * ((z + 3.45 - (zf + 3.35)) / 3);         // cover ribs
+    push(c.deco, R(x - 1.24, 1.3, rz - 0.05, x + 1.24, 3.09, rz + 0.05, 'metal_dark')); }
+  for (const s of [-1, 1]) push(c.deco, B(x + s * 0.8, z + 3.62, 0.25, 0.04, 0.12, 'taillight', 1.05));
+}
 function watchtower(c, x, z, sdir) {
   const H = 4.6;
   for (const [dx, dz] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]]) push(c.boxes, B(x + dx, z + dz, 0.25, 0.25, H + 2.4, 'wood'));
@@ -503,8 +540,8 @@ function militaryBase() {
     doors: { s: [{ c: 0, w: 9, h: 5.6 }], e: [2] }, winY: [4.8, 6.0], winGap: 5 });
   // jet inside the hangar
   push(q.boxes, B(-22, 37, 1.8, 11, 1.7, 'jet', 0.9));
-  push(q.deco, R(-29, 1.4, 36.5, -15, 1.6, 39.5, 'jet'));
-  push(q.deco, B(-22, 41.8, 0.25, 1.6, 2.4, 'jet', 2.4)); push(q.deco, R(-24.5, 2.2, 41.3, -19.5, 2.35, 42.6, 'jet'));
+  push(q.boxes, R(-29, 1.4, 36.5, -15, 1.6, 39.5, 'jet')); // wings (solid)
+  push(q.boxes, B(-22, 41.8, 0.25, 1.6, 2.4, 'jet', 2.4)); push(q.boxes, R(-24.5, 2.2, 41.3, -19.5, 2.35, 42.6, 'jet')); // tail fin + tailplane
   push(q.deco, B(-22, 31.9, 1.2, 1.4, 0.8, 'car_glass', 2.2));
   for (const [dx, dz] of [[0, 33], [-1.5, 38.5], [1.5, 38.5]]) push(q.deco, B(-22 + dx, dz, 0.3, 0.3, 0.9, 'tire'));
   crate(q, -32, 30); crate(q, -30.7, 30.2, 1.0); crate(q, -32, 30, 1.0, 1.2);
@@ -513,7 +550,7 @@ function militaryBase() {
   // tents, vehicles, fuel, sandbags
   for (const x of [4, 10]) { push(q.boxes, B(x, 22, 4.5, 4, 2.0, 'tent')); push(q.deco, B(x, 22, 4.7, 0.5, 0.6, 'tent', 2.0)); }
   tank(q, 36, 14, 0); tank(q, -40, 12, 1);
-  push(q.boxes, B(30, 24, 2.4, 6.4, 1.8, 'tank', 0.4)); push(q.boxes, B(30, 20.6, 2.3, 1.6, 1.3, 'car_glass', 1.3));
+  armyTruck(q, 30, 23.5);
   for (const x of [46, 50.5]) { push(q.boxes, B(x, 32, 3.4, 3.4, 3.6, 'fueltank')); push(q.deco, B(x, 32, 3.6, 3.6, 0.2, 'metal_dark', 3.6)); }
   sandbags(q, -8, 18, 6, 0.9); sandbags(q, 12, 12, 0.9, 6); sandbags(q, -26, 16, 0.9, 5); sandbags(q, 26, 6, 6, 0.9);
   container(q, -46, 26, 0, 'container_green'); container(q, -46, 26, 0, 'container_blue', 2.6); container(q, -41, 28, 0, 'container_red');

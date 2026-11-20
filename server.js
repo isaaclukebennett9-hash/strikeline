@@ -71,6 +71,7 @@ const server = http.createServer((req, res) => {
 // ------------------------------------------------------------------ helpers
 const BOT_NAMES = ['Viper', 'Ghost', 'Havoc', 'Reaper', 'Nova', 'Blitz', 'Talon', 'Raptor', 'Echo', 'Frost', 'Jinx', 'Onyx'];
 const CHAR_SKINS = ['ranger', 'crimson', 'ghost', 'cobalt', 'shadow', 'desert', 'toxic', 'royal'];
+const DEV_CHAR_SKINS = ['dev', 'devgold'], DEV_W_SKINS = ['dev', 'glitch']; // accepted from players, never given to bots
 const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno'];
 const DIFFICULTY = { easy: 0.22, normal: 0.36, hard: 0.55 };
 const DEFAULT_SETTINGS = { mode: 'ffa', map: 'town', bots: 4, difficulty: 'normal', scoreLimit: 30, timeLimit: 10, maxPlayers: 8 };
@@ -920,8 +921,8 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'hello':
         c.name = cleanText(m.name, 16) || 'Player';
-        if (CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
-        if (W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
+        if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
+        if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
         sendTo(c, { t: 'hi', id: c.id });
         sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size });
@@ -989,8 +990,8 @@ wss.on('connection', ws => {
       }
       case 'look':
         c.name = cleanText(m.name, 16) || c.name;
-        if (CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
-        if (W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
+        if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
+        if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         if (m.level) c.level = clampInt(m.level, 1, 99, c.level);
         if (room) sendRoom(room);
         if (e) { e.name = c.name; e.skin = c.skin; e.wskin = c.wskin; roomBroadcast(room, { t: 'pj', p: publicInfo(e) }); }

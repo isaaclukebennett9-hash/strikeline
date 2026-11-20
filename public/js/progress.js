@@ -65,15 +65,26 @@ export const UNLOCKS = {
   // operators
   'op:ranger': { price: 0 }, 'op:desert': { price: 0 }, 'op:cobalt': { price: 2000 }, 'op:crimson': { price: 3000 },
   'op:ghost': { price: 4500, level: 8 }, 'op:toxic': { price: 6000, level: 14 }, 'op:shadow': { price: 9000, level: 20 }, 'op:royal': { price: 14000, level: 28 },
+  // developer skins: unlocked on this PC with the dev code (Skins screen)
+  'ws:dev': { dev: true }, 'ws:glitch': { dev: true }, 'op:dev': { dev: true }, 'op:devgold': { dev: true },
 };
+const DEV_KEY = 'strikeline_dev', DEV_HASH = 3747645086;
+const fnv = s => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
+export const isDev = () => { try { return localStorage.getItem(DEV_KEY) === String(DEV_HASH); } catch { return false; } };
+export function tryDevCode(code) {
+  if (fnv(String(code || '').trim().toUpperCase()) !== DEV_HASH) return false;
+  try { localStorage.setItem(DEV_KEY, String(DEV_HASH)); } catch {}
+  return true;
+}
 const isCosmetic = key => key.startsWith('ws:') || key.startsWith('op:');
 export const isUnlocked = key => {
   const u = UNLOCKS[key];
   if (!u) return true;
+  if (u.dev) return isDev();
   if (isCosmetic(key)) return !u.price || profile.owned.includes(key);
   return levelInfo().level >= u.level;
 };
-export const canBuy = key => { const u = UNLOCKS[key]; return !!u && isCosmetic(key) && !isUnlocked(key) && levelInfo().level >= (u.level || 1); };
+export const canBuy = key => { const u = UNLOCKS[key]; return !!u && !u.dev && isCosmetic(key) && !isUnlocked(key) && levelInfo().level >= (u.level || 1); };
 export function buy(key) {
   const u = UNLOCKS[key];
   if (!canBuy(key) || profile.credits < u.price) return false;

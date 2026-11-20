@@ -8,6 +8,7 @@ function mkCanvas(size = 256) {
   return [c, c.getContext('2d')];
 }
 const rnd = (a, b) => a + Math.random() * (b - a);
+function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function noise(ctx, s, amt) {
   const img = ctx.getImageData(0, 0, s, s), d = img.data;
   for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * amt; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
@@ -527,8 +528,10 @@ export const WEAPON_SKINS = [
   { id: 'galaxy', name: 'Galaxy', rarity: 'legendary', swatch: '#5b2a9e' },
   { id: 'inferno', name: 'Inferno', rarity: 'legendary', swatch: '#ff4a12' },
   { id: 'gold', name: '24K Gold', rarity: 'legendary', swatch: '#f2c14e' },
+  { id: 'dev', name: 'Dev Circuit', rarity: 'dev', swatch: 'repeating-linear-gradient(90deg, #07140e 0 6px, #39ff9c 6px 8px)' },
+  { id: 'glitch', name: 'Glitch', rarity: 'dev', swatch: 'linear-gradient(90deg, #0a0a0f 30%, #ff2a3a 30% 45%, #0a0a0f 45% 60%, #22e5ff 60% 75%, #0a0a0f 75%)' },
 ];
-export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e' };
+export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e', dev: '#39ff9c' };
 
 function camo(cols, size = 256, count = 70) {
   const [c, x] = mkCanvas(size); x.fillStyle = cols[0]; x.fillRect(0, 0, size, size);
@@ -600,6 +603,39 @@ export function weaponSkinMaterial(id) {
       m.userData.pulse = true; break;
     }
     case 'gold': m = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.18, metalness: 1.0 }); break;
+    case 'dev': { // circuit board: glowing green traces with gold pads
+      const [c, x] = mkCanvas(256); const [e, ex] = mkCanvas(256);
+      x.fillStyle = '#07140e'; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
+      noise(x, 256, 8);
+      const rnd = mulberry32(7);
+      for (let i = 0; i < 46; i++) {
+        let px = Math.floor(rnd() * 16) * 16 + 8, py = Math.floor(rnd() * 16) * 16 + 8;
+        for (const ctx of [x, ex]) { ctx.strokeStyle = '#39ff9c'; ctx.lineWidth = 2; }
+        x.beginPath(); ex.beginPath(); x.moveTo(px, py); ex.moveTo(px, py);
+        for (let s = 0; s < 4; s++) {
+          if (rnd() < 0.5) px += (rnd() < 0.5 ? -1 : 1) * 16 * (1 + Math.floor(rnd() * 3)); else py += (rnd() < 0.5 ? -1 : 1) * 16 * (1 + Math.floor(rnd() * 3));
+          x.lineTo(px, py); ex.lineTo(px, py);
+        }
+        x.stroke(); ex.stroke();
+        x.fillStyle = '#d9a636'; x.fillRect(px - 3, py - 3, 6, 6); ex.fillStyle = '#1a5a3a'; ex.fillRect(px - 3, py - 3, 6, 6);
+      }
+      for (let i = 0; i < 6; i++) { const cx = Math.floor(rnd() * 12) * 20 + 10, cy = Math.floor(rnd() * 12) * 20 + 10; x.fillStyle = '#111'; x.fillRect(cx, cy, 22, 14); x.fillStyle = '#888'; for (let k = 0; k < 4; k++) { x.fillRect(cx + 2 + k * 5, cy - 2, 2, 2); x.fillRect(cx + 2 + k * 5, cy + 14, 2, 2); } }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), emissiveMap: toTex(e), emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.6, roughness: 0.35, metalness: 0.45 });
+      m.userData.pulse = true; break;
+    }
+    case 'glitch': { // dark base with RGB-split glitch blocks and scanlines
+      const [c, x] = mkCanvas(256); const [e, ex] = mkCanvas(256);
+      x.fillStyle = '#0a0a0f'; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
+      const rnd = mulberry32(42);
+      for (let i = 0; i < 38; i++) {
+        const y = Math.floor(rnd() * 64) * 4, w = 12 + rnd() * 90, h = 2 + Math.floor(rnd() * 4) * 2, px = rnd() * 256;
+        const col = ['#ff2a3a', '#22e5ff', '#f4f4f8'][i % 3];
+        for (const ctx of [x, ex]) { ctx.fillStyle = col; ctx.fillRect(px, y, w, h); ctx.fillRect(px - 256, y, w, h); }
+      }
+      x.fillStyle = 'rgba(255,255,255,0.05)'; for (let y = 0; y < 256; y += 3) x.fillRect(0, y, 256, 1);
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), emissiveMap: toTex(e), emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.3, roughness: 0.3, metalness: 0.5 });
+      m.userData.pulse = true; break;
+    }
     default: m = new THREE.MeshStandardMaterial({ color: '#4a515b', roughness: 0.4, metalness: 0.65 });
   }
   m.userData.shared = true;
@@ -616,6 +652,8 @@ export const CHAR_SKINS = [
   { id: 'toxic', name: 'Toxic', body: '#1e2421', accent: '#0e110f', helmet: '#252b27', visor: '#7dff3a', glow: true, rarity: 'epic' },
   { id: 'shadow', name: 'Shadow', body: '#121216', accent: '#050507', helmet: '#18181d', visor: '#ff1a3a', glow: true, rarity: 'legendary' },
   { id: 'royal', name: 'Royal Guard', body: '#4a2470', accent: '#d9a636', helmet: '#3a1a5a', visor: '#ffd36a', glow: true, rarity: 'legendary' },
+  { id: 'dev', name: 'Developer', body: '#101615', accent: '#1f5a40', helmet: '#0b100f', visor: '#39ff9c', glow: true, rarity: 'dev' },
+  { id: 'devgold', name: 'Dev Prestige', body: '#ece8de', accent: '#d9a636', helmet: '#f6f3ec', visor: '#39ff9c', glow: true, rarity: 'dev' },
 ];
 export function charSkin(id) { return CHAR_SKINS.find(s => s.id === id) || CHAR_SKINS[0]; }
 
