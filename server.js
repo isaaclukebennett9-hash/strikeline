@@ -14,6 +14,10 @@ import { buildNav } from './shared/nav.js';
 
 const PORT = Number(process.env.PORT) || 3080;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// A bug in one tick must never take the whole server (and everyone's match) down: log it and keep going.
+function errLog(msg) { try { fs.appendFileSync(path.join(ROOT, 'errors.log'), `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`); } catch {} }
+process.on('uncaughtException', (err) => { errLog(`server: ${err && err.stack || err}`); try { console.error(err); } catch {} });
+process.on('unhandledRejection', (err) => errLog(`server (promise): ${err && err.stack || err}`));
 const TICK = 1 / 30;
 
 // ------------------------------------------------------------------ static files
@@ -957,6 +961,25 @@ wss.on('connection', ws => {
         fs.appendFile(path.join(ROOT, 'feedback.txt'), line, () => {});
         console.log(`[feedback] ${c.name}: ${text.slice(0, 80)}`);
         sendTo(c, { t: 'toast', m: 'Feedback received — thanks!' });
+        break;
+      }
+      case 'fall': { // client reports a hard landing; damage from a ~4.5 m drop up, ~17 m is lethal
+        if (!e || !e.alive || room.state !== 'playing') return;
+        const v = Math.min(40, Math.max(0, +m.v || 0)), now = Date.now();
+        if (v < 14 || now - (e.lastFall || 0) < 400) break;
+        e.lastFall = now;
+        const amount = (v - 14) * 8;
+        // a lethal fall within 4 s of being shot gives the kill to whoever shot you
+        let credit = null, best = now - 4000;
+        if (e.hp - amount <= 0) for (const [id, t] of e.damagers) if (t > best) { const a = room.ents.get(id); if (a && a !== e) { credit = a; best = t; } }
+        applyDamage(room, e, credit, amount, 'fall', false);
+        break;
+      }
+      case 'clienterr': { // errors from players' games, so crashes on a friend's PC can be diagnosed here
+        const now = Date.now();
+        if (now - (c.lastErr || 0) < 2000 || (c.errCount = (c.errCount || 0) + 1) > 40) break;
+        c.lastErr = now;
+        errLog(`client ${c.name || 'Player'} (${cleanText(String(m.v || ''), 12)}): ${String(m.m || '').replace(/\r/g, '').slice(0, 1200)}`);
         break;
       }
       case 'chat': {

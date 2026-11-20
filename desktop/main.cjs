@@ -12,6 +12,22 @@ if (process.env.STRIKELINE_SELFTEST) app.setPath('userData', path.join(os.tmpdir
 const BUNDLED_ROOT = path.join(__dirname, '..');
 const STORE_FILE = () => path.join(app.getPath('userData'), 'save.json');
 
+// ---------------------------------------------------------------- crash safety
+// A packaged Windows app has no console: writing to stdout can throw EPIPE and take the whole app down.
+// Never let that (or any stray error) close the game; note it in crash.log in the app's data folder instead.
+function crashLog(msg) {
+  try {
+    const f = path.join(app.getPath('userData'), 'crash.log');
+    try { if (fs.statSync(f).size > 512 * 1024) fs.renameSync(f, f + '.old'); } catch {}
+    fs.appendFileSync(f, `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`);
+  } catch {}
+}
+function safeWrite(stream, d) { try { if (stream && stream.writable) stream.write(d); } catch {} }
+for (const s of [process.stdout, process.stderr]) { try { s.on('error', () => {}); } catch {} }
+process.on('uncaughtException', (err) => crashLog(`main: ${err && err.stack || err}`));
+process.on('unhandledRejection', (err) => crashLog(`main (promise): ${err && err.stack || err}`));
+app.on('child-process-gone', (e, d) => { if (d.reason !== 'clean-exit') crashLog(`${d.type} process gone: ${d.reason} (exit ${d.exitCode})`); });
+
 // On the developer's PC the app runs the game straight from the project folder (so every change is live)
 // and offers the newest installer to friends for auto-update. Everyone else uses the bundled copy.
 function devConfig() {
@@ -156,9 +172,14 @@ async function startServer() {
   const env = { ...process.env, PORT: String(host.port) };
   if (dev && dev.setupDir) env.STRIKELINE_SETUP_DIR = dev.setupDir;
   host.server = fork(path.join(host.root, 'server.js'), [], { cwd: host.root, env, stdio: 'pipe' });
-  host.server.stdout.on('data', d => process.stdout.write(d));
-  host.server.stderr.on('data', d => process.stderr.write(d));
-  host.server.on('exit', () => { host.server = null; });
+  host.server.stdout.on('data', d => safeWrite(process.stdout, d));
+  host.server.stderr.on('data', d => { safeWrite(process.stderr, d); crashLog(`server: ${String(d).trim().slice(0, 600)}`); });
+  const me = host.server;
+  me.on('exit', (code) => {
+    if (host.server !== me) return;
+    host.server = null;
+    if (!quitting) { crashLog(`game server exited (${code}) — restarting`); setTimeout(() => startServer().catch(e => crashLog(`server restart failed: ${e.message}`)), 1000); }
+  });
   if (!(await waitFor(`http://127.0.0.1:${host.port}/info`, 20000))) throw new Error('The game server did not start.');
 }
 
@@ -297,6 +318,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
   });
   win.setMenuBarVisibility(false);
+  win.setFullScreen(true); // start fullscreen (F11 still toggles)
   win.on('page-title-updated', (e) => { e.preventDefault(); updateTitle(); });
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
@@ -304,6 +326,7 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   // Crash recovery: if the game page dies, show a screen with a one-click rejoin.
   win.webContents.on('render-process-gone', (e, d) => {
+    crashLog(`game page gone: ${d.reason} (exit ${d.exitCode})`);
     if (d.reason === 'clean-exit') return;
     const cur = win.webContents.getURL();
     win.loadFile(path.join(__dirname, 'launcher.html'), { query: { crashed: d.reason, rejoin: /^https?:/.test(cur) ? cur : localUrl() } });

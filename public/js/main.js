@@ -33,7 +33,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'hi
 renderer.setPixelRatio(Math.min(devicePixelRatio, cfg.gfx === 'high' ? 1.5 : 1));
 renderer.setSize(innerWidth, innerHeight);
 // If the graphics driver resets (weak/overloaded GPUs), reload instead of sitting on a frozen screen.
-renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setTimeout(() => location.reload(), 1200); });
+renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); try { reportErr(`WebGL context lost (graphics driver reset / out of GPU memory) · ${renderer.info.memory.geometries} geos ${renderer.info.memory.textures} tex`); } catch {} setTimeout(() => location.reload(), 1200); });
 renderer.shadowMap.enabled = cfg.gfx === 'high';
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -827,7 +827,8 @@ function updateWeapon(dt, now) {
 const isSprinting = () => keys.ShiftLeft && keys.KeyW && !keys.KeyS && !me.crouch && adsT < 0.3 && me.onGround && sprintLock <= 0;
 
 // ================================================================ movement (with slide)
-let wasGround = true, fallVel = 0;
+let wasGround = true, fallVel = 0, padFlight = false;
+const FALL_SAFE = Math.sqrt(2 * PLAYER.gravity * 4.5); // landing speed of a 4.5 m drop (~14 m/s)
 const slide = { t: 0, cd: 0, dir: [0, 0], wasCrouchKey: false, roll: 0 };
 const SLIDE_TIME = 0.8, SLIDE_SPEED = 12.5;
 
@@ -919,6 +920,7 @@ function updateMovement(dt) {
   if (isZombie()) speed *= 1.25;
   if (performance.now() < spdUntil) speed *= 1.3;
   if (performance.now() < stunUntil) speed *= 0.5;
+  speed *= 0.72 + 0.28 * Math.max(0, Math.min(1, me.hp / 100)); // wounded = slower (down to -28% near death)
   if (slide.t > 0) {
     slide.t -= dt;
     const k = 1 - slide.t / SLIDE_TIME;
@@ -941,8 +943,13 @@ function updateMovement(dt) {
   slide.roll = lerp(slide.roll, slide.t > 0 ? 1 : 0, Math.min(1, dt * 10));
   fallVel = me.vel[1];
   moveBody(me, dt, near);
-  if (me.padded) { SFX.jet(); kickZ += 0.06; shake = Math.max(shake, 0.15); }
+  if (me.padded) { SFX.jet(); kickZ += 0.06; shake = Math.max(shake, 0.15); padFlight = true; }
   if (me.onGround && !wasGround && fallVel < -7) { SFX.land(); kickZ += 0.03; }
+  // fall damage: starts at a ~4.5 m drop, lethal around 17 m (jump-pad flights don't count)
+  if (me.onGround && !wasGround) {
+    if (fallVel < -FALL_SAFE && !padFlight && !matchEnded) { send({ t: 'fall', v: +(-fallVel).toFixed(2) }); kickZ += 0.08; shake = Math.max(shake, 0.25); }
+    padFlight = false;
+  }
   wasGround = me.onGround;
   const hs = Math.hypot(me.vel[0], me.vel[2]);
   if (me.onGround && hs > 1) {
@@ -1149,6 +1156,10 @@ function connect() {
   };
 }
 const send = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+// Report script errors / WebGL context loss to the server we're playing on (saved in errors.log there).
+const reportErr = (msg) => { try { send({ t: 'clienterr', m: String(msg).slice(0, 1200), v: `${MAPS[world?.map.id]?.name || ''}` }); } catch {} };
+window.addEventListener('error', e => reportErr(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}:${e.colno}\n${e.error?.stack || ''}`));
+window.addEventListener('unhandledrejection', e => reportErr(`promise: ${e.reason?.stack || e.reason}`));
 
 function handle(m) {
   const now = performance.now();
@@ -1366,10 +1377,9 @@ function handle(m) {
       if (!inGame) break;
       if (m.id === me.id) {
         me.hp = m.hp; SFX.hurt();
-        const v = $('vignette'); v.style.transition = 'none'; v.style.opacity = 0.9;
-        requestAnimationFrame(() => { v.style.transition = 'opacity 0.6s'; v.style.opacity = 0; });
-        if (m.from && m.by !== me.id) damageIndicator(m.from);
-        shake = Math.max(shake, 0.12);
+        hurtFlash = Math.min(1, hurtFlash + 0.35 + (m.amt || 10) / 45);
+        if (m.from && m.by !== me.id) damageIndicator(m.from, m.by, m.amt || 10);
+        shake = Math.max(shake, 0.1 + Math.min(0.15, (m.amt || 10) / 300));
       }
       if (m.by === me.id && m.id !== me.id) { hitmarker(m.h ? 'head' : ''); SFX.hit(m.h); }
       break;
@@ -1389,7 +1399,9 @@ function endGameView() {
 }
 
 function onKill(m) {
-  const kName = m.k ? nameOf(m.k) : 'World', vName = nameOf(m.v), wName = WEAPONS[m.w]?.name || m.w;
+  const fell = m.w === 'fall';
+  if (fell && !m.k) m.k = m.v; // plain fall = "self" in the kill feed
+  const kName = m.k ? nameOf(m.k) : 'World', vName = nameOf(m.v), wName = fell ? 'Fall' : WEAPONS[m.w]?.name || m.w;
   const div = document.createElement('div');
   div.className = 'kf' + (m.k === me.id || m.v === me.id ? ' me' : '');
   div.innerHTML = m.k === m.v ? `<span>${esc(vName)}</span><span class="w">[${esc(wName)}]</span><span>self</span>`
@@ -1401,8 +1413,8 @@ function onKill(m) {
     me.alive = false; me.hp = 0; deathTime = performance.now(); respawnAt = deathTime + 3500; ddUntil = spdUntil = 0;
     mouseL = mouseR = false;
     $('deathscreen').classList.remove('hidden');
-    $('killer').textContent = m.k === me.id ? 'YOURSELF' : kName;
-    $('killerweapon').textContent = m.k === me.id ? 'Watch the splash damage!' : `with ${wName}${m.h ? ' — HEADSHOT' : ''}`;
+    $('killer').textContent = m.k === me.id ? (fell ? 'GRAVITY' : 'YOURSELF') : kName;
+    $('killerweapon').textContent = m.k === me.id ? (fell ? 'That was a long way down.' : 'Watch the splash damage!') : fell ? 'shot you, then you fell to your death' : `with ${wName}${m.h ? ' — HEADSHOT' : ''}`;
     $('reloadbar').style.display = 'none';
   } else { const r = remotes.get(m.v); if (r) r.alive = false; }
   if (m.v === me.id && m.k !== me.id) { PR.profile.stats.deaths++; PR.saveProfile(); }
@@ -1435,13 +1447,34 @@ function chat(name, msg) {
     else { while (log.children.length > 80) log.firstChild.remove(); log.scrollTop = log.scrollHeight; }
   }
 }
-function damageIndicator(from) {
+// Hit direction: a red arc on a ring around the crosshair, one per attacker, that keeps pointing at them as you turn.
+const dmgInds = new Map();
+let hurtFlash = 0;
+function dmgAngle(from) {
   const tx = from[0] - me.pos[0], tz = from[2] - me.pos[2];
-  const ang = Math.atan2(tx * Math.cos(me.yaw) - tz * Math.sin(me.yaw), -tx * Math.sin(me.yaw) - tz * Math.cos(me.yaw));
-  const d = document.createElement('div'); d.className = 'dd'; d.style.transform = `rotate(${ang}rad)`;
-  $('dmgdirs').appendChild(d);
-  setTimeout(() => { d.style.opacity = 0; }, 400);
-  setTimeout(() => d.remove(), 1700);
+  return Math.atan2(tx * Math.cos(me.yaw) - tz * Math.sin(me.yaw), -tx * Math.sin(me.yaw) - tz * Math.cos(me.yaw));
+}
+function damageIndicator(from, by, amt) {
+  let d = dmgInds.get(by);
+  if (!d) {
+    const el = document.createElement('div'); el.className = 'dd'; el.innerHTML = '<i></i>';
+    $('dmgdirs').appendChild(el);
+    d = { el, from: [...from], t0: 0, str: 0 }; dmgInds.set(by, d);
+  }
+  d.from = [...from]; d.t0 = performance.now(); d.str = Math.min(1, Math.max(d.str * 0.5, 0) + 0.55 + amt / 60);
+}
+function updateDamageHud(dt) {
+  const now = performance.now();
+  for (const [by, d] of dmgInds) {
+    const r = remotes.get(by);
+    if (r && r.alive && r.model.visible) { const p = r.model.position; d.from = [p.x, p.y, p.z]; }
+    const age = (now - d.t0) / 1000, a = age < 0.6 ? 1 : Math.max(0, 1 - (age - 0.6) / 1.4);
+    if (a <= 0 || !me.alive) { d.el.remove(); dmgInds.delete(by); continue; }
+    d.el.style.transform = `rotate(${dmgAngle(d.from)}rad)`;
+    d.el.style.opacity = (a * (0.45 + 0.55 * d.str)).toFixed(3);
+  }
+  hurtFlash = Math.max(0, hurtFlash - dt * 1.6);
+  $('vignette').style.opacity = me.alive ? hurtFlash.toFixed(3) : 0;
 }
 function renderScoreboard() {
   const rows = [...scores.entries()].map(([id, [k, d, s, tm, gg, a]]) => ({ id, k, d, s: s || 0, tm: tm ?? -1, gg: gg || 0, a: a || 0, name: nameOf(id), bot: remotes.get(id)?.info.bot }))
@@ -1525,7 +1558,7 @@ function setupModeHud() {
 }
 
 const xhBars = { t: document.querySelector('#xh .t'), b: document.querySelector('#xh .b'), l: document.querySelector('#xh .l'), r: document.querySelector('#xh .r') };
-let lastHud = 0, hudPrev = 0;
+let lastHud = 0, hudPrev = 0, lastDmgHud = 0;
 function updateHud(now) {
   if (!inGame) return;
   const w = curW(), xh = $('xh');
@@ -1535,13 +1568,15 @@ function updateHud(now) {
     xhBars.t.style.top = (-gap - 9) + 'px'; xhBars.b.style.top = gap + 'px';
     xhBars.l.style.left = (-gap - 9) + 'px'; xhBars.r.style.left = gap + 'px';
   } else xh.style.display = 'none';
+  updateDamageHud(Math.min(0.1, (now - (lastDmgHud || now)) / 1000)); lastDmgHud = now;
   if (now - lastHud < 66) return;
   timeLeft = Math.max(0, timeLeft - (now - (hudPrev || now)) / 1000);
   lastHud = hudPrev = now;
   const hp = Math.max(0, Math.ceil(me.hp));
   $('hpnum').textContent = hp; $('hpfill').style.width = hp + '%';
   $('hpfill').classList.toggle('low', hp < 35);
-  $('lowhp').style.opacity = me.alive && hp < 35 ? (1 - hp / 35) : 0;
+  $('lowhp').style.opacity = me.alive && hp < 50 ? (0.25 + 0.75 * (1 - hp / 50)).toFixed(2) : 0;
+  $('lowhp').classList.toggle('pulse', me.alive && hp < 30);
   if (w) {
     $('wname').textContent = w.def.name.toUpperCase();
     $('mag').textContent = w.def.melee ? '∞' : w.ammo;
@@ -2029,7 +2064,7 @@ function renderGunSheet(ids, cols = 5, attFor = () => ({}), W = 300, H = 150) {
   r.dispose();
   return out.toDataURL('image/png');
 }
-window.__strike = { renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT };
+window.__strike = { handle, renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT };
 if (!PR.isUnlocked(cfg.primary)) cfg.primary = 'falcon';
 if (!PR.isUnlocked(cfg.secondary)) cfg.secondary = 'viper';
 if (!PR.isUnlocked(cfg.lethal)) cfg.lethal = 'frag';
