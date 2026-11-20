@@ -1,6 +1,6 @@
 // Revamped versions of the original maps: bigger, more detailed, more vertical.
 import {
-  R, B, push, newCtx, addRot, FH, building, stairRun, car, tree, palm, stall, barrel, crate, sandbags, bench, lamp, container, fountain, dumpster, barrier,
+  R, B, push, newCtx, addRot, FH, band, building, stairRun, car, tree, palm, stall, barrel, crate, sandbags, bench, lamp, container, fountain, dumpster, barrier,
   mulberry, jumpPad, watchtower, placeRot, place, gableRoof, fence, hedge, cliff, bollard, pallets, pipeStack, rails, gantry, semiTruck, waterTower,
   acUnit, trafficLight, busStop, stepDome, tent, plankBridge, wallSign, billboard, slabHoles, stairFlight, railing,
 } from './mapkit.js';
@@ -112,8 +112,8 @@ export function harborNew() {
   // lighthouse on the breakwater (east), stairs to the lantern deck
   push(c.boxes, R(36, 0, -46, 46, 0.5, -36, 'stone'));
   building(c, { x: 41, z: -41, w: 6.4, d: 6.4, floors: 4, m: 'panel_white', floorM: 'floor_wood', doors: { w: [-1.6] }, winGap: 2.5 });
-  for (let k = 0; k < 4; k++) push(c.deco, B(41, -41, 6.6, 6.6, 0.5, k % 2 ? 'barrel_red' : 'panel_white', 2 + k * 2.6));
-  push(c.deco, B(41, -41, 3.2, 3.2, 2.0, 'glass', 13.75)); push(c.deco, B(41, -41, 1.4, 1.4, 1.2, 'lamp', 14.1)); stepDome(c, 41, -41, 1.8, 15.8, 'barrel_red', 'metal_dark');
+  for (let k = 0; k < 4; k++) band(c, 37.8, -44.2, 44.2, -37.8, 2 + k * 2.6, 2.5 + k * 2.6, 0.1, k % 2 ? 'barrel_red' : 'panel_white'); // stripes on the outside only
+  push(c.deco, B(41, -41, 3.2, 3.2, 2.0, 'glass', 13.75)); push(c.boxes, B(41, -41, 1.4, 1.4, 1.2, 'lamp', 14.1)); stepDome(c, 41, -41, 1.8, 15.8, 'barrel_red', 'metal_dark');
   push(c.boxes, R(32, 0, -36.2, 35.5, 0.5, -25.4, 'stone')); railing(c, 32, -36, 32, -26.6, 0.5); railing(c, 35.5, -36, 35.5, -26.6, 0.5); // causeway to the breakwater
   // big warehouse with a mezzanine and catwalk (north-west)
   building(c, { x: -26, z: 18, w: 28, d: 16, floors: 1, fh: 6.5, roof: false, m: 'metal_corr', roofM: 'metal_roof', floorM: 'concrete_floor', doors: { s: [{ c: -7, w: 4, h: 4.5 }, { c: 7, w: 4, h: 4.5 }], e: [0] }, winY: [4.3, 5.6], winGap: 4 });
@@ -247,7 +247,7 @@ export function duneNew() {
   for (const [x, z] of [[-30, -14], [30, 14], [-14, -30]]) push(c.deco, B(x, z, 0.8, 0.8, 0.7, 'mudbrick', FH));
   // minaret (stairs to the top) + small domed mosque hall
   building(c, { x: 22, z: 30, w: 6.6, d: 6.6, floors: 4, m: 'sandstone', roofM: 'mudroof', floorM: 'rug', doors: { s: [0] }, winGap: 2.4 });
-  stepDome(c, 22, 30, 1.6, 13.75, 'trim', 'neon_orange');
+  stepDome(c, 22, 30, 1.6, 13.75, 'trim', 'neon_orange', true);
   building(c, { x: 33, z: 30, w: 10, d: 10, floors: 1, fh: 4.4, m: 'plaster_white', roof: false, roofM: 'mudroof', floorM: 'rug', doors: { s: [0], w: [0] }, winY: [2, 3.6] });
   stepDome(c, 33, 30, 4.2, 4.6, 'plaster_white', 'trim');
   // covered souk street along the west road with stalls and cloth awnings
@@ -289,14 +289,14 @@ export function constructionNew() {
   // excavation: dirt berms around a pit area with a ramp in
   for (const [x0, z0, x1, z1] of [[-40, -40, -14, -37], [-40, -22, -26, -19], [-40, -40, -37, -19], [-17, -40, -14, -19]]) push(c.boxes, R(x0, 0, z0, x1, 1.6, z1, 'dirt'));
   push(c.boxes, B(-30, -30, 4, 3, 0.9, 'metal_dark')); push(c.boxes, R(-36, 0, -31, -32, 1.2, -27, 'dirt'));
-  placeRot(c, -22, -30, 0, (t) => { push(t.boxes, R(-1.4, 0.4, -2.6, 1.4, 1.8, 2.0, 'forklift')); push(t.boxes, R(-1.2, 1.8, 0.2, 1.2, 3.0, 2.0, 'forklift')); push(t.deco, R(-1.0, 2.2, 0.15, 1.0, 2.8, 0.2, 'car_glass')); push(t.deco, R(-0.2, 1.8, -5, 0.2, 2.2, -2.4, 'forklift')); push(t.deco, R(-0.8, 0.4, -5.4, 0.8, 1.2, -4.6, 'metal_dark')); for (const s of [-1.5, 1.5]) push(t.deco, R(s - 0.35, 0, -2.6, s + 0.35, 0.8, 2.4, 'tire')); }); // excavator
+  placeRot(c, -22, -30, 0, (t) => { push(t.boxes, R(-1.4, 0.4, -2.6, 1.4, 1.8, 2.0, 'forklift')); push(t.boxes, R(-1.2, 1.8, 0.2, 1.2, 3.0, 2.0, 'forklift')); push(t.deco, R(-1.0, 2.2, 0.15, 1.0, 2.8, 0.2, 'car_glass')); push(t.deco, R(-0.2, 1.8, -5, 0.2, 2.2, -2.4, 'forklift')); push(t.deco, R(-0.8, 0.4, -5.4, 0.8, 1.2, -4.6, 'metal_dark')); for (const s of [-1.5, 1.5]) push(t.boxes, R(s - 0.35, 0, -2.6, s + 0.35, 0.8, 2.4, 'tire')); }); // excavator
   // materials & machinery
   container(c, 30, 6, 1, 'container_blue'); container(c, 4, 11, 0, 'container_red'); container(c, -40, 6, 0, 'container_green');
   for (const [x, z, r] of [[12, -8, 0], [-8, -10, 1], [38, 32, 0]]) pipeStack(c, x, z, r);
   for (const [x, z] of [[-2, 28], [6, -30], [-34, 34]]) { push(c.boxes, B(x, z, 4.5, 3, 1.3, 'dirt')); push(c.boxes, B(x - 0.5, z, 2.5, 1.8, 2.0, 'dirt')); }
   for (const [x, z] of [[40, -40], [41.6, -40]]) push(c.boxes, B(x, z, 1.3, 1.3, 2.3, 'portaloo'));
   for (const [x, z, r] of [[6, 18, 1], [20, 6, 0], [-10, 6, 0], [-30, -10, 1], [10, -18, 0]]) barrier(c, x, z, r, 4);
-  placeRot(c, -38, 20, 0, (t) => { push(t.boxes, R(-1.2, 0.4, -3.1, 1.2, 1.9, 3.1, 'forklift')); push(t.boxes, R(-1.15, 1.9, -3.1, 1.15, 3.1, -1.3, 'car_glass')); push(t.boxes, R(-1.0, 1.9, -1.0, 1.0, 3.8, 2.6, 'mixer')); for (const [dx, dz] of [[-1.25, -2.4], [1.25, -2.4], [-1.25, 1.2], [1.25, 1.2], [-1.25, 2.4], [1.25, 2.4]]) push(t.deco, B(dx, dz, 0.3, 0.9, 0.9, 'tire')); });
+  placeRot(c, -38, 20, 0, (t) => { push(t.boxes, R(-1.2, 0.4, -3.1, 1.2, 1.9, 3.1, 'forklift')); push(t.boxes, R(-1.15, 1.9, -3.1, 1.15, 3.1, -1.3, 'car_glass')); push(t.boxes, R(-1.0, 1.9, -1.0, 1.0, 3.8, 2.6, 'mixer')); for (const [dx, dz] of [[-1.25, -2.4], [1.25, -2.4], [-1.25, 1.2], [1.25, 1.2], [-1.25, 2.4], [1.25, 2.4]]) push(t.boxes, B(dx, dz, 0.3, 0.9, 0.9, 'tire')); });
   for (const [x, z] of [[-6, -26], [26, -6], [-24, 2], [14, 34]]) { crate(c, x, z); crate(c, x + 1.3, z + 0.2, 1.0); crate(c, x + 0.6, z + 0.1, 0.9, 1.2); }
   sandbags(c, 22, 38, 4, 0.8); for (const x of [-36, 36]) lamp(c, x, -2.5);
   fence(c, -44, 42.5, 44, 42.5, 'metal_grate', 2.0, [-20, 10]);

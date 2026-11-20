@@ -106,7 +106,7 @@ export function shipyard() {
   push(c.deco, R(-84, 0, -60, -10, 0.04, -10, 'concrete_floor'));
   for (const [x0, z0, x1, z1] of [[-84, -60.5, -36, -59.5], [-24, -60.5, -10, -59.5], [-84, -10.5, -52, -9.5], [-40, -10.5, -10, -9.5], [-84.5, -60, -83.5, -10], [-10.5, -60, -9.5, -40], [-10.5, -30, -9.5, -10]])
     push(c.boxes, R(x0, 0, z0, x1, 1.1, z1, 'concrete'));
-  for (let x = -70; x <= -24; x += 6) for (const z of [-44, -26]) push(c.deco, B(x, z, 1.6, 2, 0.5, 'wood'));
+  for (let x = -70; x <= -24; x += 6) for (const z of [-44, -26]) push(c.boxes, B(x, z, 1.6, 2, 0.5, 'wood'));
   buildShip(c);
   gantry(c, -45, -35, 36, 24);
   // ---- container yard (two 10 m lanes for the yard gantries)
@@ -252,7 +252,7 @@ export function suburbs() {
   }
   for (const [x, col] of [[-18, 'neon_orange'], [0, 'neon_cyan'], [18, 'neon_orange']]) wallSign(c, x, -21, 2, 4.3, 7, 1.1, col);
   push(c.deco, R(-24.2, 4.2, -21.2, 24.2, 4.45, -20.4, 'metal_dark'));
-  for (const x of [-16, 0, 16]) { acUnit(c, x, -36, 8.4); push(c.deco, B(x, -28, 4, 3, 0.25, 'glass', 8.4)); }
+  for (const x of [-16, 0, 16]) { acUnit(c, x, -36, 8.4); push(c.boxes, B(x, -28, 4, 3, 0.25, 'glass', 8.4)); }
   push(c.deco, R(-38, 0, -19, 38, 0.04, -7.5, 'asphalt'));
   for (let x = -34; x <= 34; x += 3.4) { push(c.deco, R(x, 0.04, -18.6, x + 0.12, 0.05, -14, 'paint_white')); push(c.deco, R(x, 0.04, -12.6, x + 0.12, 0.05, -8, 'paint_white')); }
   for (let i = 0; i < 22; i++) { if (rnd() < 0.45) continue; const row = i < 11 ? -16.3 : -10.3; car(c, -32.3 + (i % 11) * 6.8, row, 0, ['car_red', 'car_blue', 'car_glass'][Math.floor(rnd() * 3)]); }
@@ -281,7 +281,7 @@ export function suburbs() {
   building(c, { x: 70, z: 25, w: 13, d: 20, floors: 1, fh: 6, m: 'stone', roof: false, floorM: 'floor_wood', doors: { w: [{ c: 0, w: 2.4, h: 3.4 }], e: [4] }, winY: [2, 5], winGap: 3.5 });
   gableRoof(c, 63.5, 15, 76.5, 35, 6, 'roof_slate', false);
   building(c, { x: 59.5, z: 11.5, w: 6, d: 6, floors: 3, m: 'stone', floorM: 'floor_wood', doors: { w: [0] } });
-  for (let k = 0; k < 5; k++) push(c.deco, B(59.5, 11.5, 2.8 - k * 0.55, 2.8 - k * 0.55, 1.0, 'roof_slate', 10.55 + k));
+  for (let k = 0; k < 5; k++) push(c.boxes, B(59.5, 11.5, 2.8 - k * 0.55, 2.8 - k * 0.55, 1.0, 'roof_slate', 10.55 + k));
   for (let x = 54; x <= 86; x += 4) push(c.deco, B(x, 9.5, 0.6, 0.6, 0.8, 'stone')); // cemetery stones
   for (const [x, z] of [[56, 36], [56, 42]]) tree(c, x, z);
   // gas station

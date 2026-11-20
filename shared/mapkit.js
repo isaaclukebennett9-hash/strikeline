@@ -341,7 +341,16 @@ function house(c, x, z, rot, o = {}) {
     push(t.boxes, R(px - 1.8, 0, -d / 2 - 1.8, px + 1.8, 0.22, -d / 2, 'wood'));
     for (const sx of [-1.65, 1.65]) push(t.deco, B(px + sx, -d / 2 - 1.65, 0.14, 0.14, 2.6, 'trim', 0.22));
     push(t.deco, R(px - 1.95, 2.8, -d / 2 - 1.95, px + 1.95, 2.95, -d / 2, rm));
-    push(t.deco, R(-w / 2 - 0.05, 0, -d / 2 - 0.05, w / 2 + 0.05, 0.35, d / 2 + 0.05, 'stone')); // plinth
+    // plinth: a strip just outside the walls (not a slab over the whole footprint: that covered the floor indoors)
+    const pw = 0.12, hw = w / 2, hd = d / 2;
+    const strip = (zA, zB, doorC) => { // along x, broken where a door is
+      const segs = doorC === null ? [[-hw - pw, hw + pw]] : [[-hw - pw, doorC - 0.75], [doorC + 0.75, hw + pw]];
+      for (const [a, b] of segs) push(t.deco, R(a, 0, zA, b, 0.35, zB, 'stone'));
+    };
+    strip(-hd - pw, -hd, px);
+    strip(hd, hd + pw, o.backDoor === false ? null : w / 4);
+    push(t.deco, R(-hw - pw, 0, -hd, -hw, 0.35, hd, 'stone'));
+    push(t.deco, R(hw, 0, -hd, hw + pw, 0.35, hd, 'stone'));
   });
 }
 // Low fence/wall along a straight line with optional gaps (centres along the line, 1.6 m wide).
@@ -454,9 +463,9 @@ function gazebo(c, x, z) {
   for (const [dx, dz, w, d] of [[0, -2.3, 4.4, 0.1], [-2.3, 0, 0.1, 4.4], [2.3, 0, 0.1, 4.4]]) push(c.boxes, B(x + dx, z + dz, w, d, 0.8, 'trim', 0.3));
 }
 // Stepped dome (visual) on a square drum.
-function stepDome(c, x, z, r, y, m = 'plaster_white', cap = 'metal') {
+function stepDome(c, x, z, r, y, m = 'plaster_white', cap = 'metal', solid = false) { // solid: on a walkable roof, so you stand on it instead of inside it
   const n = 6;
-  for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI / 2, s = 2 * r * Math.cos(a); push(c.deco, B(x, z, s, s, r / n + 0.02, m, y + Math.sin(a) * r)); }
+  for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI / 2, s = 2 * r * Math.cos(a); push(solid ? c.boxes : c.deco, B(x, z, s, s, r / n + 0.02, m, y + Math.sin(a) * r)); }
   push(c.deco, B(x, z, 0.3, 0.3, 1.4, cap, y + r)); push(c.deco, B(x, z, 0.6, 0.6, 0.3, cap, y + r + 0.4));
 }
 function tent(c, x, z, w, d, m = 'tent', h = 2.2) {
