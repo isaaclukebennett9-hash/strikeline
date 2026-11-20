@@ -175,8 +175,84 @@ function lobbyList() {
     players: r.members.size, max: r.settings.maxPlayers, state: r.state, bots: r.settings.bots,
   }));
 }
+// ------------------------------------------------------------------ lobbies across everyone's games
+// Every desktop app runs its own server behind a Cloudflare quick tunnel. Each server posts its lobbies
+// (code, name, map, players + its public address) to a shared relay topic, so a 4-letter code or the
+// server browser works no matter whose game the lobby is in: the player is sent to that game.
+const RELAY = process.env.STRIKELINE_RELAY || 'https://ntfy.sh/strikeline-lobbies-q8v3m1';
+let publicUrl = process.env.STRIKELINE_PUBLIC_URL || '';
+async function findPublicUrl() { // cloudflared reports its quick-tunnel hostname on its local metrics port
+  if (process.env.STRIKELINE_PUBLIC_URL) return;
+  for (let p = 20241; p <= 20245; p++) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${p}/quicktunnel`, { signal: AbortSignal.timeout(1500) });
+      const j = await r.json();
+      // several games on one PC each have a tunnel: only take the one pointing at this server
+      if (j.hostname) {
+        const u = 'https://' + j.hostname;
+        const mine = await fetch(`${u}/info`, { signal: AbortSignal.timeout(6000) }).then(x => x.json()).then(x => x.port === PORT).catch(() => false);
+        if (!mine) continue;
+        if (u !== publicUrl) { publicUrl = u; console.log(`  Public address: ${u}`); lastAnnounce = ''; announceSoon(0); }
+        return;
+      }
+    } catch {}
+  }
+}
+setInterval(findPublicUrl, 45000); setTimeout(findPublicUrl, 3000);
+const relayRoom = r => ({ c: r.code, n: r.name, h: clients.get(r.hostId)?.name || '?', m: r.state === 'lobby' ? r.settings.map : r.mapId, mo: r.settings.mode,
+  p: r.members.size, x: r.settings.maxPlayers, s: r.state, b: r.settings.bots, pr: r.private ? 1 : 0 });
+let lastAnnounce = '', lastAnnounceAt = 0, announceTimer = null;
+function announceSoon(ms = 2500) { if (!announceTimer) announceTimer = setTimeout(announce, ms); }
+async function announce() {
+  announceTimer = null;
+  if (!publicUrl) return;
+  const r = [...rooms.values()].map(relayRoom);
+  const body = JSON.stringify({ u: publicUrl, v: APP_VERSION, r });
+  if (body === lastAnnounce && (!r.length || Date.now() - lastAnnounceAt < 150000)) return; // only on change, plus a heartbeat while lobbies exist
+  lastAnnounce = body; lastAnnounceAt = Date.now();
+  try { await fetch(RELAY, { method: 'POST', body, signal: AbortSignal.timeout(8000) }); } catch { lastAnnounce = ''; }
+}
+setInterval(() => { if (rooms.size) announceSoon(0); }, 160000);
+let relayCache = { at: 0, list: [] }, relayPending = null;
+async function remoteLobbies() { // latest announcement from every other game, ignoring ones that went quiet
+  if (Date.now() - relayCache.at < 6000) return relayCache.list;
+  if (relayPending) return relayPending;
+  relayPending = (async () => {
+    try {
+      const txt = await (await fetch(`${RELAY}/json?poll=1&since=6m`, { signal: AbortSignal.timeout(6000) })).text();
+      const latest = new Map();
+      for (const line of txt.split('\n')) {
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.event !== 'message' || !m.message) continue;
+        let a; try { a = JSON.parse(m.message); } catch { continue; }
+        if (!a || typeof a.u !== 'string' || !/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(a.u) || !Array.isArray(a.r)) continue;
+        if (a.u === publicUrl) continue;
+        const prev = latest.get(a.u);
+        if (!prev || m.time >= prev.time) latest.set(a.u, { time: m.time, a });
+      }
+      const now = Date.now() / 1000, list = [];
+      for (const { time, a } of latest.values()) {
+        if (now - time > 330) continue;
+        for (const x of a.r.slice(0, 20)) if (x && typeof x.c === 'string' && /^[A-Z]{4}$/.test(x.c))
+          list.push({ url: a.u, code: x.c, name: cleanText(x.n, 28) || 'Lobby', host: cleanText(x.h, 16) || '?', map: String(x.m || '').slice(0, 24), mode: String(x.mo || 'ffa').slice(0, 16),
+            players: clampInt(x.p, 0, 64, 0), max: clampInt(x.x, 1, 64, 8), state: x.s === 'lobby' ? 'lobby' : 'playing', bots: clampInt(x.b, 0, 32, 0), private: !!x.pr });
+      }
+      relayCache = { at: Date.now(), list };
+    } catch { relayCache = { at: Date.now() - 3000, list: relayCache.list }; }
+    relayPending = null;
+    return relayCache.list;
+  })();
+  return relayPending;
+}
+async function sendLobbies(c) {
+  sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size });
+  const remote = (await remoteLobbies()).filter(l => !l.private);
+  if (remote.length && clients.has(c.id) && !c.room) sendTo(c, { t: 'lobbies', list: lobbyList(), remote, online: clients.size });
+}
+
 let lobbyTimer = null;
 function scheduleLobbies() {
+  announceSoon();
   if (lobbyTimer) return;
   lobbyTimer = setTimeout(() => {
     lobbyTimer = null;
@@ -979,15 +1055,22 @@ wss.on('connection', ws => {
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
-        sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size });
+        sendLobbies(c);
         scheduleLobbies();
         break;
-      case 'list': sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size }); break;
+      case 'list': sendLobbies(c); break;
       case 'create': createRoom(c, m); break;
       case 'join': {
-        const target = m.code ? [...rooms.values()].find(r => r.code === String(m.code).toUpperCase().trim()) : rooms.get(m.id);
-        if (!target) sendTo(c, { t: 'err', m: m.code ? `No lobby with code "${String(m.code).toUpperCase()}".` : 'That lobby no longer exists.' });
-        else joinRoom(c, target);
+        const code = m.code ? String(m.code).toUpperCase().trim().slice(0, 4) : '';
+        const target = code ? [...rooms.values()].find(r => r.code === code) : rooms.get(m.id);
+        if (target) { joinRoom(c, target); break; }
+        if (!code) { sendTo(c, { t: 'err', m: 'That lobby no longer exists.' }); break; }
+        // not in this game: look for it in friends' games
+        remoteLobbies().then(list => {
+          const hit = list.find(l => l.code === code);
+          if (hit) sendTo(c, { t: 'goto', url: hit.url, code });
+          else sendTo(c, { t: 'err', m: `No lobby with code "${code}". Check the code, and that your friend's game is open and online.` });
+        });
         break;
       }
       case 'leave': leaveRoom(c); sendTo(c, { t: 'lobbies', list: lobbyList(), online: clients.size }); break;

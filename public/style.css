@@ -444,3 +444,8 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 
 .gfxnote { font-size: 12px; opacity: .7; margin-top: 6px; min-height: 0; }
 .gfxnote:empty { display: none; }
+
+/* Desktop app's join-code panel: no longer needed (4-letter lobby codes work across everyone's games).
+   Only its update notices stay visible. */
+#dkBadge > :not(.upd) { display: none !important; }
+#dkBadge:not(:has(.upd)) { display: none !important; }

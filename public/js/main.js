@@ -1300,6 +1300,16 @@ function updateRemotes(dt, now) {
 }
 
 // ================================================================ networking
+// Playing in a friend's game: a lobby code from another game sends us to that game's address with
+// ?join=CODE&home=<our own game>, and leaving the lobby brings us back home.
+const urlQ = new URLSearchParams(location.search);
+let pendingJoin = /^[A-Z]{4}$/.test(urlQ.get('join') || '') ? urlQ.get('join') : null;
+try { if (/^https?:\/\//.test(urlQ.get('home') || '')) sessionStorage.setItem('slHome', urlQ.get('home')); } catch {}
+if (urlQ.has('join') || urlQ.has('home')) history.replaceState(null, '', location.pathname);
+const homeOrigin = (() => { try { return sessionStorage.getItem('slHome') || location.origin; } catch { return location.origin; } })();
+const onFriendsGame = homeOrigin !== location.origin;
+const goHome = () => { location.href = homeOrigin + '/'; };
+let friendLostAt = 0;
 function setNet(ok, text) { const n = $('netstatus'); n.className = ok ? 'ok' : 'bad'; n.querySelector('span').textContent = text; }
 function connect() {
   if (location.protocol === 'file:') { setNet(false, 'Open via http://localhost:3080'); return; }
@@ -1313,6 +1323,10 @@ function connect() {
     room = null;
     setNet(false, 'Disconnected — retrying…');
     if (currentScreen === 'scr-lobby' || currentScreen === 'scr-pause') go('scr-home');
+    if (onFriendsGame) { // friend closed their game: back to our own after a few tries
+      friendLostAt ||= Date.now();
+      if (Date.now() - friendLostAt > 8000) { toast("Your friend's game closed. Going back to yours…"); setTimeout(goHome, 1200); return; }
+    }
     toast('Lost connection to the server. Retrying…');
     setTimeout(connect, 2000);
   };
@@ -1327,7 +1341,8 @@ function handle(m) {
   const now = performance.now();
   switch (m.t) {
     case 'hi':
-      me.id = m.id; setNet(true, 'Online');
+      me.id = m.id; setNet(true, onFriendsGame ? "Online · in a friend's game" : 'Online'); friendLostAt = 0;
+      if (pendingJoin) { send({ t: 'join', code: pendingJoin }); pendingJoin = null; }
       // Only the developer's own app (its local server) marks itself as the feedback owner.
       if (m.fbOwner && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) PR.store.set(FB_OWNER_KEY, '1');
       if (!m.fbOwner && PR.store.get(FB_OWNER_KEY) === '1') send({ t: 'fbowner' });
@@ -1337,7 +1352,7 @@ function handle(m) {
     case 'fbrelay': // feedback this server held for the developer: keep it and confirm, it's delivered at home
       if (Array.isArray(m.items)) { fbAdd(m.items); send({ t: 'fbrelayack', ids: m.items.map(f => f.id) }); }
       break;
-    case 'lobbies': lobbies = m.list; online = m.online; setNet(true, `Online · ${online} player${online === 1 ? '' : 's'}`); renderLobbyList(); break;
+    case 'lobbies': lobbies = [...m.list, ...(m.remote || []).map(l => ({ ...l, remote: true }))]; online = m.online; setNet(true, `Online · ${online} player${online === 1 ? '' : 's'}`); renderLobbyList(); break;
     case 'err': toast(m.m); $('loading').classList.add('hidden'); break;
     case 'toast': toast(m.m); break;
     case 'pong': { const rtt = performance.now() - m.c; perfStats.ping = perfStats.ping ? perfStats.ping * 0.7 + rtt * 0.3 : rtt; break; }
@@ -1349,7 +1364,14 @@ function handle(m) {
       if (wasNull) { $('lobbyChat').innerHTML = ''; }
       break;
     }
-    case 'left': room = null; if (inGame) endGameView(); go('scr-browser'); send({ t: 'list' }); break;
+    case 'left': room = null; if (inGame) endGameView(); if (onFriendsGame) { goHome(); break; } go('scr-browser'); send({ t: 'list' }); break;
+    case 'goto': { // the lobby is in a friend's game: go there and join it
+      if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(m.url || '') || !/^[A-Z]{4}$/.test(m.code || '')) break;
+      toast(`Joining lobby ${m.code} in your friend's game…`);
+      $('loading')?.classList.remove('hidden');
+      location.href = `${m.url}/?join=${m.code}&home=${encodeURIComponent(homeOrigin)}`;
+      break;
+    }
     case 'start': {
       me.id = m.id; scoreLimit = m.scoreLimit; timeLeft = m.time; matchEnded = m.phase === 'ended';
       mode = m.mode || 'ffa'; target = m.target ?? scoreLimit; teamScore = m.teamScore || [0, 0];
@@ -1961,16 +1983,22 @@ function renderLobbyList() {
   el.innerHTML = lobbies.map(l => {
     const mapName = l.map === 'random' ? 'Random' : MAPS[l.map]?.name || l.map;
     const full = l.players >= l.max;
-    return `<div class="lobby-row"><div class="lname"><b>${esc(l.name)}<span class="mode-pill">${MODES[l.mode]?.name.toUpperCase() || ''}</span></b><small>Host: ${esc(l.host)} · ${l.bots} bots</small></div>
+    return `<div class="lobby-row"><div class="lname"><b>${esc(l.name)}<span class="mode-pill">${MODES[l.mode]?.name.toUpperCase() || ''}</span></b><small>Host: ${esc(l.host)} · ${l.bots} bots${l.remote ? " · friend's game" : ''}</small></div>
       <div class="lmap"><img src="${mapThumb(l.map)}" alt=""><span>${esc(mapName)}</span></div>
       <div class="lplayers">${l.players}/${l.max}</div>
       <div><span class="badge ${l.state === 'lobby' ? 'lobby' : 'playing'}">${l.state === 'lobby' ? 'IN LOBBY' : 'IN MATCH'}</span></div>
-      <div><button class="btn ${full ? '' : 'primary'}" data-join="${l.id}" ${full ? 'disabled' : ''}>${full ? 'FULL' : 'JOIN'}</button></div></div>`;
+      <div><button class="btn ${full ? '' : 'primary'}" ${l.remote ? `data-code="${esc(l.code)}"` : `data-join="${l.id}"`} ${full ? 'disabled' : ''}>${full ? 'FULL' : 'JOIN'}</button></div></div>`;
   }).join('');
   el.querySelectorAll('[data-join]').forEach(b => b.onclick = () => { SFX.uiBlip(); send({ t: 'join', id: +b.dataset.join }); });
+  el.querySelectorAll('[data-code]').forEach(b => b.onclick = () => { SFX.uiBlip(); send({ t: 'join', code: b.dataset.code }); });
 }
-$('btnJoinCode').addEventListener('click', () => { const code = $('codeInput').value.trim(); if (code.length === 4) send({ t: 'join', code }); else toast('Lobby codes are 4 letters.'); });
+$('btnJoinCode').addEventListener('click', () => { const code = $('codeInput').value.trim().toUpperCase(); if (/^[A-Z]{4}$/.test(code)) { toast(`Looking for lobby ${code}…`); send({ t: 'join', code }); } else toast('Lobby codes are 4 letters.'); });
 $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoinCode').click(); });
+if (onFriendsGame) { // way back to our own game from a friend's
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = '‹ MY GAME'; b.title = "Leave your friend's game and go back to yours";
+  b.onclick = () => { SFX.uiBlip(); goHome(); };
+  $('btnJoinCode').after(b);
+}
 async function loadInfo() {} // (local network addresses are no longer shown in the menus)
 
 // ---------- settings form (create modal + lobby)
