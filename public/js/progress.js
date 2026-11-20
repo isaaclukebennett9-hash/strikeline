@@ -143,7 +143,8 @@ const WEAPON_LEVELS = {
 export const UNLOCKS = {
   ...Object.fromEntries(Object.entries(WEAPON_LEVELS).map(([k, l]) => [k, { level: l }])),
   // weapon finishes
-  'ws:factory': { price: 0 }, 'ws:woodland': { price: 0 }, 'ws:arctic': { price: 1500 }, 'ws:crimson': { price: 2500 },
+  'ws:factory': { price: 0 }, 'ws:woodland': { price: 0 }, 'ws:desert': { price: 0 }, 'ws:arctic': { price: 1500 }, 'ws:crimson': { price: 2500 },
+  'ws:urban': { price: 2000, level: 3 }, 'ws:jungle': { price: 3000, level: 7 }, 'ws:hex': { price: 6000, level: 12 }, 'ws:cobalt': { price: 8000, level: 18 },
   'ws:carbon': { price: 3500, level: 5 }, 'ws:tiger': { price: 5000, level: 10 }, 'ws:neon': { price: 7000, level: 15 },
   'ws:galaxy': { price: 10000, level: 22 }, 'ws:inferno': { price: 14000, level: 30 }, 'ws:gold': { price: 25000, level: 40 },
   // operators

@@ -83,6 +83,7 @@ const reticleTex = new THREE.CanvasTexture(reticleCanvas); reticleTex.colorSpace
 M.reticle = new THREE.MeshBasicMaterial({ map: reticleTex, transparent: true, depthWrite: false });
 
 for (const m of Object.values(M)) m.userData.shared = true; // reused by every model: never disposed
+const M_DARK = M.dark, M_GRIP = M.grip;
 
 // While building a gun, boxes get softly rounded edges (no razor-sharp slabs). Soldiers/arms keep plain boxes.
 let ROUND = false;
@@ -298,7 +299,7 @@ export function buildGun(model, skinId = 'factory', att = {}) {
   const S = (skinId === 'factory' && FACTORY[model]) || weaponSkinMaterial(skinId);
   const g = new THREE.Group();
   ROUND = true;
-  try { return buildGunInner(model, S, att, g); } finally { ROUND = false; }
+  try { return buildGunInner(model, S, att, g); } finally { ROUND = false; M.dark = M_DARK; M.grip = M_GRIP; }
 }
 function buildGunInner(model, S, att, g) {
   let muzzleZ = -0.5, muzzleY = 0.04, sightY = 0.1, adsZ = -0.3, left = [-0.02, -0.02, -0.3];
@@ -1369,6 +1370,9 @@ function buildGunInner(model, S, att, g) {
     }
   }
   // ------------------------------------------------------------- sights / optics
+  // attachment camo (att.attSkin): 'black' (default), 'match' (same finish as the gun) or any weapon camo
+  const attMat = att.attSkin && att.attSkin !== 'black' ? (att.attSkin === 'match' ? S : weaponSkinMaterial(att.attSkin)) : null;
+  if (attMat) { M.dark = attMat; M.grip = attMat; }
   let opticKind = 'none', scoped = false;
   const want = att.optic || att.defOptic || (spot ? 'reddot' : 'none');
   if (want === 'irons' || (irons && (want === 'none' || !spot))) {
@@ -1413,6 +1417,7 @@ function buildGunInner(model, S, att, g) {
     else if (att.under === 'laser') { box(g, 0.022, 0.024, 0.06, M.dark, 0.032, under.y + 0.024, under.z - 0.03); box(g, 0.006, 0.006, 0.002, M.laser, 0.032, under.y + 0.024, under.z - 0.061); }
     else if (att.under === 'bipod') { box(g, 0.03, 0.014, 0.03, M.dark, 0, under.y - 0.01, under.z - 0.06); for (const s of [-1, 1]) box(g, 0.01, 0.01, 0.2, M.steel, s * 0.018, under.y - 0.018, under.z + 0.04); }
   }
+  M.dark = M_DARK; M.grip = M_GRIP;
   // ------------------------------------------------------------- magazine
   if (magObj && att.mag === 'ext') { magObj.scale.y *= 1.4; }
   // ------------------------------------------------------------- merge static parts, keep moving parts separate

@@ -32,6 +32,10 @@ Announcer.setEnabled(cfg.announcer); Announcer.setVolume(Math.min(1, cfg.vol * 1
 if (!TACTICALS.includes(cfg.tactical)) cfg.tactical = 'smoke';
 setReticle(cfg.reticle, cfg.reticleColor);
 const saveCfg = () => PR.store.set('strikeline', JSON.stringify(cfg));
+// camo for one gun (falls back to the default finish from the Skins screen) and its attachments' camo
+const gunSkin = wid => (cfg.wcamo && cfg.wcamo[wid] && PR.isUnlocked('ws:' + cfg.wcamo[wid]) ? cfg.wcamo[wid] : cfg.wskin);
+const attSkinFor = wid => { const a = cfg.acamo && cfg.acamo[wid]; return a && (a === 'black' || a === 'match' || PR.isUnlocked('ws:' + a)) ? a : 'black'; };
+let pvCamo = null, pvAttCamo = null, pvGun = null; // temporary preview (hovering a camo, buy pop-up)
 
 // ================================================================ renderer / scenes
 if (!['low', 'high', 'ultra'].includes(cfg.gfx)) cfg.gfx = 'high';
@@ -508,7 +512,7 @@ function equipViewmodel() {
   for (const c of [...vmHolder.children]) disposeObject(c);
   vmHolder.clear();
   const w = curW(); if (!w) return;
-  const gun = buildWeapon(w.def, cfg.wskin, w.def.att || {});
+  const gun = buildWeapon(w.def, gunSkin(w.def.id), { ...(w.def.att || {}), attSkin: attSkinFor(w.def.id) });
   gun.add(buildArms(cfg.cskin, gun));
   gun.traverse(o => { if (o.isMesh) o.castShadow = false; });
   const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flash, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
@@ -2285,6 +2289,29 @@ function buildArmory() {
   renderGunsmith();
   updateProfileUI();
 }
+// Gunsmith camo rows: this gun's camo and its attachments' camo. Hover to preview; locked camos open the buy pop-up.
+function renderGsCamo(id) {
+  const cur = gunSkin(id), acur = attSkinFor(id);
+  const chip = (s, on, data) => `<button data-${data}="${s.id}" class="${on ? 'on' : ''} ${s.locked ? 'locked' : ''}" title="${esc(s.name)}"><i style="background:${s.swatch}"></i></button>`;
+  const list = WEAPON_SKINS.filter(s => s.rarity !== 'dev' || PR.isUnlocked('ws:' + s.id)).map(s => ({ ...s, locked: !PR.isUnlocked('ws:' + s.id) }));
+  $('gsCamo').innerHTML = `<div class="gs-camolabel">CAMO <small>${esc(WEAPON_SKINS.find(s => s.id === cur)?.name || '')}</small></div><div class="camochips">${list.map(s => chip(s, s.id === cur, 'gc')).join('')}</div>` +
+    `<div class="gs-camolabel">ATTACHMENT CAMO <small>${acur === 'black' ? 'Black' : acur === 'match' ? 'Match gun' : esc(WEAPON_SKINS.find(s => s.id === acur)?.name || '')}</small></div><div class="camochips">` +
+    chip({ id: 'black', name: 'Black', swatch: '#15171a' }, acur === 'black', 'ac') + chip({ id: 'match', name: 'Match gun', swatch: 'linear-gradient(135deg, #666 50%, #ff7a1a 50%)' }, acur === 'match', 'ac') +
+    list.map(s => chip(s, s.id === acur, 'ac')).join('') + '</div>';
+  const hover = (b, gun) => { b.onmouseenter = () => { if (gun) pvCamo = b.dataset.gc; else pvAttCamo = b.dataset.ac; rebuildPreview(); }; b.onmouseleave = () => { pvCamo = pvAttCamo = null; rebuildPreview(); }; };
+  $('gsCamo').querySelectorAll('[data-gc]').forEach(b => { hover(b, true); b.onclick = () => {
+    if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+    const s = WEAPON_SKINS.find(x => x.id === b.dataset.gc), set = () => { (cfg.wcamo ||= {})[id] = s.id; saveCfg(); pvCamo = null; renderGunsmith(); rebuildPreview(); };
+    if (!PR.isUnlocked('ws:' + s.id)) { if (PR.UNLOCKS['ws:' + s.id]?.dev) toast('Dev camo: enter the dev code on the Skins screen'); else buyPopup('ws:' + s.id, s.name, set, id); return; }
+    set(); SFX.uiBlip();
+  }; });
+  $('gsCamo').querySelectorAll('[data-ac]').forEach(b => { hover(b, false); b.onclick = () => {
+    if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+    const v = b.dataset.ac, s = WEAPON_SKINS.find(x => x.id === v), set = () => { (cfg.acamo ||= {})[id] = v; saveCfg(); pvAttCamo = null; renderGunsmith(); rebuildPreview(); };
+    if (s && !PR.isUnlocked('ws:' + v)) { if (!PR.UNLOCKS['ws:' + v]?.dev) buyPopup('ws:' + v, s.name, set, id); return; }
+    set(); SFX.uiBlip();
+  }; });
+}
 // Perks (one per slot) and killstreaks (pick three). Perks apply from your next life; streaks straight away.
 function buildPerkPickers() {
   const lvl = PR.levelInfo().level;
@@ -2328,6 +2355,7 @@ function renderGunsmith() {
         return `<button data-a="${o.id}" class="${cur === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><span class="lv">${locked ? `🔒 LV ${o.lvl} · ◆${PR.attPrice(o)}` : `LV ${o.lvl}`}</span><b>${esc(o.name)}</b><br>${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join(' ')} ${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join(' ')}</button>`;
       }).join('') + '</div>' : '') + '</div>';
   }).join('');
+  renderGsCamo(id);
   $('gunsmith').querySelectorAll('[data-slot]').forEach(b => b.onclick = () => { gsOpen = gsOpen === b.dataset.slot ? null : b.dataset.slot; renderGunsmith(); SFX.uiBlip(); });
   $('gunsmith').querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
     const a = b.dataset.a, o = PR.optionsFor(id, gsOpen).find(x => x.id === a);
@@ -2378,17 +2406,45 @@ function buildSkins() {
       const u = PR.UNLOCKS[key];
       if (u?.dev) { toast(`${label} is a dev skin — enter the dev code below`); $('devcode').focus(); return; }
       if (u?.level && PR.levelInfo().level < u.level) { toast(`${label} needs level ${u.level} (then ◆${u.price})`); return; }
-      if (!(u?.price && confirm(`Buy ${label} for ◆${u.price}? You have ◆${PR.profile.credits}.`) && tryBuy(key, label))) return;
+      if (u?.price) buyPopup(key, label, () => { apply(); applyLook(); });
+      return;
     }
     apply(); applyLook();
   };
   $('wskins').querySelectorAll('button').forEach(b => b.onclick = () => pickSkin('ws:' + b.dataset.s, WEAPON_SKINS.find(s => s.id === b.dataset.s).name, () => { cfg.wskin = b.dataset.s; }));
+  $('wskins').querySelectorAll('button').forEach(b => { b.onmouseenter = () => { pvCamo = b.dataset.s; rebuildPreview(); }; b.onmouseleave = () => { pvCamo = null; rebuildPreview(); }; });
   $('cskins').querySelectorAll('button').forEach(b => b.onclick = () => pickSkin('op:' + b.dataset.c, charSkin(b.dataset.c).name, () => { cfg.cskin = b.dataset.c; }));
   $('devbox').classList.toggle('hidden', PR.isDev());
   const ws_ = WEAPON_SKINS.find(s => s.id === cfg.wskin) || WEAPON_SKINS[0], cs = charSkin(cfg.cskin);
   $('skininfo').innerHTML = `<span style="color:${RARITY_COLORS[ws_.rarity]}">${ws_.name}</span> · <span style="color:${RARITY_COLORS[cs.rarity]}">${cs.name}</span>`;
   updateChip();
 }
+// Buy pop-up: shows the item on a 3D preview with price and your credits; works in menus and mid-match.
+let buyCtx = null;
+function buyPopup(key, label, onBought, wid) {
+  const u = PR.UNLOCKS[key]; if (!u) return;
+  const sk = key.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === key.slice(3)) : null;
+  const lvlOk = !u.level || PR.levelInfo().level >= u.level, cash = PR.profile.credits >= u.price;
+  $('buyTitle').textContent = label.toUpperCase();
+  $('buyRarity').textContent = sk ? sk.rarity.toUpperCase() + ' CAMO' : 'OPERATOR';
+  $('buyRarity').style.color = sk ? RARITY_COLORS[sk.rarity] : '';
+  $('buyPrice').innerHTML = `◆ ${u.price} <small>you have ◆ ${PR.profile.credits}</small>`;
+  $('buyNote').textContent = !lvlOk ? `Reach level ${u.level} to buy this.` : !cash ? `You need ◆ ${u.price - PR.profile.credits} more credits.` : 'Camos you buy can go on any gun and its attachments.';
+  $('buyGo').disabled = !lvlOk || !cash;
+  buyCtx = { key, label, onBought, prevParent: pv.renderer.domElement.parentElement, prevMode: pv.mode };
+  if (sk) { pvCamo = sk.id; pvGun = wid || (pv.mode === 'pnl-loadout' ? previewWeapon : cfg.primary); }
+  $('buyPv').appendChild(pv.renderer.domElement); pv.mode = 'buy'; resizePreview(); rebuildPreview();
+  $('modal-buy').classList.remove('hidden'); SFX.uiBlip();
+}
+function closeBuy() {
+  $('modal-buy').classList.add('hidden');
+  if (!buyCtx) return;
+  pvCamo = null; pvGun = null;
+  if (buyCtx.prevParent) buyCtx.prevParent.appendChild(pv.renderer.domElement);
+  pv.mode = buyCtx.prevMode; resizePreview(); rebuildPreview(); buyCtx = null;
+}
+$('buyCancel').addEventListener('click', closeBuy);
+$('buyGo').addEventListener('click', () => { const c = buyCtx; if (!c) return; const ok = tryBuy(c.key, c.label); closeBuy(); if (ok) c.onBought?.(); });
 function applyLook() {
   saveCfg(); buildSkins(); rebuildPreview(); SFX.uiBlip();
   if (me.alive && inGame) equipViewmodel();
@@ -2475,16 +2531,17 @@ function resizePreview() {
 function rebuildPreview() {
   if (pv.obj) { pv.scene.remove(pv.obj); disposeObject(pv.obj); }
   const g = new THREE.Group();
-  if (pv.mode === 'pnl-loadout') {
-    const gun = buildWeapon(WEAPONS[previewWeapon], cfg.wskin, PR.getAtt(previewWeapon));
+  if (pv.mode === 'pnl-loadout' || pvCamo || pvGun) {
+    const wid = pvGun || (pv.mode === 'pnl-loadout' ? previewWeapon : cfg.primary);
+    const gun = buildWeapon(WEAPONS[wid], pvCamo || gunSkin(wid), { ...PR.getAtt(wid), attSkin: pvAttCamo || attSkinFor(wid) });
     const box3 = new THREE.Box3().setFromObject(gun), c = box3.getCenter(new THREE.Vector3()), size = box3.getSize(new THREE.Vector3()).length();
     gun.position.sub(c);
     const holder = new THREE.Group(); holder.add(gun); holder.scale.setScalar(1.15 / size);
     g.add(holder);
-    pv.camera.position.set(0, 0.15, 1.6);
+    pv.camera.position.set(0, 0.15, pv.mode === 'buy' ? 1.15 : 1.6);
   } else {
     const s = buildSoldier(cfg.cskin);
-    s.userData.gunMount.add(buildWeapon(WEAPONS[cfg.primary], cfg.wskin, PR.getAtt(cfg.primary)));
+    s.userData.gunMount.add(buildWeapon(WEAPONS[cfg.primary], gunSkin(cfg.primary), { ...PR.getAtt(cfg.primary), attSkin: attSkinFor(cfg.primary) }));
     s.position.set(0, -0.95, 0);
     g.add(s);
     pv.camera.position.set(0, 0.2, 3.6);

@@ -192,6 +192,7 @@
         <div id="pvGs" class="hidden">
           <div id="gsLock" class="gs-lock hidden">Locked during a match: leave the match to change attachments and reticles.</div>
           <div id="gsHead" class="gs-head"></div><div id="gunsmith" class="gunsmith"></div>
+          <div id="gsCamo" class="gs-camo"></div>
           <label class="gs-retlabel">RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
         </div>
       </div>
@@ -240,6 +241,16 @@
   </section>
 
   <!-- CREATE LOBBY MODAL -->
+  <div id="modal-buy" class="modal hidden">
+    <div class="modal-card buy-card">
+      <small id="buyRarity" class="buy-rarity"></small>
+      <h2 id="buyTitle"></h2>
+      <div id="buyPv" class="buy-pv"></div>
+      <div id="buyPrice" class="buy-price"></div>
+      <div id="buyNote" class="hint"></div>
+      <div class="modal-actions"><button class="btn ghost" id="buyCancel">CANCEL</button><button class="btn primary big" id="buyGo">BUY</button></div>
+    </div>
+  </div>
   <div id="modal-create" class="modal hidden">
     <div class="modal-card">
       <h2>CREATE LOBBY</h2>

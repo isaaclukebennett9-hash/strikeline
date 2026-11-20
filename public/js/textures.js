@@ -661,11 +661,16 @@ export function getMaterial(name, theme) {
 export const WEAPON_SKINS = [
   { id: 'factory', name: 'Factory New', rarity: 'common', swatch: '#4a515b' },
   { id: 'woodland', name: 'Woodland', rarity: 'common', swatch: '#4b5a32' },
+  { id: 'desert', name: 'Desert Storm', rarity: 'common', swatch: '#c2a875' },
   { id: 'arctic', name: 'Arctic Camo', rarity: 'rare', swatch: '#d7dde3' },
+  { id: 'urban', name: 'Urban Digital', rarity: 'rare', swatch: 'repeating-linear-gradient(90deg, #5d636b 0 5px, #8b929b 5px 9px, #2f3338 9px 13px)' },
+  { id: 'jungle', name: 'Jungle Stripe', rarity: 'rare', swatch: 'repeating-linear-gradient(60deg, #2f4a1f 0 6px, #11180c 6px 10px, #6c7a35 10px 14px)' },
   { id: 'crimson', name: 'Crimson Web', rarity: 'rare', swatch: '#8e1424' },
   { id: 'carbon', name: 'Carbon Fiber', rarity: 'rare', swatch: '#1b1d20' },
   { id: 'tiger', name: 'Tiger Tooth', rarity: 'epic', swatch: '#e2851d' },
   { id: 'neon', name: 'Neon Pulse', rarity: 'epic', swatch: '#14e1ff' },
+  { id: 'hex', name: 'Hex Plate', rarity: 'epic', swatch: 'radial-gradient(circle, #3a4250 30%, #1b2028 31%)' },
+  { id: 'cobalt', name: 'Cobalt Ripple', rarity: 'epic', swatch: 'linear-gradient(135deg, #0e2d6e, #2f7bff, #0e2d6e)' },
   { id: 'galaxy', name: 'Galaxy', rarity: 'legendary', swatch: '#5b2a9e' },
   { id: 'inferno', name: 'Inferno', rarity: 'legendary', swatch: '#ff4a12' },
   { id: 'gold', name: '24K Gold', rarity: 'legendary', swatch: '#f2c14e' },
@@ -744,6 +749,37 @@ export function weaponSkinMaterial(id) {
       m.userData.pulse = true; break;
     }
     case 'gold': m = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.18, metalness: 1.0 }); break;
+    case 'desert': m = new THREE.MeshStandardMaterial({ map: toTex(camo(['#c8b07e', '#a88c5a', '#e2d2a6', '#7d6a45'], 256, 55)), roughness: 0.78, metalness: 0.08 }); break;
+    case 'urban': { // blocky digital pixels
+      const [c, x] = mkCanvas(128); x.fillStyle = '#6b727b'; x.fillRect(0, 0, 128, 128);
+      const rnd = mulberry32(11), cols = ['#3a3f46', '#8d949d', '#262a2f', '#a7aeb6'];
+      for (let i = 0; i < 260; i++) { x.fillStyle = cols[i % 4]; const px = Math.floor(rnd() * 32) * 4, py = Math.floor(rnd() * 32) * 4; x.fillRect(px, py, 4 * (1 + Math.floor(rnd() * 3)), 4 * (1 + Math.floor(rnd() * 2))); }
+      const t = toTex(c); t.magFilter = THREE.NearestFilter; t.repeat.set(2, 2);
+      m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, metalness: 0.12 }); break;
+    }
+    case 'jungle': { // diagonal brush stripes
+      const [c, x] = mkCanvas(256); x.fillStyle = '#4c6a2c'; x.fillRect(0, 0, 256, 256);
+      for (let i = -8; i < 24; i++) { x.fillStyle = ['#1a2410', '#7b8a3e', '#2f4a1f'][i & 1 ? 0 : (i % 3 ? 1 : 2)]; x.beginPath(); const o = i * 22 + Math.random() * 8; x.moveTo(o, 0); x.lineTo(o + 10 + Math.random() * 10, 0); x.lineTo(o + 140, 256); x.lineTo(o + 128, 256); x.fill(); }
+      noise(x, 256, 14);
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.75, metalness: 0.1 }); break;
+    }
+    case 'hex': { // hexagon armour plates with bright edges
+      const [c, x] = mkCanvas(256); x.fillStyle = '#20252d'; x.fillRect(0, 0, 256, 256);
+      for (let r = 0; r < 10; r++) for (let k = 0; k < 10; k++) {
+        const cx = k * 28 + (r % 2) * 14, cy = r * 25;
+        x.beginPath(); for (let s = 0; s < 6; s++) { const a = s / 6 * 6.283 + 0.52; s ? x.lineTo(cx + Math.cos(a) * 13, cy + Math.sin(a) * 13) : x.moveTo(cx + Math.cos(a) * 13, cy + Math.sin(a) * 13); }
+        x.closePath(); x.fillStyle = (r * 7 + k * 3) % 5 ? '#353d49' : '#4a5463'; x.fill(); x.strokeStyle = '#11151a'; x.lineWidth = 2; x.stroke();
+      }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.35, metalness: 0.6 }); break;
+    }
+    case 'cobalt': { // blue anodised ripples
+      const [c, x] = mkCanvas(256);
+      const g = x.createLinearGradient(0, 0, 256, 256); g.addColorStop(0, '#0d2a66'); g.addColorStop(0.5, '#2e6fe6'); g.addColorStop(1, '#0d2a66');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = 'rgba(160,210,255,0.35)'; x.lineWidth = 2;
+      for (let r = 8; r < 380; r += 14) { x.beginPath(); x.arc(40, 60, r, 0, 7); x.stroke(); }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.22, metalness: 0.75 }); break;
+    }
     case 'dev': { // circuit board: glowing green traces with gold pads
       const [c, x] = mkCanvas(256); const [e, ex] = mkCanvas(256);
       x.fillStyle = '#07140e'; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
