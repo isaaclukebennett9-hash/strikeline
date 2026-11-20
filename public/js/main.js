@@ -636,6 +636,14 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Tab') { showBoard = false; $('scoreboard').classList.add('hidden'); } });
 document.addEventListener('mousemove', e => {
+  // keep the trigger in sync with the real button state, so a lost mousedown/mouseup
+  // (e.g. the window briefly dropping mouse capture) can't stop automatic fire mid-spray
+  if (locked && inGame && !chatOpen) {
+    const held = (e.buttons & 1) === 1;
+    if (held && !mouseL) mouseL = true;
+    else if (!held && mouseL && e.buttons !== undefined) { mouseL = false; triggerFresh = true; }
+    mouseR = (e.buttons & 2) === 2;
+  }
   if (!locked || !me.alive) return;
   const s = 0.0022 * cfg.sens * (camera.fov / cfg.fov) * (performance.now() < stunUntil ? 0.35 : 1);
   me.yaw -= e.movementX * s;

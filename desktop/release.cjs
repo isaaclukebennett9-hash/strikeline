@@ -21,7 +21,8 @@ fs.mkdirSync(out);
 
 // game.zip (Windows' built-in tar can write zip files)
 const zip = path.join(out, 'game.zip');
-run('tar', ['-a', '-c', '-f', zip, 'server.js', 'package.json', 'shared', 'public', 'node_modules/ws']);
+const TAR = fs.existsSync('C:/Windows/System32/tar.exe') ? 'C:/Windows/System32/tar.exe' : 'tar'; // Windows bsdtar (Git Bash's GNU tar can't write zips)
+run(TAR, ['-a', '-c', '-f', zip, 'server.js', 'package.json', 'shared', 'public', 'node_modules/ws']);
 
 // the installer, if this version has been built
 const setupDir = path.join(require('os').homedir(), 'StrikelineBuild');
