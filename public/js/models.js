@@ -1088,7 +1088,7 @@ function buildGunInner(model, S, att, g) {
       { const bp = part('bolt', 0.02, 0.045, 0.07);                                 // turned-down bolt handle
         pcyl(bp, 0.007, 0.07, M.steel, 0.0, 0.045, 0.06); pbox(bp, 0.05, 0.008, 0.008, M.steel, 0.03, 0.035, 0.08, 0, 0, -0.5);
         pbox(bp, 0.018, 0.018, 0.018, M.steel, 0.055, 0.02, 0.08); }
-      box(g, 0.008, 0.006, 0.06, M.dark, 0, -0.035, 0.06); box(g, 0.004, 0.02, 0.006, M.steel, 0, -0.022, 0.06, 0.2);
+      guard(g, 0.05, -0.026);
       box(g, 0.02, 0.025, 0.02, M.dark, 0, 0.062, -0.63); box(g, 0.03, 0.012, 0.04, M.dark, 0, 0.065, -0.18);
       // --- detail
       box(g, 0.042, 0.016, 0.1, S, 0, 0.026, -0.02);                                // receiver flats
@@ -1108,8 +1108,7 @@ function buildGunInner(model, S, att, g) {
       break;
     }
     case 'ksg': {
-      box(g, 0.06, 0.09, 0.42, S, 0, 0.02, 0.04);                                   // bullpup body
-      box(g, 0.062, 0.1, 0.02, M.grip, 0, 0.02, 0.26);
+      prof(g, [[-0.17, 0.065], [0.24, 0.065], ['q', 0.255, 0.065, 0.255, 0.05], [0.255, -0.03], [0.06, -0.03], [0.04, -0.02], [-0.12, -0.02], ['q', -0.17, -0.02, -0.17, 0.02]], 0.06, S, 0, 0.008);   // bullpup body
       for (const s of [-1, 1]) cyl(g, 0.014, 0.44, M.dark, s * 0.016, 0.0, -0.3);   // twin magazine tubes
       cyl(g, 0.017, 0.48, M.dark, 0, 0.045, -0.34);
       { const pp = part('pump', 0, 0.0, -0.38);
@@ -1242,8 +1241,7 @@ function buildGunInner(model, S, att, g) {
       box(g, 0.074, 0.12, 0.1, M.toyOrange, 0, 0.03, -0.3);                         // 2 x 4 barrel block
       for (const x of [-0.016, 0.016]) for (const y of [0.075, 0.045, 0.015, -0.015]) cyl(g, 0.011, 0.012, M.black, x, y, -0.355, 10);
       { const pp = part('pump', 0, -0.03, -0.17); pbox(pp, 0.074, 0.045, 0.1, M.toyGray, 0, -0.035, -0.17); }
-      box(g, 0.04, 0.11, 0.05, M.grip, 0, -0.05, 0.08, 0.4);
-      box(g, 0.008, 0.006, 0.06, M.toyGray, 0, -0.035, 0.03);
+      guard(g, 0.02, -0.03, M.toyGray); grip(g, 0.058, -0.03, M.toyGray, 0.04, 0.1, 0.04);
       box(g, 0.026, 0.012, 0.03, M.toyGray, 0, 0.081, 0.05); box(g, 0.01, 0.02, 0.01, M.toyOrange, 0, 0.098, -0.3);
       irons = { cy: 0.1, zr: 0.05, zf: -0.3 };
       muzzleZ = -0.37; muzzleY = 0.03; left = [0, -0.05, -0.17];
