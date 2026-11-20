@@ -1998,12 +1998,13 @@ function renderPreview(now) {
 
 // ================================================================ boot
 // dev helper: render a contact sheet of weapon models (used by automated checks)
-function renderGunSheet(ids, cols = 5, attFor = () => ({})) {
-  const W = 300, H = 150, rows = Math.ceil(ids.length / cols);
+function renderGunSheet(ids, cols = 5, attFor = () => ({}), W = 300, H = 150) {
+  const rows = Math.ceil(ids.length / cols);
   const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-  r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+  r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.8;
   const sc = new THREE.Scene(); sc.background = new THREE.Color('#2a2f3a');
-  sc.add(new THREE.HemisphereLight('#dfe8ff', '#3a3028', 1.6)); const k = new THREE.DirectionalLight('#fff', 2.5); k.position.set(2, 3, 2); sc.add(k);
+  sc.add(new THREE.HemisphereLight('#dfe8ff', '#3a3028', 2.2)); const k = new THREE.DirectionalLight('#fff', 3.2); k.position.set(2, 3, 2); sc.add(k);
+  const k2 = new THREE.DirectionalLight('#ffd8b0', 1.6); k2.position.set(-2, 1, 1.5); sc.add(k2);
   sc.environment = pv.scene.environment;
   const cam = new THREE.PerspectiveCamera(30, W / H, 0.01, 20);
   const out = document.createElement('canvas'); out.width = W * cols; out.height = H * rows;
