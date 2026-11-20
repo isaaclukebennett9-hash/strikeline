@@ -16,8 +16,16 @@ import { STREAKS, cleanPerks, cleanStreaks, streakCost } from './shared/loadout.
 
 const PORT = Number(process.env.PORT) || 3080;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// Where this server keeps its own files (errors.log, feedback). The game folder when it can be written to;
+// an install under C:\Program Files can't be, so fall back to the app's data folder (%APPDATA%\Strikeline).
+const DATA = (() => {
+  if (process.env.STRIKELINE_DATA_DIR) { try { fs.mkdirSync(process.env.STRIKELINE_DATA_DIR, { recursive: true }); return process.env.STRIKELINE_DATA_DIR; } catch {} }
+  try { const t = path.join(ROOT, `.wtest-${process.pid}`); fs.writeFileSync(t, ''); fs.unlinkSync(t); return ROOT; } catch {}
+  const d = path.join(process.env.APPDATA || path.join(os.homedir(), '.config'), 'Strikeline');
+  try { fs.mkdirSync(d, { recursive: true }); return d; } catch { return os.tmpdir(); }
+})();
 // A bug in one tick must never take the whole server (and everyone's match) down: log it and keep going.
-function errLog(msg) { try { fs.appendFileSync(path.join(ROOT, 'errors.log'), `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`); } catch {} }
+function errLog(msg) { try { fs.appendFileSync(path.join(DATA, 'errors.log'), `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`); } catch {} }
 process.on('uncaughtException', (err) => { errLog(`server: ${err && err.stack || err}`); try { console.error(err); } catch {} });
 process.on('unhandledRejection', (err) => errLog(`server (promise): ${err && err.stack || err}`));
 const TICK = 1 / 30;
@@ -36,7 +44,7 @@ try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 // Other servers keep a copy in their own feedback.txt and hold the rest in feedback-outbox.json until the
 // developer's app connects; players' apps also keep an outbox and hand it over when they join the developer's server.
 const FB_OWNER = fs.existsSync(path.join(ROOT, '.git'));
-const FB_TXT = path.join(ROOT, 'feedback.txt'), FB_OUT = path.join(ROOT, 'feedback-outbox.json'), FB_SEEN = path.join(ROOT, 'feedback-ids.json');
+const FB_TXT = path.join(DATA, 'feedback.txt'), FB_OUT = path.join(DATA, 'feedback-outbox.json'), FB_SEEN = path.join(DATA, 'feedback-ids.json');
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 let fbOutbox = FB_OWNER ? [] : readJson(FB_OUT, null);
 const fbSeen = new Set(readJson(FB_SEEN, []));
@@ -71,7 +79,7 @@ function storeFeedback(items) {
     fbSeen.add(f.id); added++;
     const where = [f.map, f.mode].filter(Boolean).join(' / ');
     const when = new Date(f.at).toISOString().replace('T', ' ').slice(0, 19);
-    fs.appendFileSync(FB_TXT, `[${when}] ${f.name}${where ? ` (${where})` : ''}:\n${f.text}\n\n`);
+    try { fs.appendFileSync(FB_TXT, `[${when}] ${f.name}${where ? ` (${where})` : ''}:\n${f.text}\n\n`); } catch (err) { errLog(`feedback write: ${err.message}`); }
     if (!FB_OWNER) fbOutbox.push(f);
     console.log(`[feedback] ${f.name}: ${f.text.slice(0, 80)}`);
   }
