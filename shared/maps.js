@@ -3,6 +3,7 @@ import { R, B, push, newCtx, rotBox, addRot, FH, WT, SLAB, wallRun, slab, band, 
 import { townClassic, harborClassic, killhouseClassic } from './maps_classic.js';
 import { shipyard, suburbs, canyonTown } from './maps_big.js';
 import { oldTown, harborNew, neonNew, frostNew, duneNew, constructionNew, killhouseNew } from './maps_revamp.js';
+import { ridgeline } from './maps_terrain.js';
 
 // ================================================================ maps
 
@@ -170,6 +171,7 @@ function militaryBase() {
 export const MAPS = {
   shipyard:  { name: 'Shipyard',      size: 184, theme: 'shipyard', build: shipyard,  desc: 'MASSIVE · Boardable ship in dry dock, container yard, cranes, warehouses', big: true },
   suburbs:   { name: 'Suburbs',       size: 176, theme: 'suburb',   build: suburbs,   desc: 'MASSIVE · Houses with yards & pools, mall, school, park, church', big: true },
+  ridgeline: { name: 'Ridgeline',     size: 164, theme: 'suburb',   build: ridgeline, desc: 'MASSIVE · Rolling hills, river valley, farm, hilltop watchtower, ridge ruins, pine woods', big: true },
   canyon:    { name: 'Canyon Town',   size: 184, theme: 'canyon',   build: canyonTown, desc: 'MASSIVE · Cliff town, domed hall, fort, mine tunnel, oasis', big: true },
   downtown:  { name: 'Downtown',      size: 120, theme: 'city',     build: downtown,  desc: 'LARGE · City blocks, rooftop bridges, jump pads', big: true },
   base:      { name: 'Military Base', size: 140, theme: 'base',     build: militaryBase, desc: 'LARGE · Hangars, helicopters, radar dome, trenches, watchtowers', big: true },
@@ -184,7 +186,7 @@ export const MAPS = {
   classic_harbor:    { name: 'Harbor (Classic)',    size: 80, theme: 'harbor',    build: harborClassic,    desc: 'The original Harbor' },
   classic_killhouse: { name: 'Killhouse (Classic)', size: 38, theme: 'killhouse', build: killhouseClassic, desc: 'The original Killhouse' },
 };
-export const MAP_ORDER = ['shipyard', 'suburbs', 'canyon', 'downtown', 'base', 'town', 'harbor', 'neon', 'frost', 'dune', 'construction', 'killhouse', 'classic_town', 'classic_harbor', 'classic_killhouse'];
+export const MAP_ORDER = ['ridgeline', 'shipyard', 'suburbs', 'canyon', 'downtown', 'base', 'town', 'harbor', 'neon', 'frost', 'dune', 'construction', 'killhouse', 'classic_town', 'classic_harbor', 'classic_killhouse'];
 
 function overlapsAny(x, z, r, h, boxes) {
   for (const b of boxes)
@@ -209,7 +211,8 @@ export function buildMap(id) {
   const cands = [];
   for (let x = -half + 2.5; x <= half - 2.5; x += 2.5)
     for (let z = -half + 2.5; z <= half - 2.5; z += 2.5)
-      if (!overlapsAny(x, z, 0.9, 3.5, boxes)) cands.push([x, 0, z]);
+      if (ctx.ground) { const g = ctx.ground(x, z); if (g < 7 && !boxes.some(b => x + 0.9 > b.min[0] && x - 0.9 < b.max[0] && z + 0.9 > b.min[2] && z - 0.9 < b.max[2] && b.min[1] < g + 3.5 && b.max[1] > g + 0.05)) cands.push([x, g, z]); }
+      else if (!overlapsAny(x, z, 0.9, 3.5, boxes)) cands.push([x, 0, z]);
   const spawns = [];
   if (cands.length) {
     spawns.push(cands.reduce((a, c) => (c[0] + c[2] < a[0] + a[2] ? c : a)));
@@ -257,7 +260,7 @@ export function buildMap(id) {
       picked.push(best);
     }
     const kinds = ['damage', 'speed'];
-    picked.forEach((p, i) => pickups.push({ id: i, kind: kinds[i] || (i % 2 ? 'health' : 'ammo'), x: p[0], y: 0, z: p[2] }));
+    picked.forEach((p, i) => pickups.push({ id: i, kind: kinds[i] || (i % 2 ? 'health' : 'ammo'), x: p[0], y: p[1] || 0, z: p[2] }));
     if (def.size < 45) pickups[1].kind = 'health';
   }
   return (cache[id] = { id, name: def.name, size: def.size, big: !!def.big, theme: def.theme, boxes, deco: ctx.deco, spawns, waypoints: cands, query, pickups });
