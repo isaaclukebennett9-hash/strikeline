@@ -231,3 +231,43 @@ export function recoilStep(def, n) {
   const h = p.bias * Math.min(1, n / 7) + p.sway * Math.sin(n * p.rate + p.phase) * Math.min(1, (n + 1) / 3) + (Math.random() - 0.5) * 0.12;
   return [v, h];
 }
+
+// ---------------------------------------------------------------- reload styles (first-person animation)
+// insert: push (straight up into the well) · rock (hooked in at the front, rocked back: AK/FAL) · behind (bullpup,
+// mag behind the grip) · drum (drum slides out forward) · helical (long mag slides along under the barrel)
+// charge: what happens after an empty reload: bolt (pull the bolt/charging handle) · slap (HK slap at the front)
+// · release (thumb the bolt release) · slide (rack a pistol slide) · none. roll: which way the gun is turned
+// (+ right / - left), tilt: how far it is tipped up, bump: palm-slap the mag home.
+const RELOAD = {
+  viper: { insert: 'push', charge: 'slide', roll: 0.25, tilt: 0.25, bump: true },
+  hawk: { insert: 'push', charge: 'slide', roll: 0.35, tilt: 0.3, bump: true },
+  stinger: { insert: 'push', charge: 'slide', roll: -0.3, tilt: 0.2 },
+  vector: { insert: 'push', charge: 'bolt', roll: -0.4, tilt: 0.2, bump: true },
+  kestrel: { insert: 'push', charge: 'none', roll: 0.3, tilt: 0.15 },
+  mp5: { insert: 'push', charge: 'slap', roll: 0.45, tilt: 0.3 },
+  ppsh: { insert: 'drum', charge: 'bolt', roll: 0.5, tilt: 0.1 },
+  tommy: { insert: 'drum', charge: 'bolt', roll: -0.45, tilt: 0.12 },
+  bizon: { insert: 'helical', charge: 'bolt', roll: 0.35, tilt: 0.05 },
+  skorpion: { insert: 'push', charge: 'bolt', roll: -0.35, tilt: 0.3 },
+  falcon: { insert: 'push', charge: 'release', roll: 0.35, tilt: 0.22, bump: true },
+  tri: { insert: 'push', charge: 'release', roll: 0.3, tilt: 0.25, bump: true },
+  r4c: { insert: 'push', charge: 'release', roll: -0.32, tilt: 0.2, bump: true },
+  ak47: { insert: 'rock', charge: 'bolt', roll: 0.55, tilt: 0.18 },
+  ak12: { insert: 'rock', charge: 'bolt', roll: 0.4, tilt: 0.2 },
+  galil: { insert: 'rock', charge: 'bolt', roll: -0.45, tilt: 0.16 },
+  famas: { insert: 'behind', charge: 'bolt', roll: 0.3, tilt: -0.25 },
+  aug: { insert: 'behind', charge: 'bolt', roll: -0.35, tilt: -0.3, bump: true },
+  g36c: { insert: 'push', charge: 'slap', roll: 0.3, tilt: 0.25, bump: true },
+  asval: { insert: 'push', charge: 'bolt', roll: 0.4, tilt: 0.22 },
+  scarh: { insert: 'push', charge: 'bolt', roll: -0.38, tilt: 0.22, bump: true },
+  fal: { insert: 'rock', charge: 'bolt', roll: -0.3, tilt: 0.2 },
+  tcsg: { insert: 'push', charge: 'bolt', roll: 0.35, tilt: 0.25, bump: true },
+  scorpion: { insert: 'push', charge: 'bolt', roll: -0.3, tilt: 0.15, bump: true },
+  marksman: { insert: 'push', charge: 'release', roll: 0.28, tilt: 0.2, bump: true },
+  longbow: { insert: 'push', charge: 'bolt', roll: 0.3, tilt: 0.15, bump: true },
+};
+for (const w of Object.values(WEAPONS)) {
+  if (w.throwable || w.melee) continue;
+  const r = hash(w.id + 'r');
+  w.rl = RELOAD[w.id] || { insert: 'push', charge: r > 0.5 ? 'bolt' : 'release', roll: (r - 0.5) * 1.0, tilt: 0.2, bump: r > 0.3 };
+}

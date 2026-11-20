@@ -534,7 +534,8 @@ function startReload() {
   if (!w || w.def.melee || w.reloadT > 0 || w.ammo >= w.def.mag || w.reserve <= 0) return;
   w.reloadTotal = w.def.shellTime ? w.def.shellTime + 0.25 : w.def.reload;
   w.reloadT = w.reloadTotal; w.burstLeft = 0; w.actT = 0;
-  SFX.reload(w.def.shellTime ? 0.5 : w.def.reload);
+  w.reloadTac = w.ammo > 0; w.rsfx = 0;                                              // tactical reload: no need to work the action
+  if (w.def.shellTime || w.def.anim === 'break' || w.def.anim === 'revolver' || w.def.anim === 'clip') SFX.reload(w.def.shellTime ? 0.5 : w.def.reload);
 }
 
 // ================================================================ remote players
@@ -1016,7 +1017,7 @@ function updateWeapon(dt, now) {
     if (w.ammo > 0) { fireShot(w, now); w.burstLeft--; } else w.burstLeft = 0;
     if (w.burstLeft === 0) w.nextFire = now + def.burstDelay * 1000;
   }
-  if (mouseL && me.alive && !matchEnded) {
+  if (mouseL && me.alive && !matchEnded && !throwAnim) {
     if (isSprinting()) sprintLock = 0.25;
     else if (drawT <= 0 && w.reloadT <= 0) {
       if (def.melee) { if (now >= w.nextFire) melee(w, now); }
@@ -1090,12 +1091,53 @@ function throwNade(which) {
   const kind = which === 'tactical' ? cfg.tactical : cfg.lethal;
   if (!PR.isUnlocked(kind)) return;
   if (which === 'tactical') { if (tacsLeft <= 0) return; tacsLeft--; } else { if (nadesLeft <= 0) return; nadesLeft--; }
-  const { f } = camVectors();
-  const o = camera.position.clone().addScaledVector(f, 0.5);
-  const knife = kind === 'tknife';
-  const v = knife ? f.clone().multiplyScalar(30) : f.clone().multiplyScalar(15).add(new THREE.Vector3(me.vel[0] * 0.5, 3.2, me.vel[2] * 0.5));
-  send({ t: 'nade', k: kind, o: o.toArray().map(n => +n.toFixed(2)), v: v.toArray().map(n => +n.toFixed(2)) });
-  SFX.swish(); kickZ += 0.05;
+  if (throwAnim) { if (which === 'tactical') tacsLeft++; else nadesLeft++; return; }
+  // wind up, pull the pin, throw: the gun drops out of view and an arm with the grenade swings through
+  startThrowAnim(kind, () => {
+    if (!me.alive) return;
+    const { f } = camVectors();
+    const o = camera.position.clone().addScaledVector(f, 0.5);
+    const knife = kind === 'tknife';
+    const v = knife ? f.clone().multiplyScalar(30) : f.clone().multiplyScalar(15).add(new THREE.Vector3(me.vel[0] * 0.5, 3.2, me.vel[2] * 0.5));
+    send({ t: 'nade', k: kind, o: o.toArray().map(n => +n.toFixed(2)), v: v.toArray().map(n => +n.toFixed(2)) });
+    SFX.swish(); kickZ += 0.05;
+  });
+}
+let throwAnim = null;
+const THROW_TIME = 0.62, THROW_RELEASE = 0.36;
+function throwableModel(kind) {
+  const g = new THREE.Group(), mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.3, ...o });
+  const add = (geo, m, x = 0, y = 0, z = 0, rx = 0, rz = 0) => { const me_ = new THREE.Mesh(geo, m); me_.position.set(x, y, z); me_.rotation.set(rx, 0, rz); g.add(me_); return me_; };
+  if (kind === 'frag') { add(new THREE.SphereGeometry(0.034, 12, 10), mat('#4a5530')); add(new THREE.CylinderGeometry(0.012, 0.014, 0.022, 10), mat('#8a8f96', { metalness: 0.8 }), 0, 0.038); add(new THREE.BoxGeometry(0.008, 0.05, 0.012), mat('#8a8f96', { metalness: 0.8 }), 0.016, 0.022, 0, 0, -0.2); add(new THREE.TorusGeometry(0.01, 0.0025, 6, 12), mat('#c9ced4', { metalness: 1 }), -0.014, 0.05); }
+  else if (kind === 'semtex') { add(new THREE.BoxGeometry(0.07, 0.04, 0.05), mat('#d8c9a0')); add(new THREE.BoxGeometry(0.02, 0.012, 0.02), new THREE.MeshBasicMaterial({ color: '#ff2a2a' }), 0, 0.026); add(new THREE.BoxGeometry(0.072, 0.006, 0.052), mat('#222'), 0, -0.008); }
+  else if (kind === 'molotov') { add(new THREE.CylinderGeometry(0.03, 0.032, 0.11, 12), mat('#2f6b3a', { transparent: true, opacity: 0.85, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.011, 0.016, 0.05, 10), mat('#2f6b3a', { roughness: 0.1 }), 0, 0.078); add(new THREE.BoxGeometry(0.02, 0.05, 0.02), mat('#f0e2c0', { emissive: new THREE.Color('#ff7a1a'), emissiveIntensity: 0.6 }), 0, 0.12); }
+  else if (kind === 'tknife') { add(new THREE.BoxGeometry(0.006, 0.02, 0.13), mat('#c9ced4', { metalness: 1, roughness: 0.2 }), 0, 0, -0.06); add(new THREE.BoxGeometry(0.012, 0.022, 0.06), mat('#1b1d20'), 0, 0, 0.035); }
+  else { const col = kind === 'smoke' ? '#7b8188' : kind === 'flash' ? '#2b2f35' : '#2d4f86'; add(new THREE.CylinderGeometry(0.028, 0.028, 0.1, 14), mat(col)); add(new THREE.CylinderGeometry(0.029, 0.029, 0.014, 14), mat(kind === 'flash' ? '#d8d23a' : '#e6e6e6'), 0, 0.02); add(new THREE.CylinderGeometry(0.012, 0.014, 0.02, 10), mat('#8a8f96', { metalness: 0.8 }), 0, 0.06); }
+  return g;
+}
+function startThrowAnim(kind, release) {
+  const g = new THREE.Group();
+  const cs = charSkin(cfg.cskin);
+  const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.085, 0.34), new THREE.MeshStandardMaterial({ color: cs.body || '#4b5a32', roughness: 0.85 }));
+  sleeve.position.set(0, 0, 0.17);
+  const glove = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.07, 0.09), new THREE.MeshStandardMaterial({ color: '#2a2c2f', roughness: 0.8 }));
+  glove.position.set(0, 0.0, -0.03);
+  const nade = throwableModel(kind); nade.position.set(0, 0.045, -0.06);
+  g.add(sleeve, glove, nade); g.scale.setScalar(0.8); vmScene.add(g);
+  throwAnim = { t: 0, g, nade, release, released: false, kind };
+  if (kind !== 'tknife') setTimeout(() => SFX.reloadSfx?.('pin'), 120);
+}
+function updateThrowAnim(dt) {
+  const a = throwAnim; if (!a) return 0;
+  a.t += dt;
+  const p = a.t / THROW_TIME;
+  if (!a.released && a.t >= THROW_RELEASE) { a.released = true; a.nade.visible = false; a.release(); }
+  // arm path: raise into view (0-0.3), pull back over the shoulder (0.3-0.55), whip forward (0.55-0.75), drop away
+  const up = ease(seg(p, 0, 0.3)), back = ease(seg(p, 0.3, 0.55)), fwd = ease(seg(p, 0.55, 0.75)), away = ease(seg(p, 0.78, 1));
+  a.g.position.set(0.22 - 0.06 * fwd, -0.42 + 0.3 * up + 0.08 * back - 0.05 * fwd - 0.4 * away, -0.42 + 0.14 * back - 0.3 * fwd);
+  a.g.rotation.set(-0.3 + 0.9 * back - 1.5 * fwd, 0.25 - 0.2 * fwd, -0.2 + 0.2 * back);
+  if (p >= 1) { vmScene.remove(a.g); disposeObject(a.g); throwAnim = null; drawT = 0.3; return 0; }
+  return Math.sin(Math.PI * Math.min(1, p * 1.2));                                    // how far the gun is lowered
 }
 
 function updateMovement(dt) {
@@ -1207,18 +1249,42 @@ function animateParts(g, w, def) {
       out.rz = 0.35 * env; out.rx = -0.12 * env;
       if (P.bolt) { const back = rp < 0.15 ? ease(rp / 0.15) : rp > 0.85 ? ease((1 - rp) / 0.15) : 1; P.bolt.rotation.z = P.bolt.userData.base.rot.z + 1.2 * back; P.bolt.position.z += 0.07 * back; }
       if (hand && hb && rp > 0.2 && rp < 0.8) hand.position.set(hb.x + 0.04, hb.y + 0.1 * Math.sin(Math.PI * seg(rp, 0.2, 0.8)), 0.0);
-    } else {                                                          // magazine / box / tank / rocket swap
-      out.rz = 0.32 * env; out.rx = -0.22 * env; out.y = -0.05 * env;
+    } else {                                                          // magazine / box / tank / rocket swap, styled per gun
+      const R = def.rl || { insert: 'push', charge: 'bolt', roll: 0.32, tilt: 0.22 }, charge = w.reloadTac ? 'none' : R.charge;
+      // empty reloads leave the last 25% for working the action; tactical reloads spread the mag swap over it all
+      const mp = charge === 'none' ? rp / 0.92 : rp / 0.75;
+      out.rz = R.roll * env; out.rx = -(R.tilt ?? 0.22) * env; out.y = -0.05 * env;
+      if (R.insert === 'behind') { out.ry = -0.25 * env; out.z = -0.04 * env; }                // bullpup: swing the butt round to you
       if (anim === 'belt' && P.cover) P.cover.rotation.x = 1.25 * Math.sin(Math.PI * seg(rp, 0.05, 0.9));
       const m = P.mag || P.tank;
       if (m) {
-        const out1 = ease(seg(rp, 0.08, 0.32)), in1 = ease(seg(rp, 0.48, 0.74));
-        const drop = rp < 0.4 ? out1 : 1 - in1;
-        m.position.y -= 0.28 * drop; m.rotation.x += 0.35 * drop; m.position.z += 0.02 * drop;
-        m.visible = !(rp > 0.32 && rp < 0.48);
-        if (hand && hb) { const k = Math.sin(Math.PI * seg(rp, 0.1, 0.78)); hand.position.lerpVectors(hb, new THREE.Vector3(m.userData.base.pos.x, m.position.y - 0.05, m.userData.base.pos.z + 0.04), k); }
+        const out1 = ease(seg(mp, 0.08, 0.34)), in1 = ease(seg(mp, 0.52, 0.86));
+        const drop = mp < 0.43 ? out1 : 1 - in1;
+        if (R.insert === 'rock') { m.rotation.x -= 0.55 * Math.min(1, drop * 2.2); m.position.y -= 0.24 * Math.max(0, drop * 1.4 - 0.4); m.position.z -= 0.02 * drop; }
+        else if (R.insert === 'drum') { m.position.z -= 0.12 * drop; m.position.y -= 0.18 * drop; m.rotation.z += 1.4 * drop; }
+        else if (R.insert === 'helical') { m.position.z -= 0.3 * drop; m.position.y -= 0.06 * drop; }
+        else { m.position.y -= 0.28 * drop; m.rotation.x += (R.insert === 'behind' ? -0.25 : 0.35) * drop; m.position.z += 0.02 * drop; }
+        m.visible = !(mp > 0.36 && mp < 0.52);
+        if (R.bump && mp > 0.84 && mp < 0.94) out.y += 0.018 * Math.sin(Math.PI * seg(mp, 0.84, 0.94));   // palm slap home
+        if (hand && hb) { const k = Math.sin(Math.PI * seg(mp, 0.1, 0.9)); hand.position.lerpVectors(hb, new THREE.Vector3(m.userData.base.pos.x, m.position.y - 0.05, m.userData.base.pos.z + 0.04), k); }
       }
-      if (P.bolt && rp > 0.8) { const k = Math.sin(Math.PI * seg(rp, 0.8, 0.98)); P.bolt.position.z += 0.05 * k; }
+      // work the action after an empty mag
+      const cp = seg(rp, 0.76, 0.98), ck = Math.sin(Math.PI * cp);
+      if (charge === 'bolt') {
+        if (P.bolt) P.bolt.position.z += 0.06 * ck;
+        if (hand && hb && cp > 0) hand.position.lerp(new THREE.Vector3(0.05, 0.06, -0.05), ck);
+        out.rz += 0.12 * ck * Math.sign(R.roll || 1);
+      } else if (charge === 'slap') {                                    // HK slap: hand up to the cocking tube, slam it forward
+        if (P.bolt) P.bolt.position.z += 0.05 * Math.sin(Math.PI * Math.min(1, cp * 1.6));
+        if (hand && hb && cp > 0) hand.position.lerp(new THREE.Vector3(-0.04, 0.07, -0.25), ck);
+        out.ry += 0.12 * ck; out.y += cp > 0.62 && cp < 0.75 ? -0.012 : 0;
+      } else if (charge === 'release') { out.rz += 0.06 * ck; out.y -= 0.01 * Math.sin(Math.PI * seg(cp, 0.4, 0.6)); }
+      else if (charge === 'slide') { out.rx += 0.18 * ck; out.z += 0.03 * ck; if (P.slide) P.slide.position.z += 0.03 * ck; }
+      // reload sounds, once each per reload
+      const fire = (bit, at, kind) => { if (rp >= at && !(w.rsfx & bit)) { w.rsfx |= bit; SFX.reloadSfx?.(kind); } };
+      fire(1, (charge === 'none' ? 0.92 : 0.75) * 0.24, 'out');
+      fire(2, (charge === 'none' ? 0.92 : 0.75) * 0.8, 'in');
+      if (charge !== 'none') fire(4, 0.86, 'bolt');
     }
   }
   // bolt-action / pump cycling after a shot
@@ -1275,6 +1341,7 @@ function updateCamera(dt, now) {
   g.userData.sprintK = lerp(g.userData.sprintK || 0, isSprinting() ? 1 : 0, Math.min(1, dt * 10));
   const sk = g.userData.sprintK, draw = Math.max(0, drawT) / 0.35;
   const A = animateParts(g, w, def);
+  const thr = updateThrowAnim(dt); if (thr) { A.y -= 0.32 * thr; A.rx -= 0.6 * thr; A.x -= 0.05 * thr; }
   g.position.set(
     lerp(hip[0], ads[0], adsT) + bx - swayX * (1 - adsT * 0.7) - sk * 0.05 - slide.roll * 0.04 * (1 - adsT) + A.x,
     lerp(hip[1], ads[1], adsT) + by + swayY * (1 - adsT * 0.7) - draw * 0.25 - sk * 0.03 + A.y,
@@ -1621,6 +1688,7 @@ function handle(m) {
       if (m.id === me.id) {
         me.pos = [...m.p]; me.vel = [0, 0, 0]; me.yaw = m.ry; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false;
         if (m.w) ggWeapon = m.w;
+        if (throwAnim) { vmScene.remove(throwAnim.g); disposeObject(throwAnim.g); throwAnim = null; }
         me.weapons = makeWeapons(); me.slot = 0; me.streak = 0; myArmor = 0; renderArmor(); renderStreakHud(); recoilAcc = 0; deathTime = 0; slide.t = 0; mantle = null; nadesLeft = 2; tacsLeft = 2; stunUntil = burnUntil = flashUntil = 0;
         equipViewmodel();
         $('deathscreen').classList.add('hidden');
