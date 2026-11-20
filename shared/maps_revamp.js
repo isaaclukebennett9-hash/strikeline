@@ -109,6 +109,7 @@ export function harborNew() {
   for (const px of [-28, 0, 28]) { push(c.boxes, R(px - 2, 0, -46, px + 2, 0.5, -26, 'wood')); for (let z = -44; z <= -28; z += 4) for (const s of [-1.9, 1.9]) push(c.deco, B(px + s, z, 0.3, 0.3, 1.2, 'wood')); railing(c, px - 2, -46, px - 2, -27, 0.5, 1.0, 'wood'); }
   fishingBoat(c, -18, -36, 1); fishingBoat(c, 16, -38, 3);
   stairFlight(c, -18, -23.9, 0, -1, 1.1, 5, 0.4, 'wood', 0, 0.5); // gangplank from the quay onto the west boat's bow
+  stairFlight(c, 10.9, -41.5, 1, 0, 1.1, 5, 0.4, 'wood', 0, 0.5);  // boarding steps up the east boat's side
   // lighthouse on the breakwater (east), stairs to the lantern deck
   push(c.boxes, R(36, 0, -46, 46, 0.5, -36, 'stone'));
   building(c, { x: 41, z: -41, w: 6.4, d: 6.4, floors: 4, m: 'panel_white', floorM: 'floor_wood', doors: { w: [-1.6] }, winGap: 2.5 });

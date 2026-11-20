@@ -56,11 +56,11 @@ function buildShip(c) {
   stairFlight(c, -70, -40.5, 1, 0, 2, 10, 0.4, 'metal_grate', 0);            // floor -> south ledge
   stairFlight(c, -28.5, -29.6, -1, 0, 2, 10, 0.4, 'metal_grate', 0);          // floor -> north ledge
   stairFlight(c, -40, -40.4, 1, 0, 1.8, 10, 0.4, 'metal_grate', 4);           // south ledge -> deck
-  stairFlight(c, -60, -29.6, -1, 0, 1.8, 10, 0.4, 'metal_grate', 4);          // north ledge -> deck
+  stairFlight(c, -60.5, -29.6, 1, 0, 1.8, 10, 0.4, 'metal_grate', 4);        // north ledge -> deck (comes up in front of the bridge, not inside it)
   for (const [x, z, col] of [[-62, -35, 'container_red'], [-44, -36, 'container_green'], [-36, -34, 'container_blue']]) container(c, x, z, 1, col);
   container(c, -62, -35, 1, 'container_blue', 2.6); crate(c, -56, -33); crate(c, -56.8, -36, 1.0); pallets(c, -46, -31);
   // main deck with hatch openings + stair holes
-  const holes = [[-68, -38, -56, -32], [-46, -38, -32, -32], [-40.5, -41.6, -34.2, -39.2], [-65.8, -30.8, -59.5, -28.4]];
+  const holes = [[-60, -38, -53, -32], [-46, -38, -32, -32], [-40.5, -41.6, -34.2, -39.2], [-61, -30.8, -54.7, -28.4]]; // (clear of the bridge so its doors open onto deck)
   slabHoles(c, X0, Z0, X1, Z1, H, 'deck', holes);
   for (const [a, b, d, e] of holes.slice(0, 2)) { // hatch coamings
     push(c.boxes, R(a - 0.3, H, b - 0.3, e === -32 ? d + 0.3 : d + 0.3, H + 0.7, b, 'hull_dark')); push(c.boxes, R(a - 0.3, H, e, d + 0.3, H + 0.7, e + 0.3, 'hull_dark'));
@@ -74,7 +74,7 @@ function buildShip(c) {
   for (const x of [-50, -30]) { push(c.boxes, B(x, -30.5, 1.4, 1.4, 4.5, 'crane', H)); push(c.deco, R(x - 0.3, H + 4.2, -30.8, x + 9, H + 4.8, -30.2, 'crane')); push(c.deco, B(x + 8.6, -30.5, 0.06, 0.06, 4, 'metal_dark', H + 0.4)); }
   for (const x of [-60, -42, -28]) { push(c.boxes, B(x, -40.6, 0.8, 0.8, 1.6, 'metal', H)); push(c.deco, B(x, -40.6, 1.0, 1.0, 0.3, 'metal_dark', H + 1.6)); }
   // superstructure on the stern: 2 floors, bridge wings, funnel, mast
-  place(c, 0, H, 0, (t) => building(t, { x: -68, z: -35, w: 11, d: 12, floors: 2, m: 'panel_white', roof: false, roofM: 'metal_roof', floorM: 'floor_tile', doors: { e: [0, { c: 4.6, w: 1.2 }] }, winY: [1.1, 2.3], winGap: 2.2 }));
+  place(c, 0, H, 0, (t) => building(t, { x: -68, z: -35, w: 11, d: 12, floors: 2, m: 'panel_white', roof: false, roofM: 'metal_roof', floorM: 'floor_tile', doors: { e: [0, { c: 3.5, w: 1.2 }] }, winY: [1.1, 2.3], winGap: 2.2 }));
   push(c.deco, R(-70, H + FH - 0.1, -43.5, -66, H + FH + 0.1, -26.5, 'panel_white'));
   for (const s of [-43.5, -26.5]) push(c.deco, R(-70, H + FH + 0.1, s - 0.04, -66, H + FH + 1.1, s + 0.04, 'metal'));
   push(c.deco, B(-70.5, -35, 3.4, 4.2, 4.5, 'hull_red', H + 2 * FH + 0.4)); push(c.deco, B(-70.5, -35, 3.5, 4.3, 0.8, 'metal_dark', H + 2 * FH + 4.9));
@@ -217,7 +217,7 @@ function lotRow(c, rnd, x0, z0, x1, z1, side, depth, lots) {
     { const [p0x, p0z] = P(a - 1.5 - w / 4 - 0.7, 0), [p1x, p1z] = P(a - 1.5 - w / 4 + 0.7, 3.2); push(c.deco, R(p0x, 0, p0z, p1x, 0.04, p1z, 'paving')); }
     // lot boundary fence (towards the back) and back fence
     if (i > 0) { const [f0x, f0z] = P(a0 + L * i, 3), [f1x, f1z] = P(a0 + L * i, depth - 0.3); fence(c, f0x, f0z, f1x, f1z, 'fence_white', 1.1); }
-    { const [f0x, f0z] = P(a0 + L * i + 0.2, depth - 0.3), [f1x, f1z] = P(a0 + L * (i + 1) - 0.2, depth - 0.3); fence(c, f0x, f0z, f1x, f1z, 'wood', 1.6, [ (alongX ? (f0x + f1x) : (f0z + f1z)) / 2 ]); }
+    { const [f0x, f0z] = P(a0 + L * i + 0.2, depth - 0.3), [f1x, f1z] = P(a0 + L * (i + 1) - 0.2, depth - 0.3); fence(c, f0x, f0z, f1x, f1z, 'wood', 1.6, Math.abs(alongX ? f0z : f0x) > 86 ? [] : [ (alongX ? (f0x + f1x) : (f0z + f1z)) / 2 ]); } // (no back gate onto the map edge)
     // backyard: pool, tree, shed, bbq
     const back = 5 + d + 2.5, room = depth - back - 0.8;
     if (room > 5.5 && rnd() < 0.5) { const [px, pz] = P(a, back + room / 2); pool(c, px, pz, alongX ? 7 : room - 1.5, alongX ? room - 1.5 : 7); }
@@ -238,8 +238,9 @@ export function suburbs() {
   const W = [-88, -51.2], E = [51.2, 88];
   for (const [x0, x1, roadSide, backSide] of [[W[0], W[1], 'e', 'w'], [E[0], E[1], 'w', 'e']]) {
     lotRow(c, rnd, x0, -88, x1, -57.2, roadSide, 19, 2);
-    lotRow(c, rnd, x0, -42.8, x1, -7.2, roadSide, 19, 2);
-    lotRow(c, rnd, x0, -42.8, x1, -7.2, backSide, 17, 2);
+    const mid = x0 > 0 ? newCtx() : c; // east middle block is the gas station: build (and throw away) its lots so the rest of the layout stays the same
+    lotRow(mid, rnd, x0, -42.8, x1, -7.2, roadSide, 19, 2);
+    lotRow(mid, rnd, x0, -42.8, x1, -7.2, backSide, 17, 2);
     lotRow(c, rnd, x0, 57.2, x1, 88, roadSide, 19, 2);
   }
   lotRow(c, rnd, -36.8, -88, 36.8, -57.2, 'n', 30, 5);
