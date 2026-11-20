@@ -471,6 +471,7 @@ function spawn(room, p) {
   const s = chooseSpawn(room, p);
   p.pos = [s[0], s[1], s[2]];
   p.vel = [0, 0, 0];
+  if (p.pt != null) { p.pt = Math.max(p.pt + 1, Math.round(performance.now())); if (p.hist) p.hist.length = 0; } // respawn shows at once
   p.hp = 100; p.alive = true; p.streak = 0; p.nades = 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0;
   p.protectUntil = Date.now() + 2000;
   p.damagers.clear();
@@ -1179,11 +1180,16 @@ wss.on('connection', ws => {
         // not when it happened to arrive: bursty uploads then play back smoothly on everyone else's screen.
         if (typeof m.k === 'number' && isFinite(m.k)) {
           const now = performance.now(), target = now - m.k;
-          if (e.koff == null || Math.abs(target - e.koff) > 1500) { e.koff = target; e.kjit = 0; }
+          // Re-base only when their game restarted (clock went backwards) or after a very long stall. Re-basing on
+          // every 1.5 s hiccup made the times jump ahead then snap back, freezing that player for seconds.
+          if (e.koff == null || m.k < (e.lastK ?? -Infinity) || target - e.koff > 5000) { e.koff = target; e.kjit = 0; }
           else if (target < e.koff) e.koff = target;          // quickest arrival so far: tighten
           else e.koff += (target - e.koff) * 0.01;            // otherwise drift slowly (clock skew)
+          e.lastK = m.k;
           e.kjit = e.kjit * 0.95 + Math.abs(target - e.koff) * 0.05;
-          e.pt = Math.min(now, Math.max((e.pt || 0) + 1, m.k + e.koff));
+          const pt = Math.round(Math.min(now, m.k + e.koff));
+          // always moving forward; a big step back means a re-base, which other players' games start over from
+          e.pt = e.pt == null || pt > e.pt || e.pt - pt > 300 ? pt : e.pt + 1;
           // keep every update since the last snapshot: a burst of 8 then all reach other players, not just the newest
           if (e.alive) { (e.hist || (e.hist = [])).push([Math.round(e.pt), r2(e.pos[0]), r2(e.pos[1]), r2(e.pos[2]), r2(+m.ry || 0), r2(+m.rx || 0), m.c ? 1 : 0]); if (e.hist.length > 16) e.hist.shift(); }
         } else e.pt = undefined;
