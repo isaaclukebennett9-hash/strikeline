@@ -541,8 +541,11 @@ function startReload() {
 // ================================================================ remote players
 const remotes = new Map();
 const hbMat = new THREE.MeshBasicMaterial({ visible: false });
-const hbHeadGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4), hbBodyGeo = new THREE.BoxGeometry(0.7, 1.42, 0.52);
-hbMat.userData.shared = hbHeadGeo.userData.shared = hbBodyGeo.userData.shared = true;
+// Hitboxes fitted to the soldier model: head (helmet included, no longer reaching down to the shoulders), torso
+// with the vest, legs, and the arms held out in front with the gun. Arms and legs take 85% damage.
+const hbHeadGeo = new THREE.BoxGeometry(0.33, 0.37, 0.35), hbBodyGeo = new THREE.BoxGeometry(0.5, 0.62, 0.36);
+const hbLegsGeo = new THREE.BoxGeometry(0.44, 0.88, 0.32), hbArmsGeo = new THREE.BoxGeometry(0.42, 0.2, 0.46);
+for (const o of [hbMat, hbHeadGeo, hbBodyGeo, hbLegsGeo, hbArmsGeo]) o.userData.shared = true;
 function addRemote(info) {
   if (info.id === me.id) { myName = info.name; return; }
   let r = remotes.get(info.id);
@@ -555,9 +558,11 @@ function addRemote(info) {
     const band2 = band.clone(); band2.position.x = -0.3; model.userData.upper.add(band2);
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.32), tm); stripe.position.set(0, 0.31, 0.01); model.userData.head.add(stripe);
   }
-  const hbHead = new THREE.Mesh(hbHeadGeo, hbMat); hbHead.position.y = 1.62; hbHead.userData = { pid: info.id, head: true };
-  const hbBody = new THREE.Mesh(hbBodyGeo, hbMat); hbBody.position.y = 0.72; hbBody.userData = { pid: info.id, head: false };
-  model.add(hbHead, hbBody);
+  const hbHead = new THREE.Mesh(hbHeadGeo, hbMat); hbHead.position.y = 1.72; hbHead.userData = { pid: info.id, head: true };
+  const hbBody = new THREE.Mesh(hbBodyGeo, hbMat); hbBody.position.y = 1.17; hbBody.userData = { pid: info.id, head: false };
+  const hbLegs = new THREE.Mesh(hbLegsGeo, hbMat); hbLegs.position.y = 0.44; hbLegs.userData = { pid: info.id, head: false, limb: true };
+  const hbArms = new THREE.Mesh(hbArmsGeo, hbMat); hbArms.position.set(0, 1.3, -0.3); hbArms.userData = { pid: info.id, head: false, limb: true };
+  model.add(hbHead, hbBody, hbLegs, hbArms);
   const mate = teamsMode() && info.team === myTeam;
   const tagCol = mate ? '#8fc0ff' : teamsMode() ? '#ff6a6a' : info.bot ? '#ffb27a' : '#ff5a5a';
   const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: nameTagTexture(info.name, tagCol, !!info.dv), depthTest: false, transparent: true }));
@@ -567,7 +572,7 @@ function addRemote(info) {
   fl.scale.setScalar(0.5); fl.visible = false;
   model.visible = false;
   scene.add(model);
-  r = { info, model, hbHead, hbBody, tag, flash: fl, flashT: 0, buf: [], alive: false, gunId: null, gun: null, walk: 0, deathT: 0, lastFired: 0, prev: null, mate };
+  r = { info, model, hbHead, hbBody, hbLegs, hbArms, tag, flash: fl, flashT: 0, buf: [], alive: false, gunId: null, gun: null, walk: 0, deathT: 0, lastFired: 0, prev: null, mate };
   remotes.set(info.id, r);
   if (info.w) setRemoteGun(r, info.w);
 }
@@ -893,7 +898,7 @@ function camVectors() {
 }
 function hitTargets() {
   const t = world.meshes.slice();
-  for (const r of remotes.values()) if (r.alive && !r.mate) t.push(r.hbHead, r.hbBody);
+  for (const r of remotes.values()) if (r.alive && !r.mate) t.push(r.hbHead, r.hbBody, r.hbLegs, r.hbArms);
   return t;
 }
 function currentSpread(def) {
@@ -957,7 +962,7 @@ function fireShot(w, now) {
           const head = hit.object.userData.head;
           const h = hitMap.get(pid) || { id: pid, dmg: 0, h: 0 };
           const close = def.dmgClose && hit.distance < def.falloff[0] ? 1 + def.dmgClose : 1;
-          h.dmg += def.dmg * close * falloffMult(def, hit.distance) * (head ? def.head : 1); if (head) h.h = 1;
+          h.dmg += def.dmg * close * falloffMult(def, hit.distance) * (head ? def.head : hit.object.userData.limb ? 0.85 : 1); if (head) h.h = 1;
           hitMap.set(pid, h);
           blood(hit.point);
         } else impact(hit.point, hit.face.normal.clone().transformDirection(hit.object.matrixWorld), def.dart ? '#ff9a3a' : undefined);
@@ -1419,8 +1424,8 @@ function updateRemotes(dt, now) {
       r.cr = lerp(r.cr || 0, a.c ? 1 : 0, Math.min(1, dt * 10));
       P.lower.scale.y = 1 - r.cr * 0.4;
       P.upper.position.y = 0.88 - r.cr * 0.45;
-      r.hbHead.position.y = 1.62 - r.cr * 0.45;
-      r.hbBody.position.y = 0.72 - r.cr * 0.22; r.hbBody.scale.y = 1 - r.cr * 0.3;
+      r.hbHead.position.y = 1.72 - r.cr * 0.45; r.hbBody.position.y = 1.17 - r.cr * 0.45; r.hbArms.position.y = 1.3 - r.cr * 0.45;
+      r.hbLegs.position.y = 0.44 - r.cr * 0.22; r.hbLegs.scale.y = 1 - r.cr * 0.5;
       if ((r.losT = (r.losT || 0) - dt) <= 0) {
         r.losT = 0.15;
         const head = [x, y + 1.7, z], o = camera.position.toArray();

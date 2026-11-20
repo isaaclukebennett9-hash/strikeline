@@ -1206,30 +1206,39 @@ function buildGunInner(model, S, att, g) {
       break;
     }
     case 'tcsg': {
-      box(g, 0.058, 0.075, 0.32, S, 0, 0.03, -0.06);
-      { const bp = part('bolt', 0.035, 0.04, -0.06); pbox(bp, 0.02, 0.014, 0.016, M.steel, 0.036, 0.04, -0.06); }
-      box(g, 0.064, 0.06, 0.2, M.wolf, 0, 0.025, -0.32); vents(g, 0.025, -0.4, -0.24, 0.033, 4);   // grey railed handguard
-      cyl(g, 0.017, 0.2, M.dark, 0, 0.035, -0.5); muzzleBrake(g, 0.035, -0.62, 0.022, 0.06);
-      magObj = mag(g, -0.1, 0.17, -0.2, 0.044, 0.08, M.wolf);                       // long curved shotgun box mag
-      triggerGroup(g, 0.02, M.wolf);
-      skeletonStock(g, 0.06, -0.035, 0.1, 0.33, M.wolf, 0.022);                     // grey skeleton stock
-      rail(g, 0.068, -0.2, 0.08);
+      // TCSG12: AR-pattern semi-auto slug shotgun. Thick upper and lower receivers, long octagonal M-LOK handguard
+      // nearly to the muzzle, slightly curved 10-round box mag, big ported brake, adjustable stock with cheek riser
+      prof(g, [[0.1, 0.022], [0.1, 0.068], ['q', 0.1, 0.076, 0.092, 0.076], [-0.24, 0.076], [-0.24, 0.022]], 0.058, S, 0, 0.005);   // upper
+      prof(g, [[0.11, 0.024], [0.11, 0.0], [0.08, -0.02], [-0.05, -0.02], [-0.062, -0.05], [-0.16, -0.05], [-0.17, -0.024], [-0.19, 0.0], [-0.2, 0.024]], 0.054, S, 0, 0.004);   // lower + flared mag well
+      prof(g, [[-0.24, 0.074], [-0.58, 0.074], ['q', -0.592, 0.074, -0.592, 0.062], [-0.592, 0.016], ['q', -0.592, 0.004, -0.58, 0.004], [-0.24, 0.004]], 0.064, M.wolf, 0, 0.012);   // octagonal handguard
+      for (const s of [-1, 1]) for (let zz = -0.56; zz < -0.27; zz += 0.045) box(g, 0.003, 0.014, 0.03, M.black, s * 0.0325, 0.04, zz);   // M-LOK slots
+      for (const s of [-1, 1]) for (let zz = -0.56; zz < -0.27; zz += 0.045) box(g, 0.012, 0.003, 0.03, M.black, s * 0.02, 0.07, zz, 0, 0, s * 0.6);
+      box(g, 0.066, 0.014, 0.03, M.dark, 0, 0.04, -0.245);                          // barrel nut ring
+      cyl(g, 0.016, 0.08, M.dark, 0, 0.038, -0.63);                                 // barrel
+      prof(g, [[-0.66, 0.064], [-0.74, 0.064], [-0.74, 0.012], [-0.66, 0.012]], 0.046, M.dark, 0, 0.005);   // ported brake
+      for (let i = 0; i < 3; i++) for (const s of [-1, 1]) box(g, 0.003, 0.03, 0.012, M.black, s * 0.0235, 0.04, -0.678 - i * 0.022);
+      for (let i = 0; i < 3; i++) box(g, 0.02, 0.003, 0.012, M.black, 0, 0.0645, -0.678 - i * 0.022);
+      magObj = mag(g, -0.11, 0.17, 0.08, 0.044, 0.07, M.polyBlack, -0.045, 0.03);   // 10-round box mag
+      triggerGroup(g, 0.0, M.polyBlack, 0.3, -0.02);
+      cyl(g, 0.017, 0.16, M.dark, 0, 0.04, 0.18);                                   // buffer tube
+      prof(g, [[0.2, 0.068], [0.35, 0.07], [0.35, -0.04], [0.318, -0.04], ['q', 0.27, -0.022, 0.245, 0.008], [0.2, 0.014]], 0.046, M.wolf, 0, 0.006, [[[0.255, 0.034], [0.316, 0.034], [0.316, -0.018], [0.292, -0.018]]]);   // stock
+      box(g, 0.036, 0.022, 0.09, M.polyBlack, 0, 0.077, 0.28);                      // cheek riser
+      buttPad(g, 0.046, 0.104, 0.015, 0.358);
+      rail(g, 0.08, -0.58, 0.09);
+      { const bp = part('bolt', 0.0, 0.078, 0.085); pbox(bp, 0.036, 0.012, 0.03, M.dark, 0, 0.078, 0.085); }   // charging handle
       // --- detail
-      box(g, 0.062, 0.026, 0.32, M.dark, 0, 0.004, -0.06);                          // lower receiver
-      seams(g, 0.029, [0.017, 0.05], -0.2, 0.09);
-      ejectPort(g, 0.029, 0.045, -0.05, 0.07, 0.022);
-      selector(g, 0.031, 0.01, 0.04);
-      rivets(g, 0.031, 0.004, [-0.17, 0.07]);
-      box(g, 0.062, 0.016, 0.05, M.dark, 0, -0.018, -0.05);                         // mag well flare
-      box(g, 0.006, 0.014, 0.014, M.steel, 0.03, -0.02, -0.02);                     // mag release
-      box(g, 0.022, 0.014, 0.18, M.dark, 0, -0.012, -0.32);                         // bottom rail
-      for (let z = -0.4; z < -0.24; z += 0.014) box(g, 0.026, 0.006, 0.007, M.black, 0, -0.017, z);
-      cyl(g, 0.02, 0.02, M.dark, 0, 0.035, -0.41);                                  // barrel nut
-      sling(g, -0.03, 0.3);
-      irons = { cy: 0.092, zr: 0.06, zf: -0.18 };
-      optic(0.1, -0.06, 0.072, -0.2, 0.08);
-      under = { y: -0.005, z: -0.32 };
-      muzzleZ = -0.65; muzzleY = 0.035; left = [-0.02, -0.04, -0.32];
+      ejectPort(g, 0.029, 0.05, -0.06, 0.08, 0.024);
+      cyl(g, 0.009, 0.018, M.dark, 0.034, 0.055, 0.03, 10).rotation.set(0, 0, Math.PI / 2);   // forward assist
+      selector(g, 0.027, 0.006, 0.05);
+      seams(g, 0.029, [0.024], -0.2, 0.1);
+      box(g, 0.008, 0.014, 0.018, M.steel, 0.028, -0.034, -0.08);                   // mag release
+      box(g, 0.012, 0.022, 0.02, M.steel, 0, 0.0, 0.215);                           // stock latch
+      for (let z = 0.105; z < 0.2; z += 0.014) box(g, 0.037, 0.004, 0.006, M.black, 0, 0.056, z);
+      sling(g, -0.03, 0.33);
+      irons = { cy: 0.108, zr: 0.06, zf: -0.56 };
+      optic(0.114, -0.07, 0.084, -0.56, 0.09);
+      under = { y: 0.0, z: -0.42 };
+      muzzleZ = -0.74; muzzleY = 0.038; left = [-0.02, -0.03, -0.42];
       break;
     }
     case 'dbarrel': case 'sawedoff': {
