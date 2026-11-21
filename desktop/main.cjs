@@ -332,6 +332,21 @@ ipcMain.handle('crash-report-sent', (e, n) => {
   try { store.strikeline_crash_head = fs.readFileSync(CRASH_FILE(), 'utf8').slice(0, 40); } catch { store.strikeline_crash_head = ''; }
   saveStore();
 });
+// Secret "Don't press this!" button on the main menu: a prank. Saves are written to disk first, then the game
+// window closes and a scary popup appears on its own. Nothing is deleted: closing the popup quits the app
+// normally and it opens fine next time.
+let regretWin = null;
+ipcMain.handle('regret', (e) => {
+  if (regretWin || !win || e.sender !== win.webContents) return;
+  clearTimeout(saveTimer); try { fs.writeFileSync(STORE_FILE(), JSON.stringify(store)); } catch {}
+  let page = localUrl() + 'regret.html';
+  try { page = new URL('/regret.html', win.webContents.getURL()).href; } catch {}
+  regretWin = new BrowserWindow({ width: 560, height: 380, frame: false, resizable: false, alwaysOnTop: true, show: false, center: true, title: 'Strikeline - FATAL ERROR', backgroundColor: '#050000', icon: path.join(__dirname, 'icon.png'), webPreferences: { contextIsolation: true, nodeIntegration: false } });
+  regretWin.setMenu(null);
+  regretWin.once('ready-to-show', () => { regretWin.show(); regretWin.focus(); shell.beep(); const w = win; win = null; if (w && !w.isDestroyed()) w.destroy(); });
+  regretWin.on('closed', () => { regretWin = null; });
+  regretWin.loadURL(page);
+});
 // "Open crash log" on the crash screen: makes the file if it's missing, then opens it in Notepad
 ipcMain.handle('open-crash-log', () => {
   const f = CRASH_FILE();
@@ -400,6 +415,14 @@ async function selfTest() {
       for (let i = 0; i < 60 && !(gameUpdate && (gameUpdate.state === 'ready' || gameUpdate.state === 'error')); i++) await sleep(1000);
       const cur = readJson(path.join(GAME_DIR(), 'current.json'));
       log({ step: 'github', info: githubInfo, gameUpdate, installed: installedGame().version, hasServer: !!cur && fs.existsSync(path.join(cur.dir, 'server.js')), hasWs: !!cur && fs.existsSync(path.join(cur.dir, 'node_modules', 'ws', 'index.js')), shellUpdate: update && update.version });
+    }
+    if (process.env.STRIKELINE_SELFTEST_REGRET) { // press the secret button, screenshot the popup
+      await js(`document.getElementById('btnRegret').click()`);
+      await sleep(5500);
+      const disk = readJson(STORE_FILE()) || {};
+      log({ step: 'regret', gameWindowGone: !win, popup: !!regretWin && regretWin.isVisible(), saveOnDisk: !!disk.strikeline_profile && disk.strikeline_profile === store.strikeline_profile });
+      if (regretWin) fs.writeFileSync(process.env.STRIKELINE_SELFTEST_REGRET, (await regretWin.webContents.capturePage()).toPNG());
+      app.quit(); return;
     }
     if (update) { await installUpdate(); log({ step: 'update', state: update.state, bytes: update.bytes, from: update.from.replace(/:\d+/, ':PORT') }); }
     if (process.env.STRIKELINE_SELFTEST_JOIN) {

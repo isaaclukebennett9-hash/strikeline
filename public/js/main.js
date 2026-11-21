@@ -2271,6 +2271,32 @@ const fbAdd = (items) => { const a = fbLoad(), have = new Set(a.map(f => f.id));
 const openFeedback = () => { $('modal-feedback').classList.remove('hidden'); $('fbMsg').textContent = ''; setTimeout(() => $('fbText').focus(), 0); };
 const closeFeedback = () => $('modal-feedback').classList.add('hidden');
 $('btnFeedback').addEventListener('click', () => { SFX.initAudio(cfg.vol); SFX.uiBlip(); openFeedback(); });
+// Secret "Don't press this!" button: a prank fake crash. Progress is saved first and nothing is deleted;
+// the game just closes and a scary popup appears. Reopening the game works as normal.
+$('btnRegret').addEventListener('click', () => {
+  PR.saveProfile();
+  // browser players: the popup has to open right now, while the click still counts as a user action
+  const pop = !window.desktop?.regret ? window.open('', 'slregret', 'width=560,height=380,left=200,top=150') : null;
+  document.body.classList.add('regret-glitch');
+  try { // harsh static burst
+    const ac = new (window.AudioContext || window.webkitAudioContext)(), len = ac.sampleRate * 1.2;
+    const buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (Math.sin(i / 40) > 0 ? 1 : 0.3);
+    const src = ac.createBufferSource(), g = ac.createGain(); g.gain.value = 0.35 * (cfg.vol ?? 1);
+    src.buffer = buf; src.connect(g).connect(ac.destination); src.start();
+  } catch {}
+  setTimeout(() => {
+    document.body.classList.remove('regret-glitch'); document.body.classList.add('regret-dead');
+    if (window.desktop?.regret) { window.desktop.regret(); return; }
+    if (pop) fetch('/regret.html').then(r => r.text()).then(h => { pop.document.open(); pop.document.write(h); pop.document.close(); }).catch(() => {});
+    else { // popup blocked (or an older desktop app): show it over the dead game instead
+      const f = document.createElement('iframe'); f.src = '/regret.html';
+      f.style.cssText = 'position:fixed;left:50%;top:50%;width:560px;height:380px;transform:translate(-50%,-50%);border:0;z-index:9999999;visibility:visible';
+      document.documentElement.appendChild(f);
+    }
+    try { ws && ws.close(); } catch {}
+  }, 1300);
+});
 $('btnFbCancel').addEventListener('click', closeFeedback);
 $('btnFbSend').addEventListener('click', () => {
   const text = $('fbText').value.trim();

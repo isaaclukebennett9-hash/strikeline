@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('desktop', {
   crashReport: () => ipcRenderer.invoke('crash-report'),     // crash.log lines not yet handed to the developer
   crashReportSent: (n) => ipcRenderer.invoke('crash-report-sent', n),
   openCrashLog: () => ipcRenderer.invoke('open-crash-log'),
+  regret: () => ipcRenderer.invoke('regret'),                // secret "don't press this" prank: fake crash popup
   onStatus: (fn) => ipcRenderer.on('status', (e, t) => fn(t)),
   onBootError: (fn) => ipcRenderer.on('boot-error', (e, t) => fn(t)),
   presence: (p) => ipcRenderer.send('presence', p),        // Discord Rich Presence
