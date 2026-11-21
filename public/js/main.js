@@ -1549,6 +1549,11 @@ function handle(m) {
       if (Number(m.until) > banUntil) { banUntil = Number(m.until); PR.store.set(BAN_KEY, String(banUntil)); }
       showBan(); toast('You have been banned for 2 hours for using a slur in chat.');
       break;
+    case 'unbanned':
+      if (banUntil > Date.now()) toast("You've been unbanned.");
+      banUntil = 0; PR.store.set(BAN_KEY, '0');
+      clearInterval(banTimer); banTimer = 0; $('banBanner')?.remove();
+      break;
     case 'pong': { const rtt = performance.now() - m.c; perfStats.ping = perfStats.ping ? perfStats.ping * 0.7 + rtt * 0.3 : rtt; break; }
     case 'room': {
       const wasNull = !room;

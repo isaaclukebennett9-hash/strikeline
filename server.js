@@ -154,16 +154,42 @@ const cleanName = (n, len, fallback) => { const t = cleanText(n, len); if (!t) r
 // ---------- chat bans: a slur in chat bans the player for 2 h. Kept by player id (the app's saved id, so it
 // follows them between servers) and, for players coming in over the tunnel, their internet address.
 const BANS_FILE = path.join(DATA, 'bans.json');
+// entries: 'p:<player id>' / 'ip:<address>' → { until, name } (older files: just the time).
+// 'lift:<player id>' → time: an unbanned player whose app may still carry the ban; it's ignored and cleared on connect.
 const bans = readJson(BANS_FILE, {});
-const saveBans = () => { const now = Date.now(); for (const k in bans) if (bans[k] <= now) delete bans[k]; try { fs.writeFileSync(BANS_FILE, JSON.stringify(bans)); } catch {} };
-const banUntil = c => Math.max(c.banUntil || 0, bans['p:' + c.pid] || 0, c.ip ? bans['ip:' + c.ip] || 0 : 0);
+const banEnd = v => (typeof v === 'number' ? v : (v && v.until) || 0);
+const saveBans = () => { const now = Date.now(); for (const k in bans) if (banEnd(bans[k]) <= now) delete bans[k]; try { fs.writeFileSync(BANS_FILE, JSON.stringify(bans)); } catch {} };
+const banUntil = c => Math.max(c.banUntil || 0, banEnd(bans['p:' + c.pid]), c.ip ? banEnd(bans['ip:' + c.ip]) : 0);
+// /unban: only the player sitting at the PC that runs the developer's server (not over the tunnel or the LAN)
+const plainName = s => String(s || '').replace(/^♛\s*/, '').trim().toLowerCase();
+function unban(byName) {
+  const want = plainName(byName), all = want === 'all', names = new Set(), now = Date.now();
+  const hit = (name) => all || (name && plainName(name).startsWith(want));
+  for (const k of Object.keys(bans)) {
+    if (k.startsWith('lift:')) continue;
+    const v = bans[k], name = typeof v === 'number' ? '' : v.name;
+    if (!hit(name)) continue;
+    if (k.startsWith('p:')) bans['lift:' + k.slice(2)] = banEnd(v);
+    if (name) names.add(name);
+    delete bans[k];
+  }
+  for (const c of clients.values()) {
+    if (!(c.banUntil > now) || !hit(c.name)) continue;
+    c.banUntil = 0; names.add(c.name);
+    if (c.pid) { bans['lift:' + c.pid] = now + BAN_MS; delete bans['p:' + c.pid]; }
+    if (c.ip) delete bans['ip:' + c.ip];
+  }
+  saveBans();
+  for (const c of clients.values()) if (!isBanned(c) && (names.has(c.name) || (all && c.pid && bans['lift:' + c.pid]))) sendTo(c, { t: 'unbanned' });
+  return [...names];
+}
 const isBanned = c => banUntil(c) > Date.now();
 function banMsg(c) { const mins = Math.max(1, Math.ceil((banUntil(c) - Date.now()) / 60000)); return `You're banned for using a slur in chat. Time left: ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}.`; }
 function banClient(c) {
   const until = Date.now() + BAN_MS;
   c.banUntil = until;
-  if (c.pid) bans['p:' + c.pid] = until;
-  if (c.ip) bans['ip:' + c.ip] = until;
+  if (c.pid) { bans['p:' + c.pid] = { until, name: c.name }; delete bans['lift:' + c.pid]; }
+  if (c.ip) bans['ip:' + c.ip] = { until, name: c.name };
   saveBans();
   const room = c.room;
   console.log(`[ban] ${c.name} banned for 2 h (slur in chat)`);
@@ -1186,7 +1212,10 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
   // players over the Cloudflare tunnel all arrive from localhost; their real address is in this header
   const ip = String(req?.headers?.['cf-connecting-ip'] || '').slice(0, 64);
-  const c = { id: nextId++, ws, ip, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
+  // the player at this PC on the developer's own server (not over the Cloudflare tunnel or the LAN): may use /unban
+  const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(String(req?.socket?.remoteAddress || ''));
+  const owner = FB_OWNER && local && !ip && !req?.headers?.['cf-ray'] && !req?.headers?.['x-forwarded-for'];
+  const c = { id: nextId++, ws, ip, owner, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
   clients.set(c.id, c);
   ws.on('message', raw => {
     let m;
@@ -1199,8 +1228,9 @@ wss.on('connection', (ws, req) => {
         c.name = cleanName(m.name, 16, 'Player') || 'Player';
         c.dev = isDevCode(m.dev);
         c.pid = /^[a-z0-9]{8,32}$/.test(m.pid || '') ? m.pid : '';
-        // a ban from another server travels with the player's app
-        if (Number(m.ban) > Date.now()) c.banUntil = Math.min(Number(m.ban), Date.now() + BAN_MS);
+        // a ban from another server travels with the player's app — unless they've been unbanned here
+        if (c.pid && bans['lift:' + c.pid] && !(banEnd(bans['p:' + c.pid]) > Date.now())) { delete bans['lift:' + c.pid]; saveBans(); sendTo(c, { t: 'unbanned' }); }
+        else if (Number(m.ban) > Date.now()) c.banUntil = Math.min(Number(m.ban), Date.now() + BAN_MS);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
@@ -1302,6 +1332,15 @@ wss.on('connection', (ws, req) => {
       }
       case 'chat': {
         const text = String(m.m || '').slice(0, 120).trim();
+        const cmd = /^\/unban(?:\s+(.+))?$/i.exec(text);
+        if (cmd) { // never shown in chat
+          if (!c.owner) { sendTo(c, { t: 'toast', m: 'Only the server owner can unban players.' }); break; }
+          if (!cmd[1]) { sendTo(c, { t: 'toast', m: 'Type /unban <name>, or /unban all' }); break; }
+          const names = unban(cmd[1]);
+          sendTo(c, { t: 'toast', m: names.length ? `Unbanned ${names.join(', ')}` : (cmd[1].trim().toLowerCase() === 'all' ? 'All bans cleared' : `No banned player called "${cmd[1].trim()}"`) });
+          if (room && names.length) roomBroadcast(room, { t: 'chat', n: '', m: `${names.join(', ')} ${names.length > 1 ? 'were' : 'was'} unbanned` });
+          break;
+        }
         if (!text || !room) break;
         if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); break; }
         const f = filterChat(text);
