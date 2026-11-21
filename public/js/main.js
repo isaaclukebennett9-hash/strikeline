@@ -2446,7 +2446,7 @@ function buildPerkPickers() {
 // ---------- Gunsmith (full screen): attachment cards around the gun with leader lines to where each part sits,
 // stats bottom-left (hover an attachment to see what it changes), camo + reticle on the CUSTOMIZE tab.
 // [row, centre % across the screen]; top row above the gun, bottom row below it
-const GS_POS = { muzzle: ['t', 13], barrel: ['t', 32], optic: ['t', 55], stock: ['t', 83], under: ['b', 37], mag: ['b', 50], ammo: ['b', 63], grip: ['b', 76], perk: ['b', 89] };
+const GS_POS = { muzzle: ['t', 12], barrel: ['t', 30], optic: ['t', 50], perk: ['t', 68], stock: ['t', 86], under: ['b', 36], mag: ['b', 52], ammo: ['b', 67], grip: ['b', 82] };
 const OPTIC_NAMES = { irons: 'Iron Sights', reddot: 'Reflex', holo: 'Holographic', acog: '2.5x Prism', scope4: '4x Scope', scope8: '8x Scope', toyscope: 'Toy Scope' };
 let gsTab = 'att', gsHover = null, gsPreviewOnly = false, gsYaw = 0, gsDrag = null;
 const withAtt = (att, slot, a) => { const o = { ...att }; if (a) o[slot] = a; else delete o[slot]; return o; };
@@ -2463,11 +2463,11 @@ function gunAnchors(gun, bb) {
     barrel: V(0, mz.y, lerp(mz.z, c.z, 0.42)),
     optic: A.optic ? V(A.optic[0], A.optic[1] + 0.012, A.optic[2]) : V(0, bb.max.y - 0.01, c.z),
     under: A.under ? V(0, A.under[1] - 0.008, A.under[2]) : V(0, lerp(c.y, bb.min.y, 0.3), bb.min.z + L * 0.3),
-    mag: magC ? V(0, lerp(magC.y, mag.min.y, 0.55), magC.z) : V(0, lerp(c.y, bb.min.y, 0.5), c.z),
-    ammo: magC ? V(0, lerp(magC.y, mag.max.y, 0.5), magC.z) : V(0, c.y, c.z),
+    mag: magC ? V(0, lerp(magC.y, mag.min.y, 0.55), magC.z) : V(0, lerp(c.y, bb.min.y, 0.75), lerp(c.z, back, 0.45)), // no separate mag: it's in the grip
+    ammo: magC ? V(0, lerp(magC.y, mag.max.y, 0.5), magC.z) : V(0, lerp(c.y, bb.max.y, 0.2), lerp(c.z, bb.min.z, 0.1)),
     stock: V(0, c.y, back - L * 0.07),
-    grip: V(0, lerp(c.y, bb.min.y, 0.55), lerp(c.z, back, 0.3)),
-    perk: V(0, lerp(c.y, bb.max.y, 0.35), lerp(c.z, back, 0.1)),
+    grip: V(0, lerp(c.y, bb.min.y, 0.3), lerp(c.z, back, magC ? 0.42 : 0.3)),
+    perk: V(0, lerp(c.y, bb.max.y, 0.5), lerp(c.z, back, 0.2)),
   };
 }
 // leader lines: from each card's edge to its anchor on the gun, redrawn every frame (the gun sways)
@@ -2511,6 +2511,7 @@ function renderGunsmith() {
   $('gsGunName').textContent = d.name.toUpperCase() + (PR.isUnlocked(id) ? '' : '  🔒');
   $('gsWlv').innerHTML = `<div class="gs-wlrow"><span>Weapon Level: <b>${wl.level}</b></span><em>${wl.next ? `${wl.kills} / ${wl.next} kills` : 'MAX'}</em></div><div class="gs-wlbar"><div style="width:${(pct * 100).toFixed(0)}%"></div></div>`;
   $('gsLock').classList.toggle('hidden', !inGame);
+  $('gsHint').textContent = gsPreviewOnly ? 'PREVIEW · click anywhere or press Esc to go back' : gsTab === 'att' ? 'Click a slot to change it · hover an attachment to preview it · drag to turn the gun' : 'Hover a camo to preview it';
   document.querySelectorAll('#gsTabs button').forEach(b => b.classList.toggle('on', b.dataset.gt === gsTab));
   $('gsCards').classList.toggle('hidden', gsTab !== 'att'); $('gsCust').classList.toggle('hidden', gsTab !== 'cust');
   $('gsPips').innerHTML = slots.length ? slots.map(s => `<i class="${att[s] ? 'on' : ''}" title="${PR.SLOT_NAMES[s]}"></i>`).join('') : '<small>none</small>';
@@ -2527,7 +2528,7 @@ function renderGunsmith() {
       return `<button data-a="${o.id}" class="${(cur || '') === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><div class="gs-ot"><b>${esc(o.name)}</b><span>${tag}</span></div>` +
         ((o.pros || []).length || (o.cons || []).length ? `<div class="gs-pc">${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join('')}${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join('')}</div>` : '') + '</button>';
     }).join('') + '</div>';
-    return `<div class="gs-card ${row} ${cur ? 'eq' : ''} ${gsOpen === slot ? 'open' : ''}" data-slot="${slot}" style="left:${x}%"><button class="gs-cb"><div class="gs-ch"><span>${PR.SLOT_NAMES[slot]}</span><i></i></div><b>${esc(curName || '—')}</b></button>${list}</div>`;
+    return `<div class="gs-card ${row} ${x > 70 ? 'r' : ''} ${cur ? 'eq' : ''} ${gsOpen === slot ? 'open' : ''}" data-slot="${slot}" style="left:${x}%"><button class="gs-cb"><div class="gs-ch"><span>${PR.SLOT_NAMES[slot]}</span><i></i></div><b>${esc(curName || '—')}</b></button>${list}</div>`;
   }).join('');
   $('gsCards').querySelectorAll('.gs-cb').forEach(b => b.onclick = e => {
     e.stopPropagation(); const slot = b.parentElement.dataset.slot;
@@ -2792,8 +2793,15 @@ function rebuildPreview() {
     if (pv.mode === 'scr-gunsmith') { pv.anchors = gunAnchors(gun, box3); pv.gun = gun; }
     gun.position.sub(c);
     const holder = new THREE.Group(); holder.add(gun); holder.scale.setScalar(1.15 / size);
+    if (pv.mode === 'scr-gunsmith') { // fit the gun to the screen: ~60% of the width, never taller than ~40%
+      const dims = box3.getSize(new THREE.Vector3()), dist = gsTab === 'cust' ? 1.7 : 1.5;
+      const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(pv.camera.fov / 2)), visW = visH * Math.max(1, pv.camera.aspect);
+      holder.scale.setScalar(Math.min(visW * (gsTab === 'cust' ? 0.5 : 0.6) / Math.max(dims.z, 0.01), visH * 0.4 / Math.max(dims.y, 0.01)));
+    }
     g.add(holder);
-    pv.camera.position.set(0, pv.mode === 'scr-gunsmith' ? 0.02 : 0.15, pv.mode === 'buy' ? 1.15 : pv.mode === 'scr-gunsmith' ? 1.5 : 1.6);
+    const cust = pv.mode === 'scr-gunsmith' && gsTab === 'cust'; // camo panel on the right: slide the gun left
+    pv.camera.position.set(cust ? 0.24 : 0, pv.mode === 'scr-gunsmith' ? 0.02 : 0.15, pv.mode === 'buy' ? 1.15 : pv.mode === 'scr-gunsmith' ? (cust ? 1.7 : 1.5) : 1.6);
+    pv.camera.lookAt(pv.camera.position.x, 0, 0); pv.obj = g; pv.scene.add(g); return;
   } else {
     const s = buildSoldier(cfg.cskin);
     s.userData.gunMount.add(buildWeapon(WEAPONS[cfg.primary], gunSkin(cfg.primary), { ...PR.getAtt(cfg.primary), attSkin: attSkinFor(cfg.primary) }));
