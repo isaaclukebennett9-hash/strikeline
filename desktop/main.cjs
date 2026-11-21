@@ -1,7 +1,7 @@
 // Strikeline desktop app.
 // Opens straight into the game: starts this PC's game server, goes online in the background (join code),
 // lets you join a friend by code from the home screen, and updates itself from whichever host has a newer version.
-const { app, BrowserWindow, ipcMain, clipboard, shell, net: enet } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, clipboard, shell, net: enet } = require('electron');
 const { fork, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -353,7 +353,10 @@ function createWindow() {
   win.setFullScreen(true); // start fullscreen (F11 still toggles)
   win.on('page-title-updated', (e) => { e.preventDefault(); updateTitle(); });
   win.webContents.on('before-input-event', (e, input) => {
-    if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); return; }
+    // Developer's PC only: DevTools on Ctrl+Shift+I (the app menu that used to provide it is gone, see below)
+    if (devConfig() && input.control && input.shift && input.code === 'KeyI') { win.webContents.toggleDevTools(); e.preventDefault(); }
   });
   // A friend's game address that has gone away shows Cloudflare's "Error 1033" page (HTTP 530) with no way
   // back into the game: send the player back to their own game instead.
@@ -414,6 +417,10 @@ else {
   app.whenReady().then(() => {
     // Look up join links with secure DNS so ISP/home DNS filters and stale Windows DNS caches can't block joining.
     try { app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: ['https://cloudflare-dns.com/dns-query', 'https://dns.google/dns-query'] }); } catch {}
+    // No app menu. Electron's hidden default menu kept its shortcuts working: Left Ctrl is crouch, so
+    // crouch + W hit Ctrl+W (closes the window = the game "randomly closing") and crouch + R hit Ctrl+R
+    // (reloads the page = "kicked to the main menu"), plus Ctrl+-/= zoom and Ctrl+M minimise.
+    Menu.setApplicationMenu(null);
     createWindow();
     if (!process.env.STRIKELINE_SELFTEST) { try { presence = createPresence(crashLog); presence.set({ details: 'Starting up', start: Date.now() }); } catch (err) { crashLog(`discord presence: ${err.message}`); } }
     win.webContents.once('did-finish-load', boot);
