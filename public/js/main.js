@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildMap, MAPS, MAP_ORDER } from '/shared/maps.js';
-import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
+import { WEAPONS, PRIMARIES, SECONDARIES, HOST_ONLY, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
 import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
 import { THEMES, getMaterial, MAT_COLORS, WEAPON_SKINS, CHAR_SKINS, RARITY_COLORS, charSkin, radialSprite, flashSprite, decalTexture, nameTagTexture } from './textures.js';
 import { buildGun, buildWeapon, buildArms, buildSoldier, buildRocket, setReticle, RETICLE_STYLES, RETICLE_COLORS } from './models.js';
@@ -1523,6 +1523,7 @@ function handle(m) {
   switch (m.t) {
     case 'hi':
       sendLoadout();
+      if (!onFriendsGame) { const had = PR.isUnlocked('annihilator'); PR.setHostPC(!!m.hostPC); if (had !== !!m.hostPC && currentScreen === 'pnl-loadout') buildArmory(); }
       me.id = m.id; setNet(true, onFriendsGame ? "Online · in a friend's game" : 'Online'); friendLostAt = 0;
       if (pendingJoin) { send({ t: 'join', code: pendingJoin }); pendingJoin = null; }
       // Only the developer's own app (its local server) marks itself as the feedback owner.
@@ -2417,7 +2418,7 @@ function buildArmory() {
       if (!small) b.onmouseenter = () => { if (previewWeapon === b.dataset.w) return; previewWeapon = b.dataset.w; gsOpen = null; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); };
     });
   };
-  mk(PRIMARIES.filter(id => armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era)).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
+  mk([...HOST_ONLY, ...PRIMARIES].filter(id => (!WEAPONS[id].hostOnly || PR.isUnlocked(id)) && (armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era))).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
   mk(SECONDARIES, 'secondary', $('secondaries'));
   mk(LETHALS, 'lethal', $('lethals'), true);
   mk(TACTICALS, 'tactical', $('tacticals'), true);

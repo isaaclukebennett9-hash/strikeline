@@ -146,6 +146,11 @@ export const WEAPONS = {
     dmg: 38, head: 1.5, rpm: 150, pellets: 2, mag: 8, reserve: 32, reload: 2.2, spread: 0.05, adsSpread: 0.03, moveSpread: 0.01, recoil: 0.04, range: 35,
     falloff: [8, 25, 0.5], speed: 1.03, zoom: 1.15, snd: { f: 650, d: 0.12, b: 210, v: 0.6 } }),
 
+  // =========================================================== HOST PC ONLY (the developer's own PC hosting: see HOST_ONLY)
+  annihilator: W({ id: 'annihilator', name: 'Annihilator', slot: 'primary', cls: 'special', type: 'Prototype Rail Rifle', model: 'annihilator', hostOnly: true,
+    dmg: 150, head: 2, rpm: 750, auto: true, mag: 100, reserve: 900, reload: 0.8, spread: 0.003, adsSpread: 0, moveSpread: 0.002, recoil: 0.003, range: 400,
+    falloff: [300, 400, 1], speed: 1.2, zoom: 1.4, ads: 0.1, snd: { f: 700, d: 0.35, b: 50, v: 1.15 } }),
+
   // =========================================================== WW1 / WW2 (era: shown in their own Armory tab and in their class tab)
   m1911: W({ id: 'm1911', name: 'M1911', slot: 'secondary', cls: 'pistol', type: 'Pistol', model: 'm1911', era: 'ww2',
     dmg: 38, head: 1.9, rpm: 300, mag: 7, reserve: 49, reload: 1.5, spread: 0.015, adsSpread: 0.004, moveSpread: 0.022, recoil: 0.038, range: 75,
@@ -211,7 +216,9 @@ export const WEAPONS = {
 for (const id of ['tommy', 'ppsh', 'kar98']) WEAPONS[id].era = 'ww2';
 export const ERA_NAMES = { ww1: 'WW1', ww2: 'WW2' };
 export const CLASS_NAMES = { ar: 'Assault Rifles', smg: 'SMGs', lmg: 'LMGs', shotgun: 'Shotguns', dmr: 'Marksman', sniper: 'Snipers', special: 'Special', pistol: 'Secondaries' };
-export const PRIMARIES = Object.values(WEAPONS).filter(w => w.slot === 'primary').map(w => w.id);
+// Only usable by whoever plays on the PC that hosts from the developer's project folder (the server checks).
+export const HOST_ONLY = Object.values(WEAPONS).filter(w => w.hostOnly).map(w => w.id);
+export const PRIMARIES = Object.values(WEAPONS).filter(w => w.slot === 'primary' && !w.hostOnly).map(w => w.id);
 export const SECONDARIES = Object.values(WEAPONS).filter(w => w.slot === 'secondary').map(w => w.id);
 export const LETHALS = ['frag', 'semtex', 'molotov', 'tknife'];
 export const TACTICALS = ['smoke', 'flash', 'stun'];
