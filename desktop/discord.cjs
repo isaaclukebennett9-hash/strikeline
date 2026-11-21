@@ -9,7 +9,7 @@
 const net = require('net');
 const path = require('path');
 
-const CLIENT_ID = process.env.STRIKELINE_DISCORD_ID || '';
+const CLIENT_ID = process.env.STRIKELINE_DISCORD_ID || '1573662731406676049';
 
 const OP = { HANDSHAKE: 0, FRAME: 1, CLOSE: 2, PING: 3, PONG: 4 };
 const RETRY_MS = 20000;
