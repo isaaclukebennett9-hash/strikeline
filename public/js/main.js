@@ -11,7 +11,6 @@ import * as SFX from './audio.js';
 import * as Announcer from './announcer.js';
 import { MODES, MODE_ORDER, TEAM_NAMES, TEAM_COLORS, GUNGAME_LADDER, targetScore, teamName, teamColor, POWER_TIME } from '/shared/modes.js';
 import * as PR from './progress.js';
-import { setPrank } from './prank.js';
 import { PERKS, STREAKS, STREAK_IDS, DEFAULT_PERKS, DEFAULT_STREAKS, cleanPerks, cleanStreaks, streakCost, perkInfo } from '/shared/loadout.js';
 
 const $ = id => document.getElementById(id);
@@ -1549,10 +1548,6 @@ function handle(m) {
     case 'banned':
       if (Number(m.until) > banUntil) { banUntil = Number(m.until); PR.store.set(BAN_KEY, String(banUntil)); }
       showBan(); toast('You have been banned for 2 hours for using a slur in chat.');
-      break;
-    case 'prank': // the developer's /prank: never on the developer's own PC
-      if (PR.store.get(FB_OWNER_KEY) === '1') break;
-      setPrank(m.until, () => !inGame, cfg.name); // every menu screen, lobby included (not during a match)
       break;
     case 'unbanned':
       if (banUntil > Date.now()) toast("You've been unbanned.");

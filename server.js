@@ -318,28 +318,6 @@ async function remoteLobbies() { // latest announcement from every other game, i
 const FB_RELAY = `${RELAY}-fb`, FB_ACK = `${RELAY}-fback`;
 const fbPosted = new Map(); // id -> when this server last posted it
 const relayLines = (txt) => txt.split('\n').map(l => { try { const m = JSON.parse(l); return m.event === 'message' && m.message ? m : null; } catch { return null; } }).filter(Boolean);
-// ---------- prank mode: the developer types /prank on [minutes] / /prank off. Everyone else's main menu is covered by
-// a "state controlled" screen. Kept in memory only and runs out by itself; the real menu is untouched underneath.
-// The developer's server posts it on its own relay topic; other servers poll that while players are connected.
-const PRANK_RELAY = `${RELAY}-prank`, PRANK_MAX = 2 * 3600e3;
-let prankUntil = 0;
-const sendPrank = c => { if (!c.owner) sendTo(c, { t: 'prank', until: prankUntil > Date.now() ? prankUntil : 0 }); };
-function setPrank(until) { if (until === prankUntil) return; prankUntil = until; for (const c of clients.values()) sendPrank(c); }
-async function prankPost() { try { await fetch(PRANK_RELAY, { method: 'POST', body: JSON.stringify({ sprank: 1, until: prankUntil }), signal: AbortSignal.timeout(8000) }); } catch {} }
-let prankPolling = false;
-async function prankPoll() {
-  if (FB_OWNER || !clients.size || prankPolling) return;
-  prankPolling = true;
-  try {
-    const txt = await (await fetch(`${PRANK_RELAY}/json?poll=1&since=3h`, { signal: AbortSignal.timeout(6000) })).text();
-    let latest = null;
-    for (const m of relayLines(txt)) { try { const j = JSON.parse(m.message); if (j && j.sprank && (!latest || m.time >= latest.time)) latest = { time: m.time, until: Number(j.until) || 0 }; } catch {} }
-    const until = latest ? Math.min(latest.until, latest.time * 1000 + PRANK_MAX) : 0;
-    setPrank(until > Date.now() ? until : 0);
-  } catch {}
-  prankPolling = false;
-}
-setInterval(prankPoll, 20000);
 async function fbPush() {
   if (FB_OWNER || !fbOutbox.length) return;
   for (const f of fbOutbox.slice(0, 20)) {
@@ -1259,7 +1237,6 @@ wss.on('connection', (ws, req) => {
         c.level = clampInt(m.level, 1, 99, 1);
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
         if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c) });
-        sendPrank(c); prankPoll();
         sendLobbies(c);
         scheduleLobbies();
         break;
@@ -1357,14 +1334,6 @@ wss.on('connection', (ws, req) => {
       case 'chat': {
         const text = String(m.m || '').slice(0, 120).trim();
         const cmd = /^\/unban(?:\s+(.+))?$/i.exec(text);
-        const pcmd = /^\/prank(?:\s+(on|off))?(?:\s+(\d+))?$/i.exec(text);
-        if (pcmd) { // never shown in chat
-          if (!c.owner) { sendTo(c, { t: 'toast', m: 'Unknown command.' }); break; }
-          const on = (pcmd[1] || 'on').toLowerCase() === 'on', mins = Math.max(1, Math.min(120, Number(pcmd[2]) || 30));
-          setPrank(on ? Date.now() + mins * 60000 : 0); prankPost();
-          sendTo(c, { t: 'toast', m: on ? `Prank ON for ${mins} min (everyone else's main menu). /prank off to stop.` : 'Prank OFF — menus are back to normal.' });
-          break;
-        }
         if (cmd) { // never shown in chat
           if (!c.owner) { sendTo(c, { t: 'toast', m: 'Only the server owner can unban players.' }); break; }
           if (!cmd[1]) { sendTo(c, { t: 'toast', m: 'Type /unban <name>, or /unban all' }); break; }
