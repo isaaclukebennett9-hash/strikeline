@@ -1552,7 +1552,7 @@ function handle(m) {
       break;
     case 'prank': // the developer's /prank: never on the developer's own PC
       if (PR.store.get(FB_OWNER_KEY) === '1') break;
-      setPrank(m.until, () => !inGame && currentScreen === 'scr-home', cfg.name);
+      setPrank(m.until, () => !inGame, cfg.name); // every menu screen, lobby included (not during a match)
       break;
     case 'unbanned':
       if (banUntil > Date.now()) toast("You've been unbanned.");
