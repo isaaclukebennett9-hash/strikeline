@@ -43,12 +43,12 @@ try { APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 // ---------- feedback: every message ends up in feedback.txt in the developer's project folder (the one with .git).
 // Other servers keep a copy in their own feedback.txt and hold the rest in feedback-outbox.json until the
 // developer's app connects; players' apps also keep an outbox and hand it over when they join the developer's server.
-const FB_OWNER = fs.existsSync(path.join(ROOT, '.git'));
+const FB_OWNER = process.env.STRIKELINE_FB_OWNER ? process.env.STRIKELINE_FB_OWNER === '1' : fs.existsSync(path.join(ROOT, '.git'));
 const FB_TXT = path.join(DATA, 'feedback.txt'), FB_OUT = path.join(DATA, 'feedback-outbox.json'), FB_SEEN = path.join(DATA, 'feedback-ids.json');
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
 let fbOutbox = FB_OWNER ? [] : readJson(FB_OUT, null);
 const fbSeen = new Set(readJson(FB_SEEN, []));
-const saveOutbox = () => { try { fs.writeFileSync(FB_OUT, JSON.stringify(fbOutbox)); } catch {} };
+const saveOutbox = () => { try { fs.writeFileSync(FB_OUT, JSON.stringify(fbOutbox)); return true; } catch { return false; } };
 const saveSeen = () => { try { fs.writeFileSync(FB_SEEN, JSON.stringify([...fbSeen].slice(-3000))); } catch {} };
 if (!FB_OWNER && !fbOutbox) { // first run with relaying: pick up feedback written here before it existed
   fbOutbox = [];
@@ -261,6 +261,58 @@ async function remoteLobbies() { // latest announcement from every other game, i
   })();
   return relayPending;
 }
+// ---------- feedback straight to the developer over the relay: servers that aren't the developer's post what
+// they hold to a feedback topic (again every 2 h until confirmed, since the relay only keeps messages ~12 h);
+// the developer's server polls it, saves anything new and posts the ids back on an ack topic, which the
+// others poll to clear their outbox. Joining each other's games still hands feedback over as a backup.
+const FB_RELAY = `${RELAY}-fb`, FB_ACK = `${RELAY}-fback`;
+const fbPosted = new Map(); // id -> when this server last posted it
+const relayLines = (txt) => txt.split('\n').map(l => { try { const m = JSON.parse(l); return m.event === 'message' && m.message ? m : null; } catch { return null; } }).filter(Boolean);
+async function fbPush() {
+  if (FB_OWNER || !fbOutbox.length) return;
+  for (const f of fbOutbox.slice(0, 20)) {
+    if (Date.now() - (fbPosted.get(f.id) || 0) < 2 * 3600e3) continue;
+    const g = { sfb: 1, ...f };
+    while (Buffer.byteLength(JSON.stringify(g)) > 3900 && g.text.length > 50) g.text = g.text.slice(0, Math.floor(g.text.length * 0.8)); // relay message limit
+    try {
+      const r = await fetch(FB_RELAY, { method: 'POST', body: JSON.stringify(g), signal: AbortSignal.timeout(8000) });
+      if (!r.ok) break;
+      fbPosted.set(f.id, Date.now());
+    } catch { break; }
+  }
+}
+async function fbPollAcks() {
+  if (FB_OWNER || !fbOutbox.length) return;
+  try {
+    const txt = await (await fetch(`${FB_ACK}/json?poll=1&since=12h`, { signal: AbortSignal.timeout(8000) })).text();
+    const ids = new Set();
+    for (const m of relayLines(txt)) { try { const j = JSON.parse(m.message); if (Array.isArray(j.acks)) for (const i of j.acks) ids.add(String(i)); } catch {} }
+    const before = fbOutbox.length;
+    fbOutbox = fbOutbox.filter(f => !ids.has(f.id));
+    if (fbOutbox.length !== before) { saveOutbox(); console.log(`[feedback] ${before - fbOutbox.length} message(s) confirmed by the developer`); }
+  } catch {}
+}
+let fbSince = '12h';
+async function fbPull() { // developer's server only
+  if (!FB_OWNER) return;
+  try {
+    const txt = await (await fetch(`${FB_RELAY}/json?poll=1&since=${fbSince}`, { signal: AbortSignal.timeout(8000) })).text();
+    const items = [];
+    for (const m of relayLines(txt)) {
+      fbSince = m.id;
+      let j; try { j = JSON.parse(m.message); } catch { continue; }
+      const f = j && j.sfb ? cleanFb(j) : null;
+      if (f) items.push(f);
+    }
+    if (!items.length) return;
+    storeFeedback(items);
+    const ids = [...new Set(items.map(f => f.id))];
+    for (let i = 0; i < ids.length; i += 40)
+      await fetch(FB_ACK, { method: 'POST', body: JSON.stringify({ acks: ids.slice(i, i + 40) }), signal: AbortSignal.timeout(8000) }).catch(() => {});
+  } catch {}
+}
+if (FB_OWNER) { setTimeout(fbPull, 4000); setInterval(fbPull, 60000); }
+else { setTimeout(fbPush, 6000); setInterval(fbPush, 60000); setTimeout(fbPollAcks, 90000); setInterval(fbPollAcks, 150000); }
 // Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
 const aliveCache = new Map(); // url -> { at, ok }
 async function gameAlive(u, maxAge = 0) {
@@ -1181,8 +1233,10 @@ wss.on('connection', ws => {
         const items = (Array.isArray(m.items) ? m.items : []).slice(0, 50).map(cleanFb).filter(Boolean);
         if (!items.length) break;
         const added = storeFeedback(items);
-        if (FB_OWNER) sendTo(c, { t: 'fback', ids: items.map(f => f.id) });
-        if (added) sendTo(c, { t: 'toast', m: FB_OWNER ? 'Feedback received — thanks!' : 'Feedback saved — thanks!' });
+        // this server now holds it (the developer's, or one that relays it): the player's app can let it go
+        if (FB_OWNER || saveOutbox()) sendTo(c, { t: 'fback', ids: items.map(f => f.id) });
+        if (added) sendTo(c, { t: 'toast', m: 'Feedback sent — thanks!' });
+        if (!FB_OWNER) fbPush();
         break;
       }
       case 'fbowner': // the developer's app connected here: hand over the feedback held for them
