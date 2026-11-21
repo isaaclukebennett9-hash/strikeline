@@ -629,3 +629,6 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 #dctag:empty { display: none; }
 #dctag.ok { color: #5cff9d; }
 #dctag.bad { color: #ff6a6a; }
+
+/* Armory: the gun the Gunsmith will open (clicked), shown even when it isn't the equipped one */
+#primaries button.viewing, #secondaries button.viewing { outline: 2px solid rgba(255, 176, 102, 0.85); outline-offset: -2px; }

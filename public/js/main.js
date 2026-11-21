@@ -2404,6 +2404,7 @@ function go(id) {
   $('ui').classList.remove('hidden');
   document.querySelectorAll('#ui .screen').forEach(s => s.classList.toggle('active', s.id === id));
   if (id !== 'scr-gunsmith') { gsOpen = null; gsHover = null; pvAttOverride = null; }
+  pvGun = null; // drop any Armory hover preview when changing screens
   const slot = { 'scr-home': 'pv-home', 'pnl-loadout': 'pv-loadout', 'pnl-skins': 'pv-skins', 'scr-gunsmith': 'pv-gs' }[id];
   if (slot) { $(slot).appendChild(pv.renderer.domElement); pv.mode = id; rebuildPreview(); resizePreview(); }
   if (id === 'scr-browser') { send({ t: 'list' }); loadInfo(); }
@@ -2625,10 +2626,14 @@ function buildArmory() {
     el.querySelectorAll('button').forEach(b => {
       b.onclick = () => {
         const id = b.dataset.w;
+        if (!small) pvGun = null;
         if (!PR.isUnlocked(id)) { if (!small) { previewWeapon = id; gsOpen = null; buildArmory(); rebuildPreview(); } toast(`${WEAPONS[id].name} unlocks at level ${PR.UNLOCKS[id].level}`); return; }
         cfg[key] = id; saveCfg(); if (!small) { previewWeapon = id; gsOpen = null; } buildArmory(); rebuildPreview(); SFX.uiBlip();
       };
-      if (!small) b.onmouseenter = () => { if (previewWeapon === b.dataset.w) return; previewWeapon = b.dataset.w; gsOpen = null; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); };
+      if (!small) {
+        b.onmouseenter = () => { if (pvGun === b.dataset.w) return; pvGun = b.dataset.w === previewWeapon ? null : b.dataset.w; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); };
+        b.onmouseleave = () => { if (!pvGun) return; pvGun = null; $('wstats').innerHTML = statBars(PR.attachedDef(previewWeapon)); rebuildPreview(); };
+      }
     });
   };
   mk(PRIMARIES.filter(id => (armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era))).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
@@ -2637,6 +2642,8 @@ function buildArmory() {
   mk(TACTICALS, 'tactical', $('tacticals'), true);
   buildPerkPickers();
   $('wstats').innerHTML = statBars(PR.attachedDef(previewWeapon));
+  for (const el of [$('primaries'), $('secondaries')]) el.querySelectorAll('button').forEach(b => b.classList.toggle('viewing', b.dataset.w === previewWeapon));
+  $('btnGunsmith').textContent = `GUNSMITH: ${WEAPONS[previewWeapon]?.name.toUpperCase() || ''} ›`;
   renderLoBar();
   updateProfileUI();
 }
@@ -2802,8 +2809,8 @@ function renderGunsmith() {
 }
 document.querySelectorAll('#gsTabs button').forEach(b => b.onclick = () => { gsTab = b.dataset.gt; gsOpen = null; gsHover = null; pvAttOverride = null; renderGunsmith(); rebuildPreview(); SFX.uiBlip(); });
 $('gsBack').onclick = () => { SFX.uiBlip(); go('pnl-loadout'); };
-$('btnGunsmith').onclick = () => openGunsmith(previewWeapon);
-$('pv-loadout').onclick = () => openGunsmith(previewWeapon);
+$('btnGunsmith').onclick = () => { pvGun = null; openGunsmith(previewWeapon); };
+$('pv-loadout').onclick = () => { pvGun = null; openGunsmith(previewWeapon); };
 $('gsPreview').onclick = e => { e.stopPropagation(); gsPreviewOnly = true; gsOpen = null; renderGunsmith(); SFX.uiBlip(); };
 // randomize: a random owned option (or nothing) in every slot; strip: take everything off
 $('gsRandom').onclick = () => {
