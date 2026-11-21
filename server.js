@@ -597,7 +597,7 @@ function spawn(room, p) {
   p.vel = [0, 0, 0];
   if (p.pt != null) { p.pt = Math.max(p.pt + 1, Math.round(performance.now())); if (p.hist) p.hist.length = 0; } // respawn shows at once
   if (p.client?.perks) p.perks = p.client.perks;                                     // perk changes apply from the next life
-  p.hp = 100; p.armor = 0; p.alive = true; p.streak = 0; p.nades = 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0;
+  p.hp = 100; p.armor = 0; p.alive = true; p.streak = 0; p.nades = p.perks?.includes('bandolier') ? 3 : 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0; p.minigunUntil = 0;
   p.protectUntil = Date.now() + 2000;
   p.damagers.clear();
   if (room.settings.mode === 'gungame') p.w = GUNGAME_LADDER[Math.min(p.gg, GUNGAME_LADDER.length - 1)];
@@ -1075,7 +1075,7 @@ function tickPickups(room, now) {
       if (p.kind === 'health' && e.hp >= 100) continue;
       if (room.settings.mode === 'infected' && e.team === 1 && p.kind !== 'speed') continue;
       if (p.kind === 'health') e.hp = Math.min(100, e.hp + 50);
-      if (p.kind === 'ammo') { e.nades = 2; e.tacs = 2; if (e.bot) e.ai.mag = WEAPONS[e.w].mag; }
+      if (p.kind === 'ammo') { e.nades = e.perks?.includes('bandolier') ? 3 : 2; e.tacs = 2; if (e.bot) e.ai.mag = WEAPONS[e.w].mag; }
       if (p.kind === 'damage') e.ddUntil = now + POWER_TIME * 1000;
       if (p.kind === 'speed') e.spdUntil = now + POWER_TIME * 1000;
       p.readyAt = now + PICKUP_RESPAWN[p.kind] * 1000;
@@ -1095,6 +1095,7 @@ function activateStreak(room, e, id, aim, now) {
   } else if (id === 'jammer') roomBroadcast(room, { t: 'jam', by: e.id, team: e.team, dur: 20 });
   else if (id === 'armor') { e.armor = 60; if (e.client) sendTo(e.client, { t: 'armor', v: 60 }); }
   else if (id === 'adrenaline') { e.hp = 100; e.burnUntil = 0; e.spdUntil = now + 15000; }
+  else if (id === 'minigun') e.minigunUntil = now + 41000;
   else if (id === 'doubletap') { e.ddUntil = now + 15000; roomBroadcast(room, { t: 'chat', n: '', m: `${ename(e)} has DOUBLE TAP!` }); }
   else if (id === 'airstrike') callAirstrike(room, e, now);
   else if (id === 'mortar') {
@@ -1411,6 +1412,7 @@ wss.on('connection', (ws, req) => {
         const zombie = room.settings.mode === 'infected' && e.team === 1;
         if (zombie && def.id !== 'knife') return;
         const now = Date.now();
+        if (def.slot === 'streak' && !(e.minigunUntil > now)) return; // the minigun only while its killstreak lasts
         if (!fireAllowed(e, def, now)) return;
         e.w = m.w;
         const ends = Array.isArray(m.e) ? m.e.filter(x => isVec(x)).slice(0, 12).map(x => x.map(r2)) : [];

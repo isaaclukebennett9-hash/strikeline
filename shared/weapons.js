@@ -146,6 +146,39 @@ export const WEAPONS = {
     dmg: 38, head: 1.5, rpm: 150, pellets: 2, mag: 8, reserve: 32, reload: 2.2, spread: 0.05, adsSpread: 0.03, moveSpread: 0.01, recoil: 0.04, range: 35,
     falloff: [8, 25, 0.5], speed: 1.03, zoom: 1.15, snd: { f: 650, d: 0.12, b: 210, v: 0.6 } }),
 
+  // =========================================================== ENERGY (laser beams: hitscan, almost no recoil, visible beam)
+  photon: W({ id: 'photon', name: 'Photon Carbine', slot: 'primary', cls: 'energy', type: 'Laser Carbine', model: 'photon', laser: '#38e8ff', optic: 'none',
+    dmg: 23, head: 1.6, rpm: 620, auto: true, mag: 40, reserve: 160, reload: 2.0, spread: 0.016, adsSpread: 0.0025, moveSpread: 0.022, recoil: 0.006, range: 140,
+    falloff: [40, 110, 0.75], speed: 0.98, zoom: 1.4, ads: 0.16, snd: { laser: true, pitch: 2300, v: 0.55, len: 0.7 } }),
+  lance: W({ id: 'lance', name: 'Lance Rail Rifle', slot: 'primary', cls: 'energy', type: 'Laser Sniper', model: 'lance', laser: '#c86bff', optic: 'scope4', bolt: 0.9,
+    dmg: 105, head: 2.2, rpm: 55, mag: 4, reserve: 24, reload: 2.6, spread: 0.07, adsSpread: 0.0, moveSpread: 0.05, recoil: 0.05, range: 300,
+    falloff: [300, 301, 1], speed: 0.92, zoom: 4, ads: 0.24, snd: { laser: true, pitch: 950, v: 0.9, len: 2 } }),
+  arcpistol: W({ id: 'arcpistol', name: 'Arc Pistol', slot: 'secondary', cls: 'energy', type: 'Laser Pistol', model: 'arcpistol', laser: '#ff3b3b', optic: 'none',
+    dmg: 32, head: 1.9, rpm: 360, mag: 14, reserve: 70, reload: 1.4, spread: 0.012, adsSpread: 0.003, moveSpread: 0.02, recoil: 0.016, range: 90,
+    falloff: [25, 60, 0.65], speed: 1.05, zoom: 1.2, ads: 0.12, snd: { laser: true, pitch: 2900, v: 0.5, len: 0.6 } }),
+
+  // =========================================================== FOAM BLASTERS (orange foam darts and balls)
+  foamlmg: W({ id: 'foamlmg', name: 'Thunderherd', slot: 'primary', cls: 'foam', type: 'Foam Dart LMG', model: 'foamlmg', dart: true, anim: 'belt',
+    dmg: 19, head: 1.5, rpm: 620, auto: true, mag: 60, reserve: 180, reload: 3.6, spread: 0.034, adsSpread: 0.012, moveSpread: 0.03, recoil: 0.008, range: 70,
+    falloff: [18, 50, 0.55], speed: 0.88, zoom: 1.3, ads: 0.22 }),
+  ballblaster: W({ id: 'ballblaster', name: 'Orbit-100', slot: 'primary', cls: 'foam', type: 'Foam Ball Blaster', model: 'ballblaster', dart: true, optic: 'none',
+    dmg: 34, head: 1.7, rpm: 380, mag: 12, reserve: 72, reload: 1.9, spread: 0.022, adsSpread: 0.004, moveSpread: 0.025, recoil: 0.016, range: 90,
+    falloff: [22, 60, 0.6], speed: 1.0, zoom: 1.35, ads: 0.17 }),
+  breakfoam: W({ id: 'breakfoam', name: 'Sledgebreak', slot: 'primary', cls: 'foam', type: 'Break-Action Foam Shotgun', model: 'breakfoam', dart: true, anim: 'break',
+    dmg: 34, head: 1.4, rpm: 160, pellets: 3, mag: 1, reserve: 24, reload: 1.3, spread: 0.06, adsSpread: 0.045, moveSpread: 0.01, recoil: 0.06, range: 30,
+    falloff: [7, 20, 0.45], speed: 1.03, zoom: 1.15, ads: 0.14 }),
+  megabolt: W({ id: 'megabolt', name: 'Colossus Mega', slot: 'primary', cls: 'foam', type: 'Mega Dart Sniper', model: 'megabolt', dart: true, optic: 'toyscope', bolt: 0.8,
+    dmg: 80, head: 2, rpm: 60, mag: 5, reserve: 30, reload: 2.6, spread: 0.05, adsSpread: 0.001, moveSpread: 0.045, recoil: 0.03, range: 140,
+    falloff: [40, 110, 0.65], speed: 0.97, zoom: 3, ads: 0.21 }),
+  foampistol: W({ id: 'foampistol', name: 'Pocket Pop', slot: 'secondary', cls: 'foam', type: 'Foam Dart Pistol', model: 'foampistol', dart: true, optic: 'none', pump: true,
+    dmg: 42, head: 1.8, rpm: 150, mag: 1, reserve: 30, reload: 0.9, spread: 0.016, adsSpread: 0.004, moveSpread: 0.02, recoil: 0.02, range: 60,
+    falloff: [15, 40, 0.6], speed: 1.06, zoom: 1.2, ads: 0.12 }),
+
+  // =========================================================== KILLSTREAK WEAPON (only while the Minigun streak lasts)
+  minigun: W({ id: 'minigun', name: 'Minigun', slot: 'streak', cls: 'lmg', type: 'Rotary Minigun', model: 'minigun', optic: 'none', anim: 'belt', spinup: 0.45,
+    dmg: 22, head: 1.4, rpm: 1700, auto: true, mag: 400, reserve: 0, reload: 0, spread: 0.045, adsSpread: 0.035, moveSpread: 0.02, recoil: 0.0045, range: 120,
+    falloff: [30, 90, 0.7], speed: 0.72, zoom: 1.1, ads: 0.3, snd: { f: 2600, d: 0.14, b: 120, v: 0.75 } }),
+
   // =========================================================== WW1 / WW2 (era: shown in their own Armory tab and in their class tab)
   m1911: W({ id: 'm1911', name: 'M1911', slot: 'secondary', cls: 'pistol', type: 'Pistol', model: 'm1911', era: 'ww2',
     dmg: 38, head: 1.9, rpm: 300, mag: 7, reserve: 49, reload: 1.5, spread: 0.015, adsSpread: 0.004, moveSpread: 0.022, recoil: 0.038, range: 75,
@@ -210,7 +243,10 @@ export const WEAPONS = {
 
 for (const id of ['tommy', 'ppsh', 'kar98']) WEAPONS[id].era = 'ww2';
 export const ERA_NAMES = { ww1: 'WW1', ww2: 'WW2' };
-export const CLASS_NAMES = { ar: 'Assault Rifles', smg: 'SMGs', lmg: 'LMGs', shotgun: 'Shotguns', dmr: 'Marksman', sniper: 'Snipers', special: 'Special', pistol: 'Secondaries' };
+for (const id of ['dartsniper', 'dartshotgun']) WEAPONS[id].cls = 'foam';
+// foam blasters sound pneumatic, not like gunpowder
+for (const w of Object.values(WEAPONS)) if (w.dart) w.snd = { ...(w.snd || {}), foam: true, v: 0.6, len: w.cls === 'foam' && w.pellets > 1 ? 1.4 : 1 };
+export const CLASS_NAMES = { ar: 'Assault Rifles', smg: 'SMGs', lmg: 'LMGs', shotgun: 'Shotguns', dmr: 'Marksman', sniper: 'Snipers', special: 'Special', energy: 'Energy', foam: 'Foam Blasters', pistol: 'Secondaries' };
 export const PRIMARIES = Object.values(WEAPONS).filter(w => w.slot === 'primary').map(w => w.id);
 export const SECONDARIES = Object.values(WEAPONS).filter(w => w.slot === 'secondary').map(w => w.id);
 export const LETHALS = ['frag', 'semtex', 'molotov', 'tknife'];
@@ -233,6 +269,7 @@ const IRONS = {
   viper: 'pistol', magnum: 'pistol', hawk: 'pistol', stinger: 'notch', sawedoff: 'bead', dbarrel: 'bead',
   ppsh: 'ring', mp5: 'ring', tommy: 'aperture', bizon: 'notch', skorpion: 'notch', ak47: 'notch', pkm: 'notch', asval: 'notch',
   hammer: 'notch', breacher: 'ghost', ksg: 'ghost', spas12: 'ghost', benelli: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
+  foamlmg: 'toy', ballblaster: 'toy', breakfoam: 'toy', megabolt: 'toy', foampistol: 'toy', minigun: 'notch',
   m1911: 'pistol', luger: 'pistol', mp40: 'notch', mp18: 'notch', stg44: 'notch', mg42: 'notch', trench: 'bead',
 };
 for (const w of Object.values(WEAPONS)) if (!w.throwable && !w.melee) w.irons = IRONS[w.id] || 'aperture';

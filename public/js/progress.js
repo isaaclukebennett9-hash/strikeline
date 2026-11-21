@@ -140,6 +140,7 @@ const WEAPON_LEVELS = {
   thumper: 20, scarh: 21, dbarrel: 22, m249: 23, ak12: 24, kar98: 25, skorpion: 26, tcsg: 27,
   asval: 28, fal: 30, pkm: 32, r4c: 34, dartshotgun: 36, flamer: 38, dartsniper: 40, spas12: 17, benelli: 31,
   m1911: 5, mp40: 6, sten: 9, luger: 10, stg44: 12, trench: 14, garand: 16, bar: 20, enfield: 24, mg42: 29, mp18: 33, lewis: 37,
+  foampistol: 2, ballblaster: 8, breakfoam: 13, foamlmg: 19, megabolt: 26, arcpistol: 15, photon: 21, lance: 35,
 };
 export const UNLOCKS = {
   ...Object.fromEntries(Object.entries(WEAPON_LEVELS).map(([k, l]) => [k, { level: l }])),
@@ -271,7 +272,7 @@ const NO_UNDER = new Set(['sten', 'mp18', 'mp40', 'lewis', 'trench', 'garand', '
 export function slotsFor(wid) {
   const d = WEAPONS[wid];
   if (!d || d.melee || d.slot === 'grenade') return [];
-  if (d.cls === 'special') return d.flame ? ['mag', 'perk'] : ['perk'];
+  if (d.cls === 'special' || d.cls === 'energy' || d.cls === 'foam') return d.flame ? ['mag', 'perk'] : ['perk'];
   if (d.anim === 'break') return ['ammo', 'grip', 'perk'];
   if (d.cls === 'pistol') return ['muzzle', 'mag', 'ammo', 'grip', 'perk'];
   const s = ['optic', 'muzzle', 'barrel', 'under', 'mag', 'ammo', 'stock', 'grip', 'perk'];

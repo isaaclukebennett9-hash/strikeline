@@ -6,16 +6,21 @@ export const PERKS = {
     { id: 'scavenger', name: 'Scavenger', desc: 'Every kill refills a magazine of reserve ammo and gives back a lethal', lvl: 1 },
     { id: 'lightweight', name: 'Lightweight', desc: '+7% movement speed and no fall damage', lvl: 6 },
     { id: 'flak', name: 'Flak Jacket', desc: '-45% damage from explosions and fire', lvl: 12 },
+    { id: 'tacmask', name: 'Tac Mask', desc: 'Flashbangs and stun grenades wear off 70% faster', lvl: 3 },
+    { id: 'commando', name: 'Commando', desc: '+50% knife range and faster knife swings', lvl: 10 },
   ],
   2: [
     { id: 'quickhands', name: 'Quick Hands', desc: '-25% reload time and faster weapon swaps', lvl: 1 },
     { id: 'stopping', name: 'Stopping Power', desc: '+15% bullet damage', lvl: 4 },
     { id: 'hardline', name: 'Hardline', desc: 'Killstreaks need one kill fewer', lvl: 15 },
+    { id: 'bandolier', name: 'Bandolier', desc: '+50% spare ammo for every gun and an extra lethal', lvl: 5 },
   ],
   3: [
     { id: 'steadyaim', name: 'Steady Aim', desc: '-35% hip-fire spread and -15% recoil', lvl: 1 },
     { id: 'ghost', name: 'Ghost', desc: 'Hidden from enemy Radar, and firing does not show you on enemy minimaps', lvl: 9 },
     { id: 'coldblood', name: 'Cold-Blooded', desc: 'Enemies cannot see your name tag', lvl: 18 },
+    { id: 'quickdraw', name: 'Quickdraw', desc: 'Aim down sights 35% faster', lvl: 3 },
+    { id: 'tracker', name: 'Tracker', desc: 'Enemies you hit show on your minimap for 5 s', lvl: 11 },
   ],
 };
 export const PERK_IDS = Object.values(PERKS).flat().map(p => p.id);
@@ -30,6 +35,7 @@ export const STREAKS = {
   airstrike: { name: 'Airstrike', kills: 7, lvl: 1, desc: 'Bombs drop on enemy positions' },
   mortar: { name: 'Mortar Barrage', kills: 8, lvl: 14, desc: 'Six shells land where you are aiming' },
   aradar: { name: 'Advanced Radar', kills: 10, lvl: 22, desc: 'Shows every enemy, even Ghosts, for 40 s' },
+  minigun: { name: 'Minigun', kills: 9, lvl: 1, desc: 'A rotary minigun with 400 rounds for 40 s' },
 };
 export const STREAK_IDS = Object.keys(STREAKS);
 export const DEFAULT_PERKS = ['scavenger', 'quickhands', 'steadyaim'];

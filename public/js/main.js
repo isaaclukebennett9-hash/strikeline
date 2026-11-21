@@ -1,7 +1,7 @@
 ﻿// Strikeline client: menus + lobbies, rendering, input, local player, weapons, networking, HUD.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildMap, MAPS, MAP_ORDER } from '/shared/maps.js';
 import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
 import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
@@ -176,7 +176,7 @@ const TEX = { flash: flashSprite(), glow: radialSprite(), smoke: radialSprite('r
   fire: radialSprite('rgba(255,230,160,1)', 'rgba(255,80,10,0)'), blood: radialSprite('rgba(170,10,10,0.9)', 'rgba(120,0,0,0)') };
 const decalGeo = new THREE.PlaneGeometry(0.11, 0.11);
 const decalMat = new THREE.MeshBasicMaterial({ map: TEX.decal, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
-const partGeo = new THREE.BoxGeometry(1, 1, 1);
+const partGeo = REAL ? new THREE.IcosahedronGeometry(0.62, 0) : new THREE.BoxGeometry(1, 1, 1); // realistic: round debris/droplets
 const partMats = {};
 const partMat = c => partMats[c] || (partMats[c] = new THREE.MeshBasicMaterial({ color: c }));
 const tracerGeo = new THREE.BoxGeometry(0.018, 0.018, 1); tracerGeo.translate(0, 0, -0.5);
@@ -339,14 +339,18 @@ function foliageGeometry(b) {
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let k = 0; k < n[2]; k++) {
     const r = Math.min(cell[0], cell[1], cell[2]) * (0.62 + rnd() * 0.18) + Math.max(cell[0], cell[2]) * 0.06;
-    const g = new THREE.IcosahedronGeometry(1, 2);
+    let g = new THREE.IcosahedronGeometry(1, 3);
+    g.deleteAttribute('uv'); g.deleteAttribute('normal'); g = mergeVertices(g); // shared vertices: smooth and crack-free
     const pos = g.attributes.position, v = new THREE.Vector3();
     const ph = rnd() * 10;
-    for (let q = 0; q < pos.count; q++) { // lumpy outline
+    const uvs = new Float32Array(pos.count * 2);
+    for (let q = 0; q < pos.count; q++) { // lumpy outline (a pure function of direction, so seams stay closed)
       v.fromBufferAttribute(pos, q);
-      const bump = 1 + 0.16 * Math.sin(v.x * 5 + ph) * Math.sin(v.y * 4.3 + ph * 1.7) * Math.sin(v.z * 4.7 + ph * 0.6) + (rnd() - 0.5) * 0.08;
+      const bump = 1 + 0.15 * Math.sin(v.x * 5 + ph) * Math.sin(v.y * 4.3 + ph * 1.7) * Math.sin(v.z * 4.7 + ph * 0.6) + 0.06 * Math.sin(v.x * 13 + v.z * 11 + ph);
       pos.setXYZ(q, v.x * bump, v.y * bump * 0.86, v.z * bump);
+      uvs[q * 2] = (Math.atan2(v.z, v.x) / 6.283 + 0.5) * 3; uvs[q * 2 + 1] = v.y * 1.2;
     }
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     g.computeVertexNormals();
     g.scale(Math.min(r * 1.15, cell[0] * 0.75), Math.min(r, cell[1] * 0.75), Math.min(r * 1.15, cell[2] * 0.75));
     g.translate(b.min[0] + cell[0] * (i + 0.5) + (rnd() - 0.5) * cell[0] * 0.25, b.min[1] + cell[1] * (j + 0.5) + (rnd() - 0.3) * cell[1] * 0.2, b.min[2] + cell[2] * (k + 0.5) + (rnd() - 0.5) * cell[2] * 0.25);
@@ -360,6 +364,17 @@ function foliageGeometry(b) {
 }
 function boxGeometry(b, mat, deco = false) {
   if (REAL && FOLIAGE.has(b.m)) return foliageGeometry(b);
+  if (REAL && b.m === 'bark') { // round, slightly tapered tree trunks
+    const w = b.max[0] - b.min[0], h = b.max[1] - b.min[1], dd = b.max[2] - b.min[2], r = Math.min(w, dd) / 2;
+    const g = new THREE.CylinderGeometry(r * 0.8, r * 1.05, h, 12, 2);
+    g.translate((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+    const uv = g.attributes.uv; for (let q = 0; q < uv.count; q++) uv.setXY(q, uv.getX(q) * r * 6.3, uv.getY(q) * h);
+    g.setAttribute('aEdge', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 4).fill(999), 4));
+    const gr = new Float32Array(g.attributes.position.count * 2); const pos = g.attributes.position;
+    for (let q = 0; q < pos.count; q++) { gr[q * 2] = pos.getY(q) - b.min[1]; gr[q * 2 + 1] = 1; }
+    g.setAttribute('aGrime', new THREE.BufferAttribute(gr, 2));
+    return g;
+  }
   const e = inflateFor(b.m || '', deco);
   const w = b.max[0] - b.min[0] + 2 * e, h = b.max[1] - b.min[1] + 2 * e, d = b.max[2] - b.min[2] + 2 * e;
   const g = new THREE.BoxGeometry(w, h, d);
@@ -551,14 +566,28 @@ const isMate = id => teamsMode() && teamOf(id) === myTeam;
 let lifePerks = [...cfg.perks];
 const hasPerk = id => lifePerks.includes(id);
 const perkDef = (d) => {
+  if (d?.melee && hasPerk('commando')) return { ...d, range: d.range * 1.5, rpm: d.rpm * 1.2 };
   if (!d || d.melee) return d;
   d = { ...d };
   if (hasPerk('quickhands')) { d.reload *= 0.75; if (d.shellTime) d.shellTime *= 0.75; d.swap = true; }
   if (hasPerk('steadyaim')) { d.spread *= 0.65; d.moveSpread *= 0.8; d.recoil *= 0.85; }
   if (hasPerk('stopping')) d.dmg *= 1.15;
+  if (hasPerk('quickdraw')) d.ads *= 0.65;
   return d;
 };
-const makeWeapon = id => { const def = perkDef(mode === 'gungame' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' || mode === 'roulette' ? 999 : def.reserve, reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
+const makeWeapon = id => { const def = perkDef(mode === 'gungame' || WEAPONS[id]?.slot === 'streak' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' || mode === 'roulette' ? 999 : Math.round(def.reserve * (hasPerk('bandolier') ? 1.5 : 1)), reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
+// Minigun killstreak: a temporary extra weapon slot that disappears when the time or ammo runs out
+function giveMinigun() {
+  me.weapons = me.weapons.filter(x => x.def.slot !== 'streak');
+  const w = makeWeapon('minigun'); w.streakUntil = performance.now() + 40000; w.spin = 0;
+  me.weapons.push(w); switchSlot(me.weapons.length - 1);
+}
+function dropStreakWeapon() {
+  const i = me.weapons.findIndex(x => x.def.slot === 'streak'); if (i < 0) return;
+  const was = me.slot === i; me.weapons.splice(i, 1);
+  if (was || me.slot >= me.weapons.length) { me.slot = -1; switchSlot(0); }
+}
+const trackedUntil = new Map(); // Tracker perk: enemies I hit show on my minimap
 let ddUntil = 0, spdUntil = 0, rouletteAt = 0; // rouletteAt: when Gun Roulette next swaps guns
 const isZombie = () => mode === 'infected' && myTeam === 1;
 const makeWeapons = () => (lifePerks = [...cfg.perks], isZombie()) ? ['knife'].map(makeWeapon)
@@ -721,8 +750,9 @@ function clearFx() {
   for (const t of fx.tracers) { scene.remove(t.m); t.m.material.dispose(); }
   for (const d of fx.decals) scene.remove(d);
   for (const s of fx.sprites) { scene.remove(s.m); s.m.material.dispose(); }
+  for (const b of beams) { scene.remove(b.m); b.m.material.dispose(); } beams.length = 0;
   for (const r of fx.rockets.values()) { scene.remove(r); disposeObject(r); }
-  fx.parts = []; fx.tracers = []; fx.decals = []; fx.sprites = []; fx.rockets.clear();
+  fx.parts = []; fx.tracers = []; fx.decals = []; fx.sprites = []; fx.rockets.clear(); pools.length = 0;
   syncSmokes([]); fires.clear();
 }
 function particle(pos, vel, color, size, life, grav = 9) {
@@ -747,6 +777,19 @@ function tracer(from, to, dart = false) {
   m.position.copy(from); m.lookAt(from.clone().add(dir));
   scene.add(m);
   fx.tracers.push({ m, from: from.clone(), dir, dist, t: 0, speed: dart ? 70 : 420, len: dart ? 0.12 : 7 });
+}
+// energy weapons: a glowing beam (bright core + soft halo) from the muzzle to the hit point that fades out fast
+const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true); beamGeo.rotateX(Math.PI / 2); beamGeo.translate(0, 0, 0.5); beamGeo.userData.shared = true;
+const beams = [];
+function laserBeam(from, to, color, width = 1) {
+  const dir = to.clone().sub(from), dist = dir.length(); if (dist < 0.2) return;
+  for (const [r, op, col] of [[0.009 * width, 1, '#ffffff'], [0.028 * width, 0.6, color], [0.07 * width, 0.22, color]]) {
+    const m = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.position.copy(from); m.lookAt(to); m.scale.set(r, r, dist);
+    scene.add(m); beams.push({ m, life: 0.11 * width, max: 0.11 * width, op });
+  }
+  spriteFx(to, TEX.glow, 0.25 * width, 3, 0.15, 1, null, true);
+  flashLight(from, color, 18 * width, 0.05, 6);
 }
 // flamethrower jet: short-lived additive fire sprites flying forward
 let myFlame = null;
@@ -823,9 +866,55 @@ function impact(point, normal, color = '#ffcf6a') {
   scene.add(d); fx.decals.push(d);
   if (fx.decals.length > 150) scene.remove(fx.decals.shift());
 }
-function blood(point) {
-  for (let i = 0; i < 8; i++) particle(point, new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4), i % 2 ? '#8a0b0b' : '#c41414', 0.04 + Math.random() * 0.03, 0.5, 12);
-  spriteFx(point, TEX.blood, 0.3, 2.5, 0.35, 0.8);
+// Blood. Off by default: a small red puff. With "Blood & gore" on: a spray of droplets along the shot, a mist,
+// splatter on the wall/floor behind the target and pools under bodies.
+const goreTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const blob = (cx, cy, r, a) => { const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(105,4,4,${a})`); g.addColorStop(0.75, `rgba(80,2,2,${a * 0.9})`); g.addColorStop(1, 'rgba(60,0,0,0)'); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); };
+  blob(64, 64, 30, 0.95);
+  for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28, d = 20 + Math.random() * 40; blob(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 2 + Math.random() * 8, 0.9); }
+  for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28; x.strokeStyle = 'rgba(90,3,3,0.8)'; x.lineWidth = 2 + Math.random() * 3; x.beginPath(); x.moveTo(64, 64); x.lineTo(64 + Math.cos(a) * 58, 64 + Math.sin(a) * 58); x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.userData.shared = true; return t;
+})();
+const goreMat = new THREE.MeshStandardMaterial({ map: goreTex, transparent: true, depthWrite: false, roughness: 0.25, metalness: 0.1, polygonOffset: true, polygonOffsetFactor: -4 });
+goreMat.userData.shared = true;
+const goreGeo = new THREE.PlaneGeometry(1, 1); goreGeo.userData.shared = true;
+const pools = [];
+function goreDecal(point, normal, size, grow = 0) {
+  const d = new THREE.Mesh(goreGeo, goreMat);
+  d.position.copy(point).addScaledVector(normal, 0.015);
+  d.lookAt(d.position.clone().add(normal)); d.rotateZ(Math.random() * 6.28);
+  d.scale.setScalar(grow ? size * 0.2 : size);
+  scene.add(d); fx.decals.push(d);
+  if (grow) pools.push({ d, size, t: 0 });
+  if (fx.decals.length > 150) scene.remove(fx.decals.shift());
+}
+function blood(point, dir = null, big = false) {
+  if (!cfg.gore) {
+    for (let i = 0; i < 8; i++) particle(point, new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4), i % 2 ? '#8a0b0b' : '#c41414', 0.04 + Math.random() * 0.03, 0.5, 12);
+    spriteFx(point, TEX.blood, 0.3, 2.5, 0.35, 0.8);
+    return;
+  }
+  const n = big ? 34 : 16, fwd = dir ? dir.clone().normalize() : new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    const v = fwd.clone().multiplyScalar(2 + Math.random() * (big ? 7 : 4)).add(new THREE.Vector3((Math.random() - 0.5) * 3.5, Math.random() * 2.5, (Math.random() - 0.5) * 3.5));
+    particle(point, v, i % 3 ? '#6e0606' : '#a80d0d', 0.025 + Math.random() * (big ? 0.06 : 0.04), 0.5 + Math.random() * 0.4, 14);
+  }
+  spriteFx(point, TEX.blood, big ? 0.7 : 0.4, big ? 3.5 : 2.5, big ? 0.6 : 0.4, 0.9, fwd.clone().multiplyScalar(0.8));
+  // splatter on whatever is behind (along the shot) and below
+  const casts = dir ? [[fwd, 3.2], [new THREE.Vector3(fwd.x * 0.4, -1, fwd.z * 0.4).normalize(), 2.4]] : [[new THREE.Vector3(0, -1, 0), 2.4]];
+  for (const [d, far] of casts) {
+    raycaster.set(point, d); raycaster.far = far;
+    const h = raycaster.intersectObjects(world?.meshes || [], false)[0];
+    if (h && h.face) goreDecal(h.point, h.face.normal.clone().transformDirection(h.object.matrixWorld), (big ? 0.9 : 0.5) * (1 - h.distance / far * 0.4) + Math.random() * 0.2);
+  }
+}
+// body falls: a pool spreads out underneath
+function bloodPool(pos) {
+  if (!cfg.gore || !world) return;
+  raycaster.set(new THREE.Vector3(pos.x, pos.y + 1, pos.z), new THREE.Vector3(0, -1, 0)); raycaster.far = 3;
+  const h = raycaster.intersectObjects(world.meshes, false)[0];
+  if (h) goreDecal(h.point, new THREE.Vector3(0, 1, 0), 1.3 + Math.random() * 0.5, true);
 }
 function explosionFx(p) {
   const pos = new THREE.Vector3(...p);
@@ -846,6 +935,8 @@ function spatial(pos) {
   return [vol, rel.lengthSq() > 0.01 ? rel.normalize().dot(right) * 0.8 : 0, d];
 }
 function updateFx(dt) {
+  for (let i = beams.length - 1; i >= 0; i--) { const b = beams[i]; b.life -= dt; if (b.life <= 0) { scene.remove(b.m); b.m.material.dispose(); beams.splice(i, 1); } else b.m.material.opacity = b.op * (b.life / b.max); }
+  for (let i = pools.length - 1; i >= 0; i--) { const p = pools[i]; p.t += dt; const k = Math.min(1, p.t / 4); p.d.scale.setScalar(p.size * (0.2 + 0.8 * (1 - (1 - k) ** 2))); if (k >= 1 || !p.d.parent) pools.splice(i, 1); }
   for (let i = fx.parts.length - 1; i >= 0; i--) {
     const p = fx.parts[i];
     p.life -= dt;
@@ -982,7 +1073,7 @@ function fireShot(w, now) {
   const origin = camera.position.clone();
   const muzzleWorld = origin.clone().addScaledVector(f, 0.7).addScaledVector(r, 0.14 * (1 - adsT)).addScaledVector(u, -0.09);
   const spread = currentSpread(def);
-  if (vm && (def.flame || def.dart)) {
+  if (vm && (def.flame || def.dart || def.laser)) {
     // The gun is drawn with its own camera/FOV, so take the nozzle's on-screen position and put the effect
     // start just in front of the eye along that screen ray (matches what the player sees).
     const v = new THREE.Vector3(); vm.gun.userData.muzzle.getWorldPosition(v);
@@ -1028,11 +1119,12 @@ function fireShot(w, now) {
           const close = def.dmgClose && hit.distance < def.falloff[0] ? 1 + def.dmgClose : 1;
           h.dmg += def.dmg * close * falloffMult(def, hit.distance) * (head ? def.head : hit.object.userData.limb ? 0.85 : 1); if (head) h.h = 1;
           hitMap.set(pid, h);
-          blood(hit.point);
+          blood(hit.point, dir, head);
         } else impact(hit.point, hit.face.normal.clone().transformDirection(hit.object.matrixWorld), def.dart ? '#ff9a3a' : undefined);
       } else end = origin.clone().addScaledVector(dir, def.range);
       ends.push(end.toArray().map(n => +n.toFixed(2)));
-      if (def.dart) tracer(muzzleWorld, end, true);
+      if (def.laser) laserBeam(muzzleWorld, end, def.laser, def.dmg > 80 ? 2 : 1);
+      else if (def.dart) tracer(muzzleWorld, end, true);
       else if (!def.suppressed && (p < 3 || Math.random() < 0.4)) tracer(muzzleWorld, end);
     }
     send({ t: 'fire', w: def.id, e: ends, s: def.suppressed ? 1 : 0, inc: def.incendiary ? 1 : 0, hits: [...hitMap.values()].map(h => ({ id: h.id, dmg: Math.round(h.dmg), h: h.h })) });
@@ -1045,8 +1137,8 @@ function fireShot(w, now) {
   vmRoll += (rh >= 0 ? 1 : -1) * Math.min(0.05, kick * 0.9);
   bloom = Math.min(0.06, bloom + def.recoil * 0.25 * (def.bloomMul || 1));
   kickZ = Math.min(0.12, kickZ + (def.flame ? 0.004 : 0.03 + def.recoil * 0.6));
-  if (vm && !def.flame && !def.dart) { vm.flash.visible = true; vm.flash.material.rotation = Math.random() * 6.28; vm.flashT = 0.05; }
-  if (!def.flame && !def.dart) flashLight(muzzleWorld, '#ffb060', def.projectile ? 80 : def.suppressed ? 6 : 25, 0.06);
+  if (vm && !def.flame && !def.dart && !def.laser) { vm.flash.visible = true; vm.flash.material.rotation = Math.random() * 6.28; vm.flashT = 0.05; }
+  if (!def.flame && !def.dart && !def.laser) flashLight(muzzleWorld, '#ffb060', def.projectile ? 80 : def.suppressed ? 6 : 25, 0.06);
   if (def.flame) SFX.flame?.(); else SFX.shot(def.snd, def.suppressed ? 0.45 : 1, 0);
   if (def.bolt || def.pump) { w.actT = def.bolt || Math.min(0.55, 60 / def.rpm * 0.85); w.actTotal = w.actT; setTimeout(() => SFX.click(), 140); }
   if (def.projectile && vm?.gun.userData.warhead) vm.gun.userData.warhead.visible = false;
@@ -1066,8 +1158,18 @@ function melee(w, now) {
   } else if (hit) impact(hit.point, hit.face.normal.clone().transformDirection(hit.object.matrixWorld), '#ddd');
 }
 function updateWeapon(dt, now) {
+  const sw = me.weapons.find(x => x.def.slot === 'streak');
+  if (sw && (now > sw.streakUntil || sw.ammo <= 0)) dropStreakWeapon();
   const w = curW(); if (!w) return;
   const def = w.def;
+  if (def.spinup) { // minigun barrels spin up while the trigger is held, then fire
+    const want = mouseL && me.alive && !matchEnded && drawT <= 0;
+    const before = w.spin || 0;
+    w.spin = clamp(before + (want ? dt : -dt * 0.7), 0, def.spinup);
+    if (want && before === 0) SFX.spin?.(true, def.spinup);
+    if (!want && before >= def.spinup && w.spin < def.spinup) SFX.spin?.(false, 0.7);
+    const sp = vm?.gun.userData.parts?.spin; if (sp) sp.rotation.z += dt * 40 * (w.spin / def.spinup);
+  }
   if (drawT > 0) drawT -= dt;
   if (w.actT > 0) w.actT = Math.max(0, w.actT - dt);
   // shotguns loading shell-by-shell can fire mid-reload
@@ -1097,7 +1199,7 @@ function updateWeapon(dt, now) {
     if (isSprinting()) sprintLock = 0.25;
     else if (drawT <= 0 && w.reloadT <= 0) {
       if (def.melee) { if (now >= w.nextFire) melee(w, now); }
-      else if (w.burstLeft === 0 && now >= w.nextFire && (def.auto || triggerFresh)) {
+      else if (w.burstLeft === 0 && now >= w.nextFire && (def.auto || triggerFresh) && (!def.spinup || w.spin >= def.spinup)) {
         if (w.ammo <= 0) { if (triggerFresh) { SFX.click(); if (w.reserve > 0) startReload(); } }
         else if (def.burst) w.burstLeft = def.burst;
         else fireShot(w, now);
@@ -1717,6 +1819,10 @@ function handle(m) {
     case 'streak':
       if (m.id === 'armor' && m.by === me.id) { announce('ARMOR UP', 'Your armour soaks up the next 60 damage'); Announcer.say('armor'); }
       if (m.id === 'adrenaline' && m.by === me.id) { spdUntil = performance.now() + 15000; if (me.alive) me.hp = 100; announce('ADRENALINE', 'Full health and faster for 15 seconds'); SFX.announce(); }
+      if (m.id === 'minigun') {
+        if (m.by === me.id) { if (me.alive) giveMinigun(); announce('MINIGUN', '400 rounds for 40 seconds - hold fire to spin up'); SFX.announce(); }
+        else if (!teamsMode() || nameTeam(m.by) !== myTeam) subAnnounce(`${dnameOf(m.by).toUpperCase()} HAS A MINIGUN`);
+      }
       if (m.id === 'doubletap') {
         if (m.by === me.id) { ddUntil = performance.now() + 15000; announce('DOUBLE TAP', 'Double damage for 15 seconds'); SFX.announce(); }
         else if (!teamsMode() || nameTeam(m.by) !== myTeam) subAnnounce(`${dnameOf(m.by).toUpperCase()} HAS DOUBLE TAP`);
@@ -1813,7 +1919,7 @@ function handle(m) {
         me.pos = [...m.p]; me.vel = [0, 0, 0]; me.yaw = m.ry; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false;
         if (m.w) ggWeapon = m.w;
         if (throwAnim) { vmScene.remove(throwAnim.g); disposeObject(throwAnim.g); throwAnim = null; }
-        me.weapons = makeWeapons(); me.slot = 0; me.streak = 0; myArmor = 0; renderArmor(); renderStreakHud(); recoilAcc = 0; deathTime = 0; slide.t = 0; mantle = null; nadesLeft = 2; tacsLeft = 2; stunUntil = burnUntil = flashUntil = 0;
+        me.weapons = makeWeapons(); me.slot = 0; me.streak = 0; myArmor = 0; renderArmor(); renderStreakHud(); recoilAcc = 0; deathTime = 0; slide.t = 0; mantle = null; nadesLeft = hasPerk('bandolier') ? 3 : 2; tacsLeft = 2; stunUntil = burnUntil = flashUntil = 0;
         equipViewmodel();
         $('deathscreen').classList.add('hidden');
       } else {
@@ -1838,10 +1944,10 @@ function handle(m) {
         break;
       }
       const quiet = m.s || def?.suppressed;
-      if (!def?.dart) { r.flash.visible = true; r.flash.material.rotation = Math.random() * 6.28; r.flashT = 0.05; flashLight(mz, '#ffb060', quiet ? 5 : 20, 0.06); }
+      if (!def?.dart && !def?.laser) { r.flash.visible = true; r.flash.material.rotation = Math.random() * 6.28; r.flashT = 0.05; flashLight(mz, '#ffb060', quiet ? 5 : 20, 0.06); }
       for (const e of m.e || []) {
         const end = new THREE.Vector3(...e);
-        if (def?.dart) tracer(mz, end, true); else if (!quiet) tracer(mz, end);
+        if (def?.laser) laserBeam(mz, end, def.laser, def.dmg > 80 ? 2 : 1); else if (def?.dart) tracer(mz, end, true); else if (!quiet) tracer(mz, end);
         if (end.distanceTo(camera.position) > 1.5) for (let i = 0; i < 2; i++) particle(end, new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3), def?.dart ? '#ff9a3a' : '#ffcf6a', 0.025, 0.25);
       }
       if (def) { const [vol, pan, d] = spatial(mz); SFX.shot(def.snd, vol * (quiet ? 0.4 : 1), pan, d > 45); }
@@ -1855,7 +1961,7 @@ function handle(m) {
       if (raycastBoxes(eye.toArray(), dir.toArray(), d - 0.2, world.map.query(Math.min(eye.x, p.x), Math.min(eye.z, p.z), Math.max(eye.x, p.x), Math.max(eye.z, p.z)))) break;
       const facing = dir.dot(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion));
       flashPower = clamp((facing > 0.2 ? 1 : 0.45) * (1.2 - d / 20), 0.25, 1);
-      flashUntil = performance.now() + 3500 * flashPower; SFX.flashbang?.();
+      flashUntil = performance.now() + 3500 * flashPower * (hasPerk('tacmask') ? 0.3 : 1); SFX.flashbang?.();
       break;
     }
     case 'stun': {
@@ -1864,7 +1970,7 @@ function handle(m) {
       if (d > 10) break;
       const dir = p.clone().sub(eye).normalize();
       if (raycastBoxes(eye.toArray(), dir.toArray(), d - 0.2, world.map.query(Math.min(eye.x, p.x), Math.min(eye.z, p.z), Math.max(eye.x, p.x), Math.max(eye.z, p.z)))) break;
-      stunUntil = performance.now() + 4000; shake = Math.max(shake, 0.4);
+      stunUntil = performance.now() + 4000 * (hasPerk('tacmask') ? 0.3 : 1); shake = Math.max(shake, 0.4);
       break;
     }
     case 'burn': if (m.id === me.id) burnUntil = performance.now() + (m.dur || 2500); break;
@@ -1876,7 +1982,15 @@ function handle(m) {
         if (m.from && m.by !== me.id) damageIndicator(m.from, m.by, m.amt || 10);
         shake = Math.max(shake, 0.1 + Math.min(0.15, (m.amt || 10) / 300));
       }
-      if (m.by === me.id && m.id !== me.id) { hitmarker(m.h ? 'head' : ''); SFX.hit(m.h); }
+      if (m.by === me.id && m.id !== me.id) { hitmarker(m.h ? 'head' : ''); SFX.hit(m.h); if (hasPerk('tracker')) trackedUntil.set(m.id, performance.now() + 5000); }
+      if (cfg.gore && m.by !== me.id && m.id !== me.id) { // someone else shot a player I can see
+        const r = remotes.get(m.id);
+        if (r && r.model.visible) {
+          const p = r.model.position.clone(); p.y += m.h ? 1.7 : 1.2;
+          const a = m.by && remotes.get(m.by)?.model.position;
+          blood(p, a ? p.clone().sub(a).setY(0) : null, !!m.h);
+        }
+      }
       break;
     case 'kill': if (inGame) onKill(m); break;
     case 'sc': for (const [id, k, d, s, tm, gg, a] of m.s) scores.set(id, [k, d, s, tm, gg, a]); if (m.ts) teamScore = m.ts; if (showBoard) renderScoreboard(); break;
@@ -1913,7 +2027,7 @@ function onKill(m) {
     $('killer').textContent = m.k === me.id ? (fell ? 'GRAVITY' : 'YOURSELF') : kName;
     $('killerweapon').textContent = m.k === me.id ? (fell ? 'That was a long way down.' : 'Watch the splash damage!') : fell ? 'shot you, then you fell to your death' : `with ${wName}${m.h ? ' — HEADSHOT' : ''}`;
     $('reloadbar').style.display = 'none';
-  } else { const r = remotes.get(m.v); if (r) r.alive = false; }
+  } else { const r = remotes.get(m.v); if (r) { r.alive = false; if (cfg.gore && m.w !== 'fall') { const p = r.model.position.clone(); if (m.h) blood(p.clone().setY(p.y + 1.7), null, true); setTimeout(() => bloodPool(p), 500); } } }
   if (m.v === me.id && m.k !== me.id) { PR.profile.stats.deaths++; PR.saveProfile(); }
   if (m.k === me.id && m.v !== me.id) {
     hitmarker('kill'); SFX.killConfirm();
@@ -2214,7 +2328,8 @@ function drawMinimap(now) {
   for (const r of remotes.values()) {
     if (!r.alive) continue;
     const ghost = !r.mate && r.info.pk?.includes('ghost') && !uavAdv;
-    if (!r.mate && (ghost || !uav) && (ghost || now - r.lastFired > 2500)) continue;
+    const tracked = (trackedUntil.get(r.info.id) || 0) > now;
+    if (!r.mate && !tracked && (ghost || !uav) && (ghost || now - r.lastFired > 2500)) continue;
     const p = r.model.position;
     if (uav && !r.mate && Math.hypot(p.x - me.pos[0], p.z - me.pos[2]) * k > 92) { rim.push(p); continue; }
     x.fillStyle = r.mate ? '#5aa2ff' : '#ff3b3b'; x.beginPath(); x.arc((p.x + H) * ms, (p.z + H) * ms, 4.5 * ms / k, 0, Math.PI * 2); x.fill();
@@ -2497,7 +2612,7 @@ function tryBuy(key, label) {
   return false;
 }
 function buildArmory() {
-  const tabs = ['all', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special', 'era'];
+  const tabs = ['all', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special', 'energy', 'foam', 'era'];
   $('armTabs').innerHTML = tabs.map(t => `<button data-t="${t}" class="${armTab === t ? 'on' : ''}">${t === 'all' ? 'ALL' : t === 'era' ? 'WW1 & WW2' : CLASS_NAMES[t].toUpperCase()}</button>`).join('');
   $('armTabs').querySelectorAll('button').forEach(b => b.onclick = () => { armTab = b.dataset.t; buildArmory(); SFX.uiBlip(); });
   const card = (id, selected, small) => {

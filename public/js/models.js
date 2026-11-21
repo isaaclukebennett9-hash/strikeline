@@ -60,6 +60,10 @@ const M = {
   toyWhite: new THREE.MeshStandardMaterial({ color: '#f2f4f7', roughness: 0.5 }),
   redTank: new THREE.MeshStandardMaterial({ color: '#b8261e', roughness: 0.35, metalness: 0.5 }),
   laser: new THREE.MeshBasicMaterial({ color: '#ff2020' }),
+  // energy weapons: glowing coils / cells (bright enough to catch the bloom)
+  glowCyan: new THREE.MeshStandardMaterial({ color: '#7ff6ff', emissive: new THREE.Color('#22e5ff'), emissiveIntensity: 2.4, roughness: 0.3 }),
+  glowPurple: new THREE.MeshStandardMaterial({ color: '#e0a8ff', emissive: new THREE.Color('#b34dff'), emissiveIntensity: 2.4, roughness: 0.3 }),
+  glowRed: new THREE.MeshStandardMaterial({ color: '#ff8a8a', emissive: new THREE.Color('#ff2a2a'), emissiveIntensity: 2.4, roughness: 0.3 }),
   // real-world furniture / factory finishes so guns don't all look the same grey
   fde: new THREE.MeshStandardMaterial({ color: '#b39a6e', roughness: 0.62, metalness: 0.15 }),
   coyote: new THREE.MeshStandardMaterial({ color: '#7c6646', roughness: 0.66, metalness: 0.1 }),
@@ -1434,6 +1438,173 @@ function buildGunInner(model, S, att, g) {
       break;
     }
 
+    // ============================================================ KILLSTREAK
+    case 'minigun': {
+      // rotary minigun: motor housing, six barrels on a spinning cluster with two clamps, carry handle, spade grips,
+      // ammo can on the left feeding a flexible chute
+      prof(g, [[0.22, -0.06], [0.22, 0.08], ['q', 0.22, 0.1, 0.2, 0.1], [-0.12, 0.1], [-0.12, -0.06]], 0.13, M.dark, 0, 0.012);   // receiver
+      cyl(g, 0.07, 0.14, M.olive, 0, 0.02, 0.29, 20);                                // drive motor
+      for (let i = 0; i < 6; i++) box(g, 0.145, 0.006, 0.01, M.black, 0, 0.02 + Math.sin(i) * 0.05, 0.25 + i * 0.016);   // motor cooling fins
+      cyl(g, 0.05, 0.02, M.steel, 0, 0.02, 0.37, 18);
+      rivets(g, 0.065, 0.06, [-0.08, 0.0, 0.08, 0.16]); seams(g, 0.065, [-0.02, 0.06], -0.1, 0.2);
+      ejectPort(g, 0.065, 0.0, 0.05, 0.08, 0.03);
+      { const sp = part('spin', 0, 0.02, -0.12);
+        for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; pcyl(sp, 0.012, 0.62, M.dark, Math.cos(a) * 0.036, 0.02 + Math.sin(a) * 0.036, -0.43, 10);
+          pcyl(sp, 0.007, 0.004, M.black, Math.cos(a) * 0.036, 0.02 + Math.sin(a) * 0.036, -0.742, 8); }
+        pcyl(sp, 0.056, 0.03, M.steel, 0, 0.02, -0.2, 18); pcyl(sp, 0.054, 0.024, M.steel, 0, 0.02, -0.5, 18); pcyl(sp, 0.052, 0.02, M.dark, 0, 0.02, -0.72, 18);
+        pcyl(sp, 0.012, 0.6, M.black, 0, 0.02, -0.43, 8); }
+      prof(g, [[-0.04, 0.1], [-0.04, 0.17], [0.16, 0.17], [0.16, 0.1], [0.13, 0.1], [0.13, 0.14], [-0.01, 0.14], [-0.01, 0.1]], 0.024, M.black, 0, 0.004);   // carry handle
+      for (const s of [-1, 1]) { box(g, 0.02, 0.12, 0.03, M.grip, s * 0.06, -0.12, 0.2, 0.2); box(g, 0.03, 0.02, 0.05, M.dark, s * 0.06, -0.06, 0.2); }   // spade grips
+      box(g, 0.14, 0.02, 0.03, M.dark, 0, -0.17, 0.215);
+      box(g, 0.03, 0.03, 0.02, M.red, 0.035, -0.05, 0.17);                          // trigger button
+      grip(g, -0.12, -0.06, M.grip, 0.0, 0.12, 0.04, 0.06);                         // front grip (left hand)
+      box(g, 0.12, 0.14, 0.2, M.olive, -0.13, -0.08, 0.02); box(g, 0.124, 0.02, 0.204, M.dark, -0.13, -0.005, 0.02);   // ammo can
+      box(g, 0.006, 0.05, 0.06, M.dark, -0.193, -0.06, 0.02); for (let i = 0; i < 6; i++) box(g, 0.05, 0.02, 0.016, M.brass, -0.07, -0.02 + i * 0.014, -0.03 + i * 0.008, 0.3);   // belt
+      irons = { cy: 0.19, zr: 0.13, zf: -0.06 };
+      muzzleZ = -0.75; muzzleY = 0.04; left = [-0.01, -0.13, -0.12]; adsZ = -0.2;
+      break;
+    }
+
+    // ============================================================ ENERGY
+    case 'photon': {
+      // Photon Carbine: sculpted shell, glowing focusing coils round the emitter, power cell as the magazine, top rail
+      prof(g, [[0.2, -0.02], [0.2, 0.05], ['q', 0.2, 0.08, 0.17, 0.08], [-0.16, 0.085], ['q', -0.2, 0.085, -0.22, 0.06], [-0.22, -0.01], [0.0, -0.03]], 0.058, S, 0, 0.01);   // body shell
+      prof(g, [[0.16, 0.0], [0.16, 0.06], [-0.14, 0.064], [-0.14, 0.0]], 0.062, M.polyBlack, 0, 0.004);   // inner frame panels
+      for (let i = 0; i < 4; i++) box(g, 0.064, 0.006, 0.03, M.glowCyan, 0, 0.03, -0.1 + i * 0.06);   // vents glowing through
+      cyl(g, 0.022, 0.22, M.dark, 0, 0.04, -0.33, 16);                               // emitter barrel
+      for (let i = 0; i < 5; i++) { torus(g, 0.03, 0.006, M.glowCyan, 0, 0.04, -0.27 - i * 0.036, 18); }   // focusing coils
+      cyl(g, 0.03, 0.04, M.steel, 0, 0.04, -0.455, 16); cyl(g, 0.012, 0.006, M.glowCyan, 0, 0.04, -0.478, 12);   // lens housing
+      box(g, 0.05, 0.03, 0.2, M.polyBlack, 0, -0.005, -0.31);                        // under shroud
+      { const mp = magObj = part('mag', 0, -0.03, 0.08);                             // power cell
+        pbox(mp, 0.04, 0.1, 0.06, M.dark, 0, -0.08, 0.08); pbox(mp, 0.042, 0.06, 0.03, M.glowCyan, 0, -0.08, 0.08); pbox(mp, 0.044, 0.012, 0.064, M.steel, 0, -0.135, 0.08); }
+      grip(g, 0.15, -0.02, M.grip, 0.04, 0.1, 0.034, 0.064); guard(g, 0.12, -0.02);
+      prof(g, [[0.2, 0.05], [0.36, 0.04], [0.36, -0.07], [0.32, -0.07], [0.24, -0.01], [0.2, -0.01]], 0.045, S, 0, 0.01);   // stock
+      box(g, 0.048, 0.12, 0.02, M.grip, 0, -0.015, 0.365);
+      rail(g, 0.09, -0.16, 0.1);
+      optic(0.13, -0.03, 0.098, -0.15, 0.09);
+      irons = { cy: 0.115, zr: 0.08, zf: -0.15 };
+      muzzleZ = -0.48; muzzleY = 0.04; left = [-0.01, -0.03, -0.3];
+      break;
+    }
+    case 'lance': {
+      // Lance Rail Rifle: long twin-rail accelerator with purple charge coils, capacitor bank, skeleton stock
+      prof(g, [[0.16, -0.03], [0.16, 0.07], [-0.2, 0.075], [-0.2, -0.03]], 0.06, S, 0, 0.01);   // receiver
+      for (const y of [0.065, 0.005]) box(g, 0.03, 0.016, 0.62, M.dark, 0, y, -0.5);   // twin rails
+      for (let i = 0; i < 9; i++) { box(g, 0.05, 0.08, 0.012, M.polyBlack, 0, 0.035, -0.25 - i * 0.06); box(g, 0.052, 0.02, 0.006, M.glowPurple, 0, 0.035, -0.255 - i * 0.06); }   // coil rings
+      box(g, 0.006, 0.05, 0.6, M.glowPurple, 0, 0.035, -0.5);                       // charge arc between the rails
+      box(g, 0.05, 0.1, 0.03, M.steel, 0, 0.035, -0.82);                            // muzzle block
+      for (let i = 0; i < 3; i++) cyl(g, 0.018, 0.12, M.dark, 0.04, -0.01 + i * 0.03, -0.05, 12);   // capacitor bank
+      for (let i = 0; i < 3; i++) cyl(g, 0.019, 0.01, M.glowPurple, 0.04, -0.01 + i * 0.03, -0.11, 12);
+      { const bp = part('bolt', 0.035, 0.05, 0.08); pbox(bp, 0.03, 0.012, 0.012, M.steel, 0.05, 0.05, 0.08); pbox(bp, 0.02, 0.02, 0.02, M.glowPurple, 0.068, 0.05, 0.08); }   // charging lever
+      { const mp = magObj = part('mag', 0, -0.03, 0.0); pbox(mp, 0.045, 0.09, 0.07, M.dark, 0, -0.075, 0.0); pbox(mp, 0.047, 0.03, 0.05, M.glowPurple, 0, -0.07, 0.0); }
+      grip(g, 0.1, -0.03, M.grip, 0.05, 0.11, 0.036, 0.066); guard(g, 0.07, -0.03);
+      skeletonStock(g, 0.06, -0.08, 0.16, 0.42, S, 0.022); buttPad(g, 0.05, 0.14, -0.01, 0.42);
+      rail(g, 0.085, -0.15, 0.12);
+      optic(0.13, -0.02, 0.093, -0.14, 0.1);
+      irons = { cy: 0.11, zr: 0.1, zf: -0.2 };
+      muzzleZ = -0.84; muzzleY = 0.035; left = [-0.01, -0.02, -0.34];
+      break;
+    }
+    case 'arcpistol': {
+      // Arc Pistol: compact frame, red discharge coil over the barrel, glowing cell in the grip
+      prof(g, [[0.04, 0.016], [0.04, 0.058], [-0.13, 0.06], ['q', -0.15, 0.06, -0.15, 0.04], [-0.15, 0.016]], 0.04, S, 0, 0.006);   // upper
+      for (let i = 0; i < 4; i++) torus(g, 0.016, 0.004, M.glowRed, 0, 0.037, -0.07 - i * 0.02, 14);   // discharge coil
+      cyl(g, 0.012, 0.03, M.steel, 0, 0.037, -0.16, 12); cyl(g, 0.007, 0.004, M.glowRed, 0, 0.037, -0.176, 10);
+      prof(g, [[0.04, 0.02], [0.04, 0.0], [-0.12, -0.004], [-0.14, 0.02]], 0.036, M.polyBlack, 0, 0.004);
+      grip(g, 0.022, 0.0, M.grip, 0.04, 0.1, 0.034, 0.06);
+      box(g, 0.036, 0.05, 0.012, M.glowRed, 0, -0.05, 0.05, 0.35);                  // cell window in the grip
+      guard(g, 0.0, 0.0);
+      irons = { cy: 0.072, zr: 0.03, zf: -0.13 };
+      muzzleZ = -0.18; muzzleY = 0.037; left = [0.0, -0.05, 0.02];
+      break;
+    }
+
+    // ============================================================ FOAM BLASTERS
+    case 'foamlmg': {
+      // Thunderherd: big belt-look foam LMG with a 60-dart drum, carry handle, priming handle and bipod
+      prof(g, [[0.16, -0.03], [0.16, 0.09], ['q', 0.15, 0.12, 0.11, 0.12], [-0.25, 0.12], ['q', -0.28, 0.12, -0.28, 0.09], [-0.28, -0.03]], 0.09, M.toyOrange, 0, 0.016);   // shell
+      prof(g, [[0.13, 0.0], [0.13, 0.09], [-0.24, 0.09], [-0.24, 0.0]], 0.094, M.toyGray, 0, 0.004);   // side panels
+      for (let i = 0; i < 6; i++) box(g, 0.096, 0.04, 0.012, M.toyOrange, 0, 0.045, -0.2 + i * 0.05);
+      cyl(g, 0.035, 0.3, M.toyGray, 0, 0.06, -0.43, 18); for (let i = 0; i < 4; i++) cyl(g, 0.038, 0.012, M.toyYellow, 0, 0.06, -0.32 - i * 0.07, 18);
+      cyl(g, 0.04, 0.05, M.toyOrange, 0, 0.06, -0.6, 18); cyl(g, 0.018, 0.004, M.black, 0, 0.06, -0.626, 12);
+      prof(g, [[-0.05, 0.12], [-0.05, 0.19], [0.12, 0.19], [0.12, 0.12], [0.09, 0.12], [0.09, 0.16], [-0.02, 0.16], [-0.02, 0.12]], 0.03, M.toyGray, 0, 0.006);   // carry handle
+      { const mp = magObj = part('mag', 0, -0.03, -0.06);
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.07, 26), M.toyYellow); drum.rotation.z = Math.PI / 2; drum.position.set(0, -0.08, 0); drum.castShadow = true; mp.add(drum);
+        const win = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.074, 22), M.smokeMag); win.rotation.z = Math.PI / 2; win.position.set(0, -0.08, 0); mp.add(win);
+        for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; const d = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 8), M.toyOrange); d.rotation.z = Math.PI / 2; d.position.set(0, -0.08 + Math.sin(a) * 0.05, Math.cos(a) * 0.05); mp.add(d); } }
+      guard(g, 0.08, -0.03, M.toyGray); grip(g, 0.11, -0.03, M.toyGray, 0.05, 0.11, 0.044, 0.07);
+      prof(g, [[0.16, 0.09], [0.4, 0.08], [0.42, -0.08], [0.34, -0.1], [0.22, -0.02], [0.16, -0.02]], 0.06, M.toyGray, 0, 0.01);   // stock
+      box(g, 0.064, 0.2, 0.026, M.toyOrange, 0, -0.01, 0.42);
+      for (const s of [-1, 1]) box(g, 0.01, 0.01, 0.22, M.toyYellow, s * 0.026, -0.0, -0.4, 0.07);   // folded bipod
+      irons = { cy: 0.21, zr: 0.1, zf: -0.03 };
+      muzzleZ = -0.63; muzzleY = 0.06; left = [-0.02, -0.0, -0.32];
+      break;
+    }
+    case 'ballblaster': {
+      // Orbit-100: high-velocity foam ball blaster. Chunky angular shell, see-through ball magazine, hop-up hood
+      prof(g, [[0.14, -0.02], [0.14, 0.08], [0.1, 0.11], [-0.22, 0.11], [-0.26, 0.07], [-0.26, -0.02]], 0.08, M.toyGray, 0, 0.014);   // shell
+      prof(g, [[0.1, 0.01], [0.1, 0.08], [-0.2, 0.09], [-0.2, 0.01]], 0.084, M.redTank, 0, 0.004);   // red side plates
+      for (let i = 0; i < 3; i++) box(g, 0.086, 0.06, 0.008, M.black, 0, 0.05, -0.14 + i * 0.03, 0.4);
+      box(g, 0.07, 0.07, 0.12, M.toyGray, 0, 0.05, -0.32); cyl(g, 0.025, 0.02, M.black, 0, 0.05, -0.385, 14);   // hop-up hood + bore
+      box(g, 0.074, 0.012, 0.13, M.redTank, 0, 0.088, -0.32);
+      { const mp = magObj = part('mag', 0, -0.02, -0.03);
+        pbox(mp, 0.05, 0.16, 0.05, M.smokeMag, 0, -0.1, -0.03);
+        for (let i = 0; i < 6; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), i % 2 ? M.toyYellow : M.toyBlue); b.position.set(0, -0.04 - i * 0.025, 0); mp.add(b); }
+        pbox(mp, 0.056, 0.016, 0.056, M.redTank, 0, -0.18, -0.03); }
+      guard(g, 0.07, -0.02, M.toyGray); grip(g, 0.1, -0.02, M.black, 0.05, 0.11, 0.04, 0.066);
+      prof(g, [[0.14, 0.08], [0.34, 0.07], [0.34, -0.09], [0.28, -0.09], [0.2, -0.01], [0.14, -0.01]], 0.05, M.toyGray, 0, 0.01);
+      box(g, 0.054, 0.17, 0.022, M.redTank, 0, -0.01, 0.345);
+      rail(g, 0.118, -0.2, 0.06);
+      optic(0.16, -0.07, 0.126, -0.18, 0.04);
+      irons = { cy: 0.14, zr: 0.06, zf: -0.2 };
+      muzzleZ = -0.39; muzzleY = 0.05; left = [-0.01, -0.0, -0.3];
+      break;
+    }
+    case 'breakfoam': {
+      // Sledgebreak: break-action foam shotgun firing big three-dart shells; hinge at the front of the grip
+      prof(g, [[0.08, -0.02], [0.08, 0.06], [-0.06, 0.06], [-0.06, -0.02]], 0.07, M.toyOrange, 0, 0.012);   // action block
+      { const br = part('brk', 0, 0.0, -0.06);
+        pbox(br, 0.074, 0.074, 0.3, M.toyGray, 0, 0.025, -0.21); pbox(br, 0.078, 0.02, 0.26, M.toyOrange, 0, 0.068, -0.2);
+        pcyl(br, 0.03, 0.02, M.toyYellow, 0, 0.025, -0.37, 16); pcyl(br, 0.02, 0.004, M.black, 0, 0.025, -0.382, 12);
+        for (let i = 0; i < 4; i++) pbox(br, 0.08, 0.04, 0.008, M.toyYellow, 0, 0.025, -0.12 - i * 0.05);
+        pbox(br, 0.06, 0.03, 0.18, M.toyGray, 0, -0.025, -0.2); }
+      { const mp = magObj = part('mag', 0, 0.025, -0.06); pcyl(mp, 0.028, 0.06, M.toyBlue, 0, 0.025, -0.07, 14); }   // the shell in the chamber
+      guard(g, 0.04, -0.02, M.toyGray); grip(g, 0.07, -0.02, M.toyGray, 0.06, 0.12, 0.044, 0.07);
+      for (let i = 0; i < 4; i++) box(g, 0.047, 0.004, 0.03, M.toyOrange, 0, -0.05 - i * 0.022, 0.11 + i * 0.01);
+      prof(g, [[0.08, 0.06], [0.3, 0.05], [0.3, -0.09], [0.24, -0.09], [0.14, -0.02], [0.08, -0.02]], 0.05, M.toyOrange, 0, 0.01);
+      for (let i = 0; i < 3; i++) cyl(g, 0.018, 0.05, M.toyBlue, -0.04, 0.0 - i * 0.02, 0.2 + i * 0.02, 12).rotation.set(0, 0, Math.PI / 2);   // spare shells on the stock
+      irons = { cy: 0.1, zr: 0.06, zf: -0.36 };
+      muzzleZ = -0.385; muzzleY = 0.025; left = [0, -0.04, -0.24];
+      break;
+    }
+    case 'megabolt': {
+      // Colossus Mega: huge bolt-action foam sniper firing whistling mega darts, long shroud, big clip, scope rail
+      prof(g, [[0.14, -0.02], [0.14, 0.08], ['q', 0.13, 0.1, 0.1, 0.1], [-0.3, 0.1], ['q', -0.32, 0.1, -0.32, 0.08], [-0.32, -0.02]], 0.08, M.toyBlue, 0, 0.014);
+      prof(g, [[0.11, 0.01], [0.11, 0.08], [-0.28, 0.08], [-0.28, 0.01]], 0.084, M.toyWhite, 0, 0.004);
+      cyl(g, 0.038, 0.4, M.toyWhite, 0, 0.05, -0.52, 20); for (let i = 0; i < 5; i++) cyl(g, 0.04, 0.012, M.toyBlue, 0, 0.05, -0.36 - i * 0.08, 20);
+      cyl(g, 0.042, 0.06, M.toyOrange, 0, 0.05, -0.74, 20); cyl(g, 0.022, 0.004, M.black, 0, 0.05, -0.772, 14);
+      { const bp = part('bolt', 0.05, 0.08, 0.1); pbox(bp, 0.03, 0.014, 0.014, M.toyGray, 0.046, 0.08, 0.1); const k = new THREE.Mesh(new THREE.SphereGeometry(0.017, 12, 8), M.toyOrange); k.position.set(0.016, 0, 0); bp.add(k); }
+      { const mp = magObj = part('mag', 0, -0.02, -0.12); pbox(mp, 0.06, 0.12, 0.07, M.toyYellow, 0, -0.08, -0.12); for (let i = 0; i < 3; i++) pbox(mp, 0.062, 0.008, 0.05, M.toyOrange, 0, -0.04 - i * 0.026, -0.12); }
+      guard(g, 0.05, -0.02, M.toyGray); grip(g, 0.08, -0.02, M.toyGray, 0.05, 0.11, 0.044, 0.068);
+      prof(g, [[0.14, 0.09], [0.44, 0.08], ['q', 0.47, 0.08, 0.47, 0.05], [0.47, -0.1], [0.36, -0.12], [0.22, -0.03], [0.14, -0.02]], 0.055, M.toyGray, 0, 0.01, [[[0.22, 0.05], [0.36, 0.04], [0.36, -0.06], [0.26, -0.02]]]);
+      box(g, 0.06, 0.22, 0.026, M.toyOrange, 0, -0.02, 0.48);
+      rail(g, 0.108, -0.26, 0.1, 0.03);
+      optic(0.155, -0.08, 0.116, -0.24, 0.08);
+      irons = { cy: 0.13, zr: 0.08, zf: -0.3 };
+      muzzleZ = -0.775; muzzleY = 0.05; left = [-0.02, -0.0, -0.42];
+      break;
+    }
+    case 'foampistol': {
+      // Pocket Pop: small single-dart foam pistol with a pull-back priming slide
+      prof(g, [[0.04, 0.0], [0.04, 0.06], ['q', 0.035, 0.075, 0.02, 0.075], [-0.12, 0.075], [-0.13, 0.06], [-0.13, 0.0]], 0.044, M.toyBlue, 0, 0.01);
+      { const bp = part('bolt', 0, 0.075, 0.03); pbox(bp, 0.048, 0.022, 0.05, M.toyOrange, 0, 0.075, 0.03); for (let i = 0; i < 3; i++) pbox(bp, 0.05, 0.016, 0.004, M.toyYellow, 0, 0.075, 0.015 + i * 0.012); }
+      cyl(g, 0.02, 0.03, M.toyOrange, 0, 0.035, -0.14, 14); cyl(g, 0.01, 0.004, M.black, 0, 0.035, -0.156, 10);
+      grip(g, 0.025, 0.0, M.toyGray, 0.045, 0.1, 0.04, 0.06); guard(g, 0.0, 0.0, M.toyGray);
+      irons = { cy: 0.095, zr: 0.03, zf: -0.11 };
+      muzzleZ = -0.158; muzzleY = 0.035; left = [0.0, -0.05, 0.02];
+      break;
+    }
+
     // ============================================================ WW1 / WW2
     case 'm1911': {
       // M1911: blued slide with rear cocking grooves, exposed hammer, grip safety, chequered wood panels
@@ -1947,9 +2118,11 @@ function buildSoldierReal(sk) {
   const legs = [];
   for (const sx of [-1, 1]) {
     const leg = new THREE.Group(); leg.position.set(sx * 0.11, 0.88, 0);
-    part(leg, capsuleZ(0.085, 0.26).rotateX(Math.PI / 2), fabric, 0, -0.22, 0);                       // thigh
-    part(leg, capsuleZ(0.068, 0.3).rotateX(Math.PI / 2), fabric, 0, -0.62, 0.012);                     // shin
-    part(leg, new THREE.SphereGeometry(0.075, 14, 10), vestDark, 0, -0.43, -0.05, 0, 0, 0, 1.15, 1.05, 0.7); // knee pad
+    part(leg, new THREE.SphereGeometry(0.098, 14, 10), fabric, 0, -0.03, 0, 0, 0, 0, 1, 0.8, 1.05);    // hip joint
+    part(leg, new THREE.CylinderGeometry(0.098, 0.074, 0.4, 14), fabric, 0, -0.22, 0);                 // thigh (tapers to the knee)
+    part(leg, new THREE.SphereGeometry(0.074, 12, 10), fabric, 0, -0.43, 0.005);                       // knee
+    part(leg, new THREE.CylinderGeometry(0.072, 0.056, 0.36, 14), fabric, 0, -0.62, 0.012);            // shin
+    part(leg, new THREE.SphereGeometry(0.068, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), vestDark, 0, -0.43, -0.03, -Math.PI / 2, 0, 0, 1.05, 0.55, 1.1); // knee pad
     part(leg, rbox(0.09, 0.05, 0.03, 0.01), strap, 0, -0.43, -0.065);
     part(leg, rbox(0.06, 0.13, 0.11, 0.02), vest, sx * 0.09, -0.2, 0.0);                                // thigh pouch
     part(leg, rbox(0.075, 0.035, 0.12, 0.01), fabricDark, 0, -0.76, 0.01);                             // trouser cuff
@@ -1978,8 +2151,10 @@ function buildSoldierReal(sk) {
   part(upper, rbox(0.22, 0.04, 0.11, 0.015), vestDark, 0, 0.5, 0.22);
   part(upper, new THREE.CylinderGeometry(0.055, 0.06, 0.1, 12), bala, 0, 0.66, 0);                       // neck
   const head = new THREE.Group(); head.position.y = 0.72; upper.add(head);
-  part(head, new THREE.SphereGeometry(0.105, 18, 14), bala, 0, 0.08, 0, 0, 0, 0, 0.92, 1.1, 1.02);      // head (balaclava)
-  part(head, rbox(0.12, 0.05, 0.02, 0.01), skin, 0, 0.1, -0.098);                                        // eyes / skin strip
+  part(head, new THREE.SphereGeometry(0.105, 18, 14), skin, 0, 0.08, 0, 0, 0, 0, 0.9, 1.12, 1.0);      // head
+  part(head, rbox(0.03, 0.04, 0.03, 0.012), skin, 0, 0.065, -0.104);                                     // nose
+  part(head, new THREE.SphereGeometry(0.06, 12, 8), skin, 0, 0.0, -0.045, 0, 0, 0, 1.2, 0.8, 1.0);      // jaw / chin
+  part(head, new THREE.CylinderGeometry(0.098, 0.085, 0.09, 16, 1, true), bala, 0, 0.0, 0.005);           // neck gaiter pulled up to the chin
   part(head, rbox(0.17, 0.05, 0.04, 0.018), visor, 0, 0.105, -0.105);                                    // goggles
   part(head, rbox(0.215, 0.02, 0.18, 0.008), strap, 0, 0.105, -0.01);                                    // goggle strap
   const dome = new THREE.SphereGeometry(0.135, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
