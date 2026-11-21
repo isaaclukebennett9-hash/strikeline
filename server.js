@@ -1229,7 +1229,8 @@ wss.on('connection', (ws, req) => {
         c.dev = isDevCode(m.dev);
         c.pid = /^[a-z0-9]{8,32}$/.test(m.pid || '') ? m.pid : '';
         // a ban from another server travels with the player's app — unless they've been unbanned here
-        if (c.pid && bans['lift:' + c.pid] && !(banEnd(bans['p:' + c.pid]) > Date.now())) { delete bans['lift:' + c.pid]; saveBans(); sendTo(c, { t: 'unbanned' }); }
+        // (the lift stays until the old ban would have run out: an older app that ignores 'unbanned' keeps sending its copy)
+        if (c.pid && banEnd(bans['lift:' + c.pid]) > Date.now() && !(banEnd(bans['p:' + c.pid]) > Date.now())) sendTo(c, { t: 'unbanned' });
         else if (Number(m.ban) > Date.now()) c.banUntil = Math.min(Number(m.ban), Date.now() + BAN_MS);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
