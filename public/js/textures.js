@@ -1,5 +1,6 @@
 ﻿// Procedural textures (colour + bump maps), map themes, weapon skins and character skins.
 import * as THREE from 'three';
+import { REAL } from './style.js';
 
 // ---------------------------------------------------------------- helpers
 function mkCanvas(size = 256) {
@@ -399,6 +400,18 @@ const P = {
     });
   },
   leaves() {
+    if (REAL) return paint(256, (x, b, s) => { // realistic: overlapping individual leaves, darker in the gaps
+      x.fillStyle = '#1e3a12'; x.fillRect(0, 0, s, s); b.fillStyle = '#303030'; b.fillRect(0, 0, s, s);
+      for (let i = 0; i < 900; i++) {
+        const px = rnd(-8, s + 8), py = rnd(-8, s + 8), a = rnd(0, 6.28), l = rnd(5, 11), v = Math.random();
+        for (const [cx, ox, oy] of [[x, 0, 0], [x, s, 0], [x, -s, 0], [x, 0, s], [x, 0, -s]]) {
+          cx.save(); cx.translate(px + ox, py + oy); cx.rotate(a); cx.fillStyle = hexMix('#2c5418', '#79a63a', v); cx.beginPath(); cx.ellipse(0, 0, l, l * 0.42, 0, 0, 7); cx.fill();
+          cx.strokeStyle = 'rgba(20,40,10,0.5)'; cx.lineWidth = 0.6; cx.beginPath(); cx.moveTo(-l, 0); cx.lineTo(l, 0); cx.stroke(); cx.restore();
+        }
+        b.save(); b.translate(px, py); b.rotate(a); b.fillStyle = gray(90 + v * 150); b.beginPath(); b.ellipse(0, 0, l, l * 0.42, 0, 0, 7); b.fill(); b.restore();
+      }
+      noise(x, s, 14);
+    });
     return paint(128, (x, b, s) => {
       for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) { const v = Math.random(); x.fillStyle = hexMix('#2f5a1e', '#5f8f2e', v); x.fillRect(i * 8, j * 8, 8, 8); b.fillStyle = gray(80 + v * 150); b.fillRect(i * 8, j * 8, 8, 8); }
     });

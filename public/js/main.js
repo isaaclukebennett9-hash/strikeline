@@ -11,6 +11,7 @@ import * as SFX from './audio.js';
 import * as Announcer from './announcer.js';
 import { MODES, MODE_ORDER, TEAM_NAMES, TEAM_COLORS, GUNGAME_LADDER, targetScore, teamName, teamColor, POWER_TIME } from '/shared/modes.js';
 import * as PR from './progress.js';
+import { REAL } from './style.js';
 import { PERKS, STREAKS, STREAK_IDS, DEFAULT_PERKS, DEFAULT_STREAKS, cleanPerks, cleanStreaks, streakCost, perkInfo } from '/shared/loadout.js';
 
 const $ = id => document.getElementById(id);
@@ -99,7 +100,7 @@ vmScene.environment = envTex;
 // ---- Ultra graphics: ambient occlusion (soft contact shadows in corners and under objects), bloom on
 // bright lights, and a light colour grade + vignette. Loaded only when Ultra is on.
 let post = null;
-async function setupPost() {
+async function setupPost(withAO = true) {
   const base = 'three/addons/postprocessing/';
   const [{ EffectComposer }, { RenderPass }, { GTAOPass }, { UnrealBloomPass }, { OutputPass }, { ShaderPass }] = await Promise.all(
     ['EffectComposer', 'RenderPass', 'GTAOPass', 'UnrealBloomPass', 'OutputPass', 'ShaderPass'].map(n => import(base + n + '.js')));
@@ -108,7 +109,9 @@ async function setupPost() {
   const composer = new EffectComposer(renderer, rt);
   composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
   composer.addPass(new RenderPass(scene, camera));
-  const ao = new GTAOPass(scene, camera, w, h);
+  let ao = null;
+  if (withAO) {
+  ao = new GTAOPass(scene, camera, w, h);
   ao.output = GTAOPass.OUTPUT.Default;
   ao.blendIntensity = 1.0;
   ao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 6, scale: 2.2, samples: 8, distanceFallOff: 1.0 });
@@ -119,6 +122,7 @@ async function setupPost() {
     this.scene.traverse(o => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite || o === sky || (o.material && o.material.transparent && !o.material.userData.shared)) o.visible = false; });
   };
   composer.addPass(ao);
+  }
   const vm = new RenderPass(vmScene, vmCamera); // the held gun, drawn over the world (no AO on it)
   vm.clear = false; vm.clearDepth = true;
   composer.addPass(vm);
@@ -127,26 +131,30 @@ async function setupPost() {
   composer.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0); gl_FragColor = vec4(clamp(c, 0.0, 24.0), 1.0); }' }));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.55, 0.92);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), REAL ? 0.22 : 0.32, 0.55, REAL ? 0.95 : 0.92);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // Realistic style: a gritty film look - slightly desaturated, teal shadows / warm highlights, more contrast,
+  // stronger vignette and fine moving grain. Classic Ultra keeps its light grade.
   const grade = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, vig: { value: 0.22 }, sat: { value: 1.0 }, con: { value: 1.06 } },
+    uniforms: { tDiffuse: { value: null }, vig: { value: REAL ? 0.34 : 0.22 }, sat: { value: REAL ? 0.86 : 1.0 }, con: { value: REAL ? 1.12 : 1.06 }, split: { value: REAL ? 1 : 0 }, grain: { value: REAL ? 0.035 : 0 }, time: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform sampler2D tDiffuse; uniform float vig; uniform float sat; uniform float con; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float vig; uniform float sat; uniform float con; uniform float split; uniform float grain; uniform float time; varying vec2 vUv;
       void main(){
         vec3 c = texture2D(tDiffuse, vUv).rgb;
         float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
         c = mix(vec3(l), c, sat);
+        c = mix(c, c * mix(vec3(0.9, 1.0, 1.08), vec3(1.07, 1.0, 0.9), smoothstep(0.15, 0.75, l)), split);
         c = (c - 0.5) * con + 0.5;
+        c += (fract(sin(dot(vUv * 1000.0 + time, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * grain;
         vec2 d = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.75, dot(d, d) * 2.2);
         gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
       }`,
   });
   composer.addPass(grade);
-  post = { composer, ao, bloom, vm };
+  post = { composer, ao, bloom, vm, grade };
 }
-if (ULTRA) setupPost().catch(e => { try { reportErr('Ultra graphics failed to start: ' + (e?.message || e)); } catch {} });
+if (ULTRA || (REAL && cfg.gfx !== 'low')) setupPost(ULTRA).catch(e => { try { reportErr('Post-processing failed to start: ' + (e?.message || e)); } catch {} });
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
@@ -307,11 +315,51 @@ function weatherMaterial(mat) {
           col = mix(col, col * 1.5 + 0.05, rim * (0.45 + 0.4 * wear));                           // worn, lighter edge
           col *= (1.0 - inner * 0.16) * (1.0 - grime * 0.45) * (0.86 + macro * 0.26);
           diffuseColor.rgb = col;
-        }`);
+        }${REAL ? `
+        {
+          // realistic: rain streaks running down walls, a cool/warm tint drift and patchy damp (glossier) areas
+          float streak = wNoise(vec2((vWPos.x + vWPos.z) * 3.3, vWPos.y * 0.16)) * wNoise(vec2((vWPos.x - vWPos.z) * 0.8, vWPos.y * 0.05));
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.6, 0.57, 0.52), clamp(streak * 0.6 * vGrime.y, 0.0, 0.45));
+          diffuseColor.rgb *= mix(vec3(1.03, 1.0, 0.95), vec3(0.95, 1.0, 1.05), wNoise(vWPos.xz * 0.05 + 3.7));
+        }` : ''}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${REAL ? `
+        roughnessFactor = clamp(roughnessFactor * mix(0.8, 1.12, wNoise(vWPos.xz * 0.35 + vWPos.y * 0.3)), 0.04, 1.0);` : ''}`);
   };
   mat.needsUpdate = true;
 }
+// Realistic style: tree canopies and hedges become clusters of lumpy leaf blobs instead of solid cubes
+// (collision still uses the box, the blobs fill roughly the same space).
+const FOLIAGE = new Set(['leaves', 'hedge', 'palm']);
+function foliageGeometry(b) {
+  const size = [0, 1, 2].map(k => b.max[k] - b.min[k]);
+  const n = size.map(v => Math.max(1, Math.min(5, Math.round(v / 1.3))));
+  const cell = size.map((v, k) => v / n[k]);
+  const geos = [];
+  let seed = Math.abs(Math.round(b.min[0] * 73 + b.min[2] * 31 + b.min[1] * 17)) + 1;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let k = 0; k < n[2]; k++) {
+    const r = Math.min(cell[0], cell[1], cell[2]) * (0.62 + rnd() * 0.18) + Math.max(cell[0], cell[2]) * 0.06;
+    const g = new THREE.IcosahedronGeometry(1, 2);
+    const pos = g.attributes.position, v = new THREE.Vector3();
+    const ph = rnd() * 10;
+    for (let q = 0; q < pos.count; q++) { // lumpy outline
+      v.fromBufferAttribute(pos, q);
+      const bump = 1 + 0.16 * Math.sin(v.x * 5 + ph) * Math.sin(v.y * 4.3 + ph * 1.7) * Math.sin(v.z * 4.7 + ph * 0.6) + (rnd() - 0.5) * 0.08;
+      pos.setXYZ(q, v.x * bump, v.y * bump * 0.86, v.z * bump);
+    }
+    g.computeVertexNormals();
+    g.scale(Math.min(r * 1.15, cell[0] * 0.75), Math.min(r, cell[1] * 0.75), Math.min(r * 1.15, cell[2] * 0.75));
+    g.translate(b.min[0] + cell[0] * (i + 0.5) + (rnd() - 0.5) * cell[0] * 0.25, b.min[1] + cell[1] * (j + 0.5) + (rnd() - 0.3) * cell[1] * 0.2, b.min[2] + cell[2] * (k + 0.5) + (rnd() - 0.5) * cell[2] * 0.25);
+    const uv = g.attributes.uv; for (let q = 0; q < uv.count; q++) uv.setXY(q, uv.getX(q) * r * 2.4, uv.getY(q) * r * 1.6);
+    geos.push(g);
+  }
+  const g = mergeGeometries(geos, false); geos.forEach(x => x.dispose());
+  g.setAttribute('aEdge', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 4).fill(999), 4));
+  g.setAttribute('aGrime', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+  return g;
+}
 function boxGeometry(b, mat, deco = false) {
+  if (REAL && FOLIAGE.has(b.m)) return foliageGeometry(b);
   const e = inflateFor(b.m || '', deco);
   const w = b.max[0] - b.min[0] + 2 * e, h = b.max[1] - b.min[1] + 2 * e, d = b.max[2] - b.min[2] + 2 * e;
   const g = new THREE.BoxGeometry(w, h, d);
@@ -373,8 +421,8 @@ function loadMap(id) {
   mergedMeshes(map.deco, map.theme, group, true, true);
 
   // Ultra: less flat fill light and a stronger sun, so shadows and occlusion give shapes some depth
-  const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiI * (ULTRA ? 0.8 : 1)); group.add(hemi);
-  const sun = new THREE.DirectionalLight(theme.sun, theme.sunI * (ULTRA ? 1.15 : 1));
+  const hemi = new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiI * (ULTRA ? 0.8 : 1) * (REAL ? 0.78 : 1)); group.add(hemi);
+  const sun = new THREE.DirectionalLight(theme.sun, theme.sunI * (ULTRA ? 1.15 : 1) * (REAL ? 1.12 : 1));
   const sd = new THREE.Vector3(...theme.sunDir).normalize();
   const sunD = Math.max(90, map.size * 0.85); // far enough that big maps sit fully inside the shadow camera
   sun.position.copy(sd).multiplyScalar(sunD);
@@ -384,7 +432,7 @@ function loadMap(id) {
   sunBig = map.size > 130; sunLight = sun;
   const smap = shadowMapSize(sunBig);
   sun.shadow.mapSize.set(smap, smap);
-  if (ULTRA) addSurfaceDetail([...map.boxes, ...map.deco].map(b => b.m).concat(theme.floor), map.theme);
+  if (ULTRA || REAL) addSurfaceDetail([...map.boxes, ...map.deco].map(b => b.m).concat(theme.floor), map.theme);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
   group.add(sun); group.add(sun.target);
   for (const [col, x, z] of theme.lamps) { const l = new THREE.PointLight(col, 90, 38, 1.4); l.position.set(x, 5, z); group.add(l); }
@@ -399,7 +447,7 @@ function loadMap(id) {
     group.add(snow);
   }
   scene.add(group);
-  scene.fog = new THREE.Fog(theme.fog, theme.fogNear, theme.fogFar);
+  scene.fog = new THREE.Fog(theme.fog, theme.fogNear * (REAL ? 0.7 : 1), theme.fogFar * (REAL ? 0.92 : 1)); // realistic: a little atmospheric haze
   renderer.toneMappingExposure = theme.exposure;
   skyMat.uniforms.top.value.set(theme.skyTop);
   skyMat.uniforms.horizon.value.set(theme.skyHorizon);
@@ -569,7 +617,10 @@ function addRemote(info) {
     const tm = new THREE.MeshStandardMaterial({ color: teamColor(mode, info.team), emissive: new THREE.Color(teamColor(mode, info.team)), emissiveIntensity: 1.2 });
     const band = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), tm); band.position.set(0.3, 0.42, 0); model.userData.upper.add(band);
     const band2 = band.clone(); band2.position.x = -0.3; model.userData.upper.add(band2);
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.32), tm); stripe.position.set(0, 0.31, 0.01); model.userData.head.add(stripe);
+    const stripe = model.userData.real // realistic helmet: a band round the dome
+      ? new THREE.Mesh(new THREE.TorusGeometry(0.128, 0.012, 6, 28).rotateX(Math.PI / 2), tm) : new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.32), tm);
+    if (model.userData.real) { stripe.position.set(0, 0.15, 0.005); stripe.scale.set(0.97, 1, 1.05); } else stripe.position.set(0, 0.31, 0.01);
+    model.userData.head.add(stripe);
   }
   const hbHead = new THREE.Mesh(hbHeadGeo, hbMat); hbHead.position.y = 1.72; hbHead.userData = { pid: info.id, head: true };
   const hbBody = new THREE.Mesh(hbBodyGeo, hbMat); hbBody.position.y = 1.17; hbBody.userData = { pid: info.id, head: false };
@@ -2222,7 +2273,7 @@ function frame(now) {
     if (renderer.shadowMap.enabled && (++shadowFrame & 1)) renderer.shadowMap.needsUpdate = true;
     renderer.clear();
     const showVm = inGame && me.alive && vmHolder.visible;
-    if (post) { post.vm.enabled = showVm; post.composer.render(dt); }
+    if (post) { post.vm.enabled = showVm; post.grade.uniforms.time.value = (now * 0.001) % 100; post.composer.render(dt); }
     else {
       renderer.render(scene, camera);
       if (showVm) { renderer.clearDepth(); renderer.render(vmScene, vmCamera); }
@@ -2802,6 +2853,23 @@ $('shutup').addEventListener('change', () => {
 });
 $('announcerOn').checked = cfg.announcer;
 $('announcerOn').addEventListener('change', () => { cfg.announcer = $('announcerOn').checked; saveCfg(); Announcer.setEnabled(cfg.announcer); if (cfg.announcer) Announcer.say('ready', 0); });
+// Graphics style (Realistic / Classic blocky) is read once at start-up by the model and texture code, so a change
+// reloads the game when changed outside a match (mid-match it applies on the next start).
+if (cfg.style !== 'classic') cfg.style = 'realistic';
+const updateStyleChips = () => {
+  document.querySelectorAll('#gstyle button').forEach(b => b.classList.toggle('on', b.dataset.st === cfg.style));
+  $('gstylenote').textContent = (cfg.style === 'realistic') !== REAL ? 'Switches next time you open Strikeline (or change it from the main menu).'
+    : REAL ? 'Detailed soldiers, weathered surfaces and a film-style colour grade. Pick Classic on slow laptops.' : 'The original blocky look: lightest on slow laptops.';
+};
+document.querySelectorAll('#gstyle button').forEach(b => b.addEventListener('click', () => {
+  if (cfg.style === b.dataset.st) return;
+  cfg.style = b.dataset.st; saveCfg(); updateStyleChips();
+  if (!inGame) { toast(cfg.style === 'realistic' ? 'Switching to Realistic graphics…' : 'Switching to Classic graphics…'); setTimeout(safeReload, 400); }
+}));
+updateStyleChips();
+if (cfg.gore === undefined) cfg.gore = false;
+$('goreOn').checked = !!cfg.gore;
+$('goreOn').addEventListener('change', () => { cfg.gore = $('goreOn').checked; saveCfg(); });
 const updateGfxChips = () => {
   document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
   $('gfxnote').textContent = (cfg.gfx === 'ultra') !== ULTRA ? 'Restart Strikeline to ' + (ULTRA ? 'turn Ultra off.' : 'turn Ultra on.')
