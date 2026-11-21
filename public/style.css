@@ -505,3 +505,6 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 .buy-price { font: 800 26px Orbitron, sans-serif; color: #ffd27a; }
 .buy-price small { display: block; font: 600 13px Rajdhani, sans-serif; color: var(--muted); }
 #buyGo:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* game version, bottom-right corner (always shown, never blocks clicks) */
+#vertag { position: fixed; right: 8px; bottom: 5px; z-index: 100000; pointer-events: none; user-select: none; font: 700 11px Rajdhani, 'Segoe UI', sans-serif; letter-spacing: 1px; color: rgba(255,255,255,0.45); text-shadow: 0 1px 2px rgba(0,0,0,0.8); }

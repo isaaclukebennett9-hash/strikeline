@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
+const { createPresence } = require('./discord.cjs');
 
 if (process.env.STRIKELINE_SELFTEST) app.setPath('userData', path.join(os.tmpdir(), 'strikeline-selftest'));
 const BUNDLED_ROOT = path.join(__dirname, '..');
@@ -219,7 +220,7 @@ async function goOnline() {
   goingOnline = false;
   pushState(); updateTitle();
 }
-function stopAll() { quitting = true; if (host.tunnel) { try { host.tunnel.kill(); } catch {} } if (host.server) { try { host.server.kill(); } catch {} } }
+function stopAll() { quitting = true; if (presence) { try { presence.stop(); } catch {} presence = null; } if (host.tunnel) { try { host.tunnel.kill(); } catch {} } if (host.server) { try { host.server.kill(); } catch {} } }
 
 function hostState() {
   return { port: host.port, code: host.code, url: host.url, online: host.online, joined, update, gameUpdate, version: appVersion(), gameVersion: devConfig() ? 'dev' : installedGame().version };
@@ -307,6 +308,9 @@ ipcMain.handle('copy', (e, text) => { clipboard.writeText(String(text)); return 
 ipcMain.handle('install-update', () => installUpdate());
 ipcMain.handle('restart-app', () => { stopAll(); app.relaunch(); setTimeout(() => app.exit(0), 300); });
 ipcMain.handle('retry', () => boot());
+// Discord Rich Presence: the game page reports what you're doing (menus / lobby / mode, map and score)
+let presence = null;
+ipcMain.on('presence', (e, p) => { if (presence && e.sender === win?.webContents) presence.set(p); });
 // crash.log entries the developer hasn't seen yet: the game sends them to the developer's server when playing there
 ipcMain.handle('crash-report', () => {
   try {
@@ -394,6 +398,7 @@ else {
     // Look up join links with secure DNS so ISP/home DNS filters and stale Windows DNS caches can't block joining.
     try { app.configureHostResolver({ secureDnsMode: 'secure', secureDnsServers: ['https://cloudflare-dns.com/dns-query', 'https://dns.google/dns-query'] }); } catch {}
     createWindow();
+    if (!process.env.STRIKELINE_SELFTEST) { try { presence = createPresence(crashLog); presence.set({ details: 'Starting up', start: Date.now() }); } catch (err) { crashLog(`discord presence: ${err.message}`); } }
     win.webContents.once('did-finish-load', boot);
     if (process.env.STRIKELINE_SELFTEST) selfTest();
   });

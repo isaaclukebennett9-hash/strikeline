@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('desktop', {
   crashReportSent: (n) => ipcRenderer.invoke('crash-report-sent', n),
   onStatus: (fn) => ipcRenderer.on('status', (e, t) => fn(t)),
   onBootError: (fn) => ipcRenderer.on('boot-error', (e, t) => fn(t)),
+  presence: (p) => ipcRenderer.send('presence', p),        // Discord Rich Presence
 });
 
 // ---------------------------------------------------------------- home-screen panel inside the game
@@ -21,7 +22,7 @@ if (location.protocol.startsWith('http')) {
   window.addEventListener('DOMContentLoaded', async () => {
     const css = document.createElement('style');
     css.textContent = `
-      #dkBadge{position:fixed;right:16px;bottom:14px;z-index:99999;display:none;flex-direction:column;gap:8px;width:330px;
+      #dkBadge{position:fixed;right:16px;bottom:26px;z-index:99999;display:none;flex-direction:column;gap:8px;width:330px;
         font:600 13px Rajdhani,'Segoe UI',sans-serif;letter-spacing:.5px;color:#cfd6e4;background:rgba(10,13,20,.88);
         border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;backdrop-filter:blur(6px)}
       #dkBadge .hd{font:800 11px 'Segoe UI',sans-serif;letter-spacing:2px;color:#8a93a6}

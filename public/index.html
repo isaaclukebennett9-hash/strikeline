@@ -277,5 +277,7 @@
 <div id="loading" class="hidden"><div class="spinner"></div><div id="loadingText">Connecting…</div></div>
 
 <script type="module" src="js/main.js"></script>
+<div id="vertag"></div>
+<script>/* game version (bottom-right): works even if the game script fails to load */fetch('/app/version',{cache:'no-store'}).then(function(r){return r.json()}).then(function(v){if(v.version){window.slVersion=v.version;document.getElementById('vertag').textContent='v'+v.version}}).catch(function(){});</script>
 </body>
 </html>

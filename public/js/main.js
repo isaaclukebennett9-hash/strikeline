@@ -484,7 +484,7 @@ let uavAdvanced = false, jamUntil = 0, myStreaks = [], streakReady = [], myArmor
 let mode = 'ffa', target = 30, teamScore = [0, 0], myTeam = -1, zone = null, uavUntil = 0, ggWeapon = null, nadesLeft = 2, tacsLeft = 2;
 let stunUntil = 0, burnUntil = 0;
 const smokes = new Map(), fires = new Map(); // active smoke clouds / fire pools from the server
-let matchXP = 0, matchStart = null; const matchXPReasons = {};
+let matchXP = 0, matchStart = null, matchStartedAt = 0; const matchXPReasons = {};
 const teamsMode = () => MODES[mode]?.teams;
 const teamOf = id => id === me.id ? myTeam : (remotes.get(id)?.info.team ?? -1);
 const isMate = id => teamsMode() && teamOf(id) === myTeam;
@@ -1525,6 +1525,7 @@ function handle(m) {
     }
     case 'start': {
       me.id = m.id; scoreLimit = m.scoreLimit; timeLeft = m.time; matchEnded = m.phase === 'ended';
+      matchStartedAt = Date.now();
       mode = m.mode || 'ffa'; target = m.target ?? scoreLimit; teamScore = m.teamScore || [0, 0];
       zone = m.zone ? { x: m.zone[0], z: m.zone[1], r: m.zone[2], state: -1, ttm: 60 } : null;
       uavUntil = 0; matchXP = 0; for (const k in matchXPReasons) delete matchXPReasons[k];
@@ -2692,3 +2693,31 @@ loadMap('town');
 go('scr-home');
 connect();
 requestAnimationFrame(frame);
+
+// ================================================================ Discord Rich Presence
+// (the version tag in the bottom-right corner is filled in by index.html; window.slVersion holds it)
+// What you're doing, shown on your Discord profile (desktop app only; it does nothing in a browser).
+let menuSince = Date.now(), lobbySince = 0, lastPresence = '';
+function presenceState() {
+  const where = onFriendsGame ? " (friend's game)" : '';
+  if (inGame && world) {
+    const mapName = MAPS[world.map.id]?.name || 'Strikeline';
+    const p = { details: `${MODES[mode]?.name || 'Match'} · ${mapName}`, start: matchStartedAt, partySize: remotes.size + 1, partyMax: room?.settings?.maxPlayers, partyId: room?.code };
+    if (matchEnded) p.state = 'Match over';
+    else if (teamsMode() && myTeam >= 0) p.state = `${teamName(mode, myTeam)} ${teamScore[myTeam] || 0} – ${teamScore[1 - myTeam] || 0}`;
+    else { const sc = scores.get(me.id); p.state = sc ? `${sc[0]} kills · ${sc[1]} deaths` : 'In a match'; }
+    return p;
+  }
+  if (room) {
+    if (!lobbySince) lobbySince = Date.now();
+    return { details: `In a lobby${where}`, state: MODES[room.settings?.mode] ? `${MODES[room.settings.mode].name} · ${MAPS[room.settings.map]?.name || 'Random map'}` : room.name, start: lobbySince, partySize: room.members?.length, partyMax: room.settings?.maxPlayers, partyId: room.code };
+  }
+  lobbySince = 0;
+  return { details: `In the menus${where}`, state: `Level ${PR.levelInfo().level}`, start: menuSince };
+}
+if (window.desktop?.presence) setInterval(() => {
+  let p; try { p = presenceState(); } catch { return; }
+  p.version = window.slVersion || '';
+  const j = JSON.stringify(p);
+  if (j !== lastPresence) { lastPresence = j; window.desktop.presence(p); }
+}, 2000);
