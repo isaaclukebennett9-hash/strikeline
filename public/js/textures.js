@@ -674,6 +674,9 @@ export const WEAPON_SKINS = [
   { id: 'galaxy', name: 'Galaxy', rarity: 'legendary', swatch: '#5b2a9e' },
   { id: 'inferno', name: 'Inferno', rarity: 'legendary', swatch: '#ff4a12' },
   { id: 'gold', name: '24K Gold', rarity: 'legendary', swatch: '#f2c14e' },
+  { id: 'dragon', name: 'Dragon Scale', rarity: 'epic', swatch: 'radial-gradient(circle at 50% 30%, #e0303a, #9c1620 60%, #3a0609)' },
+  { id: 'aurora', name: 'Aurora', rarity: 'legendary', swatch: 'linear-gradient(180deg, #05101c 15%, #38ffb0 40%, #7a5cff 65%, #05101c 90%)' },
+  { id: 'gift', name: "Logan's Gift", rarity: 'legendary', swatch: 'linear-gradient(90deg, #0d4a2c 42%, #f2c14e 42% 58%, #0d4a2c 58%)' },
   { id: 'dev', name: 'Dev Circuit', rarity: 'dev', swatch: 'repeating-linear-gradient(90deg, #07140e 0 6px, #39ff9c 6px 8px)' },
   { id: 'glitch', name: 'Glitch', rarity: 'dev', swatch: 'linear-gradient(90deg, #0a0a0f 30%, #ff2a3a 30% 45%, #0a0a0f 45% 60%, #22e5ff 60% 75%, #0a0a0f 75%)' },
 ];
@@ -749,6 +752,39 @@ export function weaponSkinMaterial(id) {
       m.userData.pulse = true; break;
     }
     case 'gold': m = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.18, metalness: 1.0 }); break;
+    case 'dragon': { // red overlapping scales with dark edges and a gold sheen
+      const [c, x] = mkCanvas(256); x.fillStyle = '#5a0c12'; x.fillRect(0, 0, 256, 256);
+      for (let r = 0; r < 14; r++) for (let k = -1; k < 11; k++) {
+        const cx = k * 26 + (r % 2) * 13, cy = r * 20;
+        const g = x.createRadialGradient(cx, cy - 6, 2, cx, cy, 18); g.addColorStop(0, '#e0303a'); g.addColorStop(0.7, '#9c1620'); g.addColorStop(1, '#3a0609');
+        x.fillStyle = g; x.beginPath(); x.arc(cx, cy, 15, 0, Math.PI); x.lineTo(cx - 15, cy - 4); x.closePath(); x.fill();
+        x.strokeStyle = 'rgba(242,193,78,0.55)'; x.lineWidth = 1.2; x.beginPath(); x.arc(cx, cy, 15, 0.15, Math.PI - 0.15); x.stroke();
+      }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.32, metalness: 0.55 }); break;
+    }
+    case 'aurora': { // night sky with glowing green/violet bands
+      const [c, x] = mkCanvas(256); const [e, ex] = mkCanvas(256);
+      x.fillStyle = '#05101c'; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
+      for (const [col, y0, amp] of [['#38ffb0', 90, 30], ['#7a5cff', 150, 24], ['#2fd4ff', 200, 18]]) for (const ctx of [x, ex]) {
+        const g = ctx.createLinearGradient(0, y0 - 40, 0, y0 + 40); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, y0 + 40);
+        for (let px = 0; px <= 256; px += 16) ctx.lineTo(px, y0 + Math.sin(px / 40 + y0) * amp - 30);
+        ctx.lineTo(256, y0 + 40); ctx.closePath(); ctx.fill();
+      }
+      for (let i = 0; i < 120; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * 0.9})`; x.fillRect(Math.random() * 256, Math.random() * 256, 1, 1); }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), emissiveMap: toTex(e), emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.1, roughness: 0.3, metalness: 0.4 });
+      m.userData.pulse = true; break;
+    }
+    case 'gift': { // Logan's Gift: deep green wrapping paper, gold ribbons and little stars
+      const [c, x] = mkCanvas(256); x.fillStyle = '#0d4a2c'; x.fillRect(0, 0, 256, 256);
+      x.fillStyle = '#0a3a22'; for (let i = -256; i < 256; i += 24) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 12, 0); x.lineTo(i + 268, 256); x.lineTo(i + 256, 256); x.fill(); }
+      x.fillStyle = '#f2c14e'; x.fillRect(112, 0, 32, 256); x.fillRect(0, 112, 256, 32);
+      x.fillStyle = '#c99a2e'; x.fillRect(112, 0, 4, 256); x.fillRect(140, 0, 4, 256); x.fillRect(0, 112, 256, 4); x.fillRect(0, 140, 256, 4);
+      const star = (sx, sy, r) => { x.beginPath(); for (let s = 0; s < 10; s++) { const a = s / 10 * 6.283 - 1.571, rr = s % 2 ? r * 0.45 : r; s ? x.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr) : x.moveTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr); } x.closePath(); x.fill(); };
+      x.fillStyle = '#ffe9a8'; const rnd = mulberry32(7);
+      for (let i = 0; i < 26; i++) { const sx = rnd() * 256, sy = rnd() * 256; if (Math.abs(sx - 128) > 26 && Math.abs(sy - 128) > 26) star(sx, sy, 4 + rnd() * 4); }
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.4, metalness: 0.35 }); break;
+    }
     case 'desert': m = new THREE.MeshStandardMaterial({ map: toTex(camo(['#c8b07e', '#a88c5a', '#e2d2a6', '#7d6a45'], 256, 55)), roughness: 0.78, metalness: 0.08 }); break;
     case 'urban': { // blocky digital pixels
       const [c, x] = mkCanvas(128); x.fillStyle = '#6b727b'; x.fillRect(0, 0, 128, 128);
@@ -828,6 +864,7 @@ export const CHAR_SKINS = [
   { id: 'ghost', name: 'Ghost', body: '#c8ced6', accent: '#7c8794', helmet: '#e8ecf0', visor: '#45e0ff', glow: true, rarity: 'epic' },
   { id: 'toxic', name: 'Toxic', body: '#1e2421', accent: '#0e110f', helmet: '#252b27', visor: '#7dff3a', glow: true, rarity: 'epic' },
   { id: 'shadow', name: 'Shadow', body: '#121216', accent: '#050507', helmet: '#18181d', visor: '#ff1a3a', glow: true, rarity: 'legendary' },
+  { id: 'dragonheart', name: 'Dragonheart', body: '#8a1620', accent: '#d9a636', helmet: '#5e0e15', visor: '#ffcf4a', glow: true, rarity: 'legendary' },
   { id: 'royal', name: 'Royal Guard', body: '#4a2470', accent: '#d9a636', helmet: '#3a1a5a', visor: '#ffd36a', glow: true, rarity: 'legendary' },
   { id: 'dev', name: 'Developer', body: '#101615', accent: '#1f5a40', helmet: '#0b100f', visor: '#39ff9c', glow: true, rarity: 'dev' },
   { id: 'devgold', name: 'Dev Prestige', body: '#ece8de', accent: '#d9a636', helmet: '#f6f3ec', visor: '#39ff9c', glow: true, rarity: 'dev' },

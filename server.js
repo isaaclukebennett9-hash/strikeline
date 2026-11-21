@@ -10,7 +10,7 @@ import { WebSocketServer } from 'ws';
 import { buildMap, MAPS, MAP_ORDER } from './shared/maps.js';
 import { WEAPONS, BOT_WEAPONS, THROWABLE_KINDS, LETHALS, TACTICALS, falloffMult } from './shared/weapons.js';
 import { moveBody, raycastBoxes, PLAYER } from './shared/physics.js';
-import { MODES, GUNGAME_LADDER, ZONE_RADIUS, ZONE_MOVE, targetScore, PICKUP_RESPAWN, POWER_TIME } from './shared/modes.js';
+import { MODES, GUNGAME_LADDER, ROULETTE_POOL, ROULETTE_TIME, ZONE_RADIUS, ZONE_MOVE, targetScore, PICKUP_RESPAWN, POWER_TIME } from './shared/modes.js';
 import { buildNav } from './shared/nav.js';
 import { STREAKS, cleanPerks, cleanStreaks, streakCost } from './shared/loadout.js';
 import { filterChat, BAN_MS } from './shared/chatfilter.js';
@@ -127,7 +127,7 @@ const server = http.createServer((req, res) => {
 
 // ------------------------------------------------------------------ helpers
 const BOT_NAMES = ['Viper', 'Ghost', 'Havoc', 'Reaper', 'Nova', 'Blitz', 'Talon', 'Raptor', 'Echo', 'Frost', 'Jinx', 'Onyx'];
-const CHAR_SKINS = ['ranger', 'crimson', 'ghost', 'cobalt', 'shadow', 'desert', 'toxic', 'royal'];
+const CHAR_SKINS = ['ranger', 'crimson', 'ghost', 'cobalt', 'shadow', 'desert', 'toxic', 'royal', 'dragonheart'];
 const DEV_CHAR_SKINS = ['dev', 'devgold'], DEV_W_SKINS = ['dev', 'glitch']; // accepted from players, never given to bots
 // Developer badge: a player who has entered the dev code (same code as the dev skins) shows a crown next to their name.
 // Only the SHA-256 of the code is here, so the badge can't be faked by typing a name.
@@ -135,7 +135,7 @@ const DEV_CODE_SHA = '592825ecebd9678f878dfce975fbb0509465067ff1f8966038b7b36d7c
 const isDevCode = code => { const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 64); return c.length >= 12 && crypto.createHash('sha256').update(c).digest('hex') === DEV_CODE_SHA; };
 const ename = e => (e.client?.dev ? '\u265B ' : '') + e.name;
 const dname = c => (c?.dev ? '\u265B ' : '') + (c?.name || '?'); // name for plain-text system messages
-const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno', 'desert', 'urban', 'jungle', 'hex', 'cobalt'];
+const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno', 'desert', 'urban', 'jungle', 'hex', 'cobalt', 'dragon', 'aurora', 'gift'];
 const DIFFICULTY = { easy: 0.22, normal: 0.36, hard: 0.55 };
 const DEFAULT_SETTINGS = { mode: 'ffa', map: 'town', bots: 4, difficulty: 'normal', scoreLimit: 30, timeLimit: 10, maxPlayers: 8 };
 const STREAK_XP = { 3: 100, 5: 200, 7: 300, 10: 500, 15: 750 };
@@ -484,13 +484,14 @@ function addEnt(room, c) {
   if (teamsOn(room)) e.team = room.settings.mode === 'infected' ? (room.infectStarted ? 1 : 0) : smallerTeam(room);
   if (e.team === 1 && room.settings.mode === 'infected') { e.w = 'knife'; e.skin = 'toxic'; }
   if (room.settings.mode === 'gungame') e.w = GUNGAME_LADDER[0];
+  if (room.settings.mode === 'roulette' && room.rw) e.w = room.rw;
   room.ents.set(e.id, e);
   return e;
 }
 function sendStart(room, c) {
   sendTo(c, { t: 'start', id: c.id, map: room.mapId, mode: room.settings.mode, time: room.timeLeft, scoreLimit: room.settings.scoreLimit,
     target: targetScore(room.settings.mode, room.settings.scoreLimit), phase: room.state, teamScore: room.teamScore,
-    zone: room.zone ? [room.zone.x, room.zone.z, ZONE_RADIUS] : null, players: [...room.ents.values()].map(publicInfo) });
+    zone: room.zone ? [room.zone.x, room.zone.z, ZONE_RADIUS] : null, rw: room.rw, rwt: room.rwT, players: [...room.ents.values()].map(publicInfo) });
 }
 function sendScores(room) {
   roomBroadcast(room, { t: 'sc', s: [...room.ents.values()].map(e => [e.id, e.kills, e.deaths, e.score, e.team, e.gg, e.assists]), ts: room.teamScore });
@@ -520,6 +521,7 @@ function startMatch(room) {
   room.ents = new Map();
   room.ready.clear();
   room.zone = null;
+  room.rw = s.mode === 'roulette' ? pick(ROULETTE_POOL) : null; room.rwT = ROULETTE_TIME;
   if (s.mode === 'hardpoint') { room.zones = pickZones(room); room.zone = { ...room.zones[0], idx: 0, ttm: ZONE_MOVE, state: -1 }; }
   for (const id of room.members) addEnt(room, clients.get(id));
   room.infectStarted = false;
@@ -599,6 +601,7 @@ function spawn(room, p) {
   p.protectUntil = Date.now() + 2000;
   p.damagers.clear();
   if (room.settings.mode === 'gungame') p.w = GUNGAME_LADDER[Math.min(p.gg, GUNGAME_LADDER.length - 1)];
+  if (room.settings.mode === 'roulette' && room.rw) p.w = room.rw;
   if (room.settings.mode === 'infected' && p.team === 1) p.w = 'knife';
   else if (room.settings.mode === 'infected' && p.bot && p.w === 'knife') p.w = pick(BOT_WEAPONS);
   const toCentre = Math.atan2(s[0], s[2]);
@@ -611,7 +614,7 @@ function spawn(room, p) {
   }
   p.ry = bestRy;
   if (p.bot) Object.assign(p.ai, { target: null, path: null, mag: WEAPONS[p.w].mag, reloadUntil: 0, seenAt: 0, stuckT: 0, lastPos: [...p.pos], lastKnown: null });
-  roomBroadcast(room, { t: 'spawn', id: p.id, p: p.pos, ry: p.ry, w: room.settings.mode === 'gungame' || room.settings.mode === 'infected' ? p.w : undefined });
+  roomBroadcast(room, { t: 'spawn', id: p.id, p: p.pos, ry: p.ry, w: ['gungame', 'infected', 'roulette'].includes(room.settings.mode) ? p.w : undefined });
 }
 function applyDamage(room, victim, attacker, amount, weaponId, head) {
   if (!victim.alive || room.state !== 'playing') return;
@@ -695,7 +698,7 @@ function kill(room, victim, attacker, weaponId, head) {
   }
   sendScores(room);
   if (!self) {
-    if (mode === 'ffa' && attacker.kills >= room.settings.scoreLimit) endMatch(room);
+    if ((mode === 'ffa' || mode === 'roulette') && attacker.kills >= room.settings.scoreLimit) endMatch(room);
     if (mode === 'tdm' && room.teamScore[attacker.team] >= room.settings.scoreLimit) endMatch(room);
   }
 }
@@ -709,6 +712,7 @@ function syncBots(room, silent) {
     const b = makeEnt({ bot: true, name: '[BOT] ' + name, skin: pick(CHAR_SKINS), wskin: pick(W_SKINS), w: pick(BOT_WEAPONS) });
     if (teamsOn(room)) b.team = room.settings.mode === 'infected' ? (room.infectStarted ? 1 : 0) : smallerTeam(room);
     if (room.settings.mode === 'gungame') b.w = GUNGAME_LADDER[0];
+    if (room.settings.mode === 'roulette' && room.rw) b.w = room.rw;
     b.ai = { strafe: 1, strafeT: 0, burst: 0, pauseUntil: 0, nextShot: 0, mag: WEAPONS[b.w].mag, reloadUntil: 0, seenAt: 0, stuckT: 0, lastPos: [0, 0, 0], path: null, nadeCd: 0 };
     room.ents.set(b.id, b);
     bots.push(b);
@@ -1090,6 +1094,8 @@ function activateStreak(room, e, id, aim, now) {
     roomBroadcast(room, { t: 'uav', by: e.id, team: e.team, dur, adv: id === 'aradar' ? 1 : 0 });
   } else if (id === 'jammer') roomBroadcast(room, { t: 'jam', by: e.id, team: e.team, dur: 20 });
   else if (id === 'armor') { e.armor = 60; if (e.client) sendTo(e.client, { t: 'armor', v: 60 }); }
+  else if (id === 'adrenaline') { e.hp = 100; e.burnUntil = 0; e.spdUntil = now + 15000; }
+  else if (id === 'doubletap') { e.ddUntil = now + 15000; roomBroadcast(room, { t: 'chat', n: '', m: `${ename(e)} has DOUBLE TAP!` }); }
   else if (id === 'airstrike') callAirstrike(room, e, now);
   else if (id === 'mortar') {
     let p = isVec(aim) ? aim.map(Number) : [e.pos[0], 0, e.pos[2]];
@@ -1162,6 +1168,15 @@ function tickHardpoint(room) {
   if (room.tick % 30 === 0) sendScores(room);
 }
 
+// Gun Roulette: everyone (bots too) swaps to the same new gun every ROULETTE_TIME seconds
+function tickRoulette(room) {
+  room.rwT -= TICK;
+  if (room.rwT > 0) return;
+  room.rwT = ROULETTE_TIME;
+  room.rw = pick(ROULETTE_POOL.filter(w => w !== room.rw));
+  for (const e of room.ents.values()) { e.w = room.rw; if (e.bot) { e.ai.mag = WEAPONS[room.rw].mag; e.ai.reloadUntil = 0; } }
+  roomBroadcast(room, { t: 'roulette', w: room.rw, next: ROULETTE_TIME });
+}
 function tickRoom(room, now) {
   room.tick++;
   room.pathBudget = 2;
@@ -1174,6 +1189,7 @@ function tickRoom(room, now) {
     if (room.timeLeft <= 0) { room.timeLeft = 0; endMatch(room); }
     if (room.settings.mode === 'hardpoint') tickHardpoint(room);
     if (room.settings.mode === 'kc') tickTags(room, now);
+    if (room.settings.mode === 'roulette') tickRoulette(room);
     tickPickups(room, now);
   }
   for (const p of room.ents.values()) {

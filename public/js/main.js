@@ -510,10 +510,11 @@ const perkDef = (d) => {
   if (hasPerk('stopping')) d.dmg *= 1.15;
   return d;
 };
-const makeWeapon = id => { const def = perkDef(mode === 'gungame' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' ? 999 : def.reserve, reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
-let ddUntil = 0, spdUntil = 0;
+const makeWeapon = id => { const def = perkDef(mode === 'gungame' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' || mode === 'roulette' ? 999 : def.reserve, reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
+let ddUntil = 0, spdUntil = 0, rouletteAt = 0; // rouletteAt: when Gun Roulette next swaps guns
 const isZombie = () => mode === 'infected' && myTeam === 1;
-const makeWeapons = () => (lifePerks = [...cfg.perks], isZombie()) ? ['knife'].map(makeWeapon) : mode === 'gungame' ? [ggWeapon || GUNGAME_LADDER[0], 'knife'].map(makeWeapon)
+const makeWeapons = () => (lifePerks = [...cfg.perks], isZombie()) ? ['knife'].map(makeWeapon)
+  : mode === 'gungame' || mode === 'roulette' ? [ggWeapon || (mode === 'roulette' ? 'falcon' : GUNGAME_LADDER[0]), 'knife'].map(makeWeapon)
   : [PR.isUnlocked(cfg.primary) ? cfg.primary : 'falcon', PR.isUnlocked(cfg.secondary) ? cfg.secondary : 'viper', 'knife'].map(makeWeapon);
 const curW = () => me.weapons[me.slot];
 const isHost = () => room && room.hostId === me.id;
@@ -1582,7 +1583,8 @@ function handle(m) {
       matchStart = { level: PR.levelInfo().level, credits: PR.profile.credits, wl: Object.fromEntries([...PRIMARIES, ...SECONDARIES].map(w => [w, PR.weaponLevel(w)])) };
       const mine = m.players.find(p => p.id === m.id);
       myTeam = mine ? mine.team : -1;
-      ggWeapon = mode === 'gungame' ? (mine?.w || GUNGAME_LADDER[0]) : null;
+      ggWeapon = mode === 'gungame' ? (mine?.w || GUNGAME_LADDER[0]) : mode === 'roulette' ? (m.rw || mine?.w || 'falcon') : null;
+      rouletteAt = mode === 'roulette' ? performance.now() + (m.rwt || 45) * 1000 : 0;
       clearRemotes(); scores.clear();
       setupModeHud();
       world = world?.map.id === m.map ? world : (loadMap(m.map), world);
@@ -1622,6 +1624,11 @@ function handle(m) {
       }
       break;
     }
+    case 'roulette': // Gun Roulette: everyone swaps to the same new gun
+      ggWeapon = m.w; rouletteAt = performance.now() + (m.next || 45) * 1000;
+      if (me.alive) { me.weapons = makeWeapons(); me.slot = 0; equipViewmodel(); }
+      announce('NEW GUN!', `${WEAPONS[m.w].name.toUpperCase()} — next swap in ${m.next || 45}s`); SFX.announce();
+      break;
     case 'infected':
       if (m.id === me.id) { announce(m.first ? 'PATIENT ZERO' : 'YOU ARE INFECTED', 'Knife the survivors — one hit kills, and you are faster'); SFX.hurt(); }
       else subAnnounce(`${dnameOf(m.id).toUpperCase()} ${m.first ? 'IS PATIENT ZERO' : 'WAS INFECTED'}`);
@@ -1658,6 +1665,11 @@ function handle(m) {
       renderStreakHud(); break;
     case 'streak':
       if (m.id === 'armor' && m.by === me.id) { announce('ARMOR UP', 'Your armour soaks up the next 60 damage'); Announcer.say('armor'); }
+      if (m.id === 'adrenaline' && m.by === me.id) { spdUntil = performance.now() + 15000; if (me.alive) me.hp = 100; announce('ADRENALINE', 'Full health and faster for 15 seconds'); SFX.announce(); }
+      if (m.id === 'doubletap') {
+        if (m.by === me.id) { ddUntil = performance.now() + 15000; announce('DOUBLE TAP', 'Double damage for 15 seconds'); SFX.announce(); }
+        else if (!teamsMode() || nameTeam(m.by) !== myTeam) subAnnounce(`${dnameOf(m.by).toUpperCase()} HAS DOUBLE TAP`);
+      }
       break;
     case 'mortar':
       if (m.by === me.id) { announce('MORTAR BARRAGE', 'Shells incoming on your target'); Announcer.say('mortar'); }
@@ -2110,7 +2122,8 @@ function updateHud(now) {
   $('uavtag').classList.toggle('hidden', now > uavUntil);
   $('powerups').innerHTML = (isZombie() ? '<div class="zmb">☣ INFECTED — KNIFE THEM</div>' : '') +
     (now < ddUntil ? `<div class="dd">✦ DOUBLE DAMAGE ${Math.ceil((ddUntil - now) / 1000)}s</div>` : '') +
-    (now < spdUntil ? `<div class="spd">» SPEED BOOST ${Math.ceil((spdUntil - now) / 1000)}s</div>` : '');
+    (now < spdUntil ? `<div class="spd">» SPEED BOOST ${Math.ceil((spdUntil - now) / 1000)}s</div>` : '') +
+    (mode === 'roulette' && ggWeapon ? `<div class="roul">🎲 ${esc(WEAPONS[ggWeapon]?.name.toUpperCase() || '')} · NEW GUN IN ${Math.max(0, Math.ceil((rouletteAt - now) / 1000))}s</div>` : '');
   if (!me.alive && deathTime) $('respawn').textContent = `Respawning in ${Math.max(0, Math.ceil((respawnAt - now) / 1000))}`;
   if (matchEnded) $('backin').textContent = `Returning to lobby in ${Math.max(0, Math.ceil((endBackAt - now) / 1000))}…`;
   drawMinimap(now);
@@ -2934,3 +2947,35 @@ if (window.desktop?.presence) setInterval(() => {
   const j = JSON.stringify(p);
   if (j !== lastPresence) { lastPresence = j; window.desktop.presence(p); }
 }, 2000);
+
+// ---------- the gift bundle (1.6.16): a one-time present from Welsh, with 25,000 credits. Not shown on the developer's PC.
+const GIFT_KEY = 'strikeline_gift_1616', GIFT_CREDITS = 25000;
+function showGift() {
+  if (PR.store.get(GIFT_KEY) || PR.store.get(FB_OWNER_KEY) === '1' || inGame || $('modal-gift')) return;
+  const m = document.createElement('div');
+  m.id = 'modal-gift'; m.className = 'modal';
+  m.innerHTML = `<div class="modal-card gift-card">
+    <div class="gift-box">🎁</div>
+    <small class="gift-from">A GIFT FROM WELSH</small>
+    <h2>To Logan — cheers for being such a legend</h2>
+    <p class="gift-note">Here's a bundle of new stuff, made just for you. Enjoy it!</p>
+    <ul class="gift-list">
+      <li><b>◆ ${GIFT_CREDITS.toLocaleString()} credits</b><span>spend them on camos, operators and attachments</span></li>
+      <li><b>🎲 Gun Roulette</b><span>new mode: everyone gets the same random gun, and it changes every 45 s</span></li>
+      <li><b>⚡ Adrenaline</b><span>new 3-kill streak: full health and 30% faster for 15 s</span></li>
+      <li><b>✦ Double Tap</b><span>new 6-kill streak: double damage for 15 s</span></li>
+      <li><b>🎀 Logan's Gift camo</b><span>green and gold wrapping paper, free and already yours</span></li>
+      <li><b>🐉 Dragonheart operator</b><span>red and gold armour, free and already yours</span></li>
+      <li><b>Dragon Scale &amp; Aurora</b><span>two new camos in the Skins shop</span></li>
+    </ul>
+    <div class="modal-actions"><button class="btn primary big" id="giftClaim">CLAIM GIFT</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  SFX.killConfirm?.();
+  m.querySelector('#giftClaim').onclick = () => {
+    if (!PR.store.get(GIFT_KEY)) { PR.addCredits(GIFT_CREDITS); PR.store.set(GIFT_KEY, String(Date.now())); }
+    m.remove(); updateProfileUI(); SFX.uiBlip();
+    toast(`+${GIFT_CREDITS.toLocaleString()} credits! Check out Gun Roulette and the new camos.`);
+  };
+}
+setTimeout(showGift, 3000); // after the server's hello, which marks the developer's own PC

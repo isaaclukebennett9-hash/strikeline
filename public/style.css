@@ -425,6 +425,7 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 #powerups div { font: 800 14px Orbitron, sans-serif; letter-spacing: 2px; padding: 6px 12px; background: var(--panel); border-left: 4px solid; animation: pulse 0.8s infinite alternate; }
 #powerups .dd { border-color: #ff2a5a; color: #ff8aa4; }
 #powerups .spd { border-color: #22e5ff; color: #9ef4ff; }
+#powerups .roul { border-color: #ffb02e; color: #ffd27a; animation: none; }
 #powerups .zmb { border-color: #7dff3a; color: #b8ff8a; animation: none; }
 .lvl-up-toast { color: #ffd27a; }
 
@@ -602,3 +603,15 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 #scr-gunsmith.gs-preview .gs-cards, #scr-gunsmith.gs-preview .gs-bl, #scr-gunsmith.gs-preview .gs-tabs, #scr-gunsmith.gs-preview .gs-cust, #scr-gunsmith.gs-preview .gs-wlv { display: none; }
 #scr-gunsmith.gs-locked .gs-cards, #scr-gunsmith.gs-locked .gs-btns, #scr-gunsmith.gs-locked .gs-cust { opacity: 0.6; }
 @media (max-width: 1150px) { .gs-card { width: 128px; } .gs-cb b, .gs-ch span { font-size: 12px; } .gs-bl { width: 230px; } }
+
+/* gift bundle popup (1.6.16) */
+.gift-card { width: min(600px, 94vw); text-align: center; border-top: 4px solid #f2c14e; background: linear-gradient(180deg, rgba(13,74,44,0.35), transparent 40%), var(--panel-2); }
+.gift-box { font-size: 44px; line-height: 1; margin-bottom: 6px; animation: giftBob 1.6s ease-in-out infinite; }
+@keyframes giftBob { 50% { transform: translateY(-6px) rotate(-4deg); } }
+.gift-from { font: 800 13px Orbitron, sans-serif; letter-spacing: 5px; color: #f2c14e; }
+.gift-card h2 { margin: 6px 0 2px; font: 800 20px Orbitron, sans-serif; letter-spacing: 1px; }
+.gift-note { margin: 0 0 10px; color: #b9c2d0; font-size: 16px; }
+.gift-list { list-style: none; margin: 0 0 12px; padding: 0; text-align: left; }
+.gift-list li { display: flex; flex-direction: column; padding: 5px 12px; margin-bottom: 4px; background: rgba(255,255,255,0.04); border-left: 3px solid #f2c14e; }
+.gift-list b { font: 800 14px Orbitron, sans-serif; letter-spacing: 1px; color: #fff; }
+.gift-list span { font-size: 13px; color: #aab4c3; }

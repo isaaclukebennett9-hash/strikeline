@@ -148,9 +148,11 @@ export const UNLOCKS = {
   'ws:urban': { price: 2000, level: 3 }, 'ws:jungle': { price: 3000, level: 7 }, 'ws:hex': { price: 6000, level: 12 }, 'ws:cobalt': { price: 8000, level: 18 },
   'ws:carbon': { price: 3500, level: 5 }, 'ws:tiger': { price: 5000, level: 10 }, 'ws:neon': { price: 7000, level: 15 },
   'ws:galaxy': { price: 10000, level: 22 }, 'ws:inferno': { price: 14000, level: 30 }, 'ws:gold': { price: 25000, level: 40 },
+  'ws:dragon': { price: 6000, level: 8 }, 'ws:aurora': { price: 12000, level: 16 }, 'ws:gift': { price: 0 }, // gift bundle (1.6.16)
   // operators
   'op:ranger': { price: 0 }, 'op:desert': { price: 0 }, 'op:cobalt': { price: 2000 }, 'op:crimson': { price: 3000 },
   'op:ghost': { price: 4500, level: 8 }, 'op:toxic': { price: 6000, level: 14 }, 'op:shadow': { price: 9000, level: 20 }, 'op:royal': { price: 14000, level: 28 },
+  'op:dragonheart': { price: 0 },
   // developer skins: unlocked on this PC with the dev code (Skins screen)
   'ws:dev': { dev: true }, 'ws:glitch': { dev: true }, 'op:dev': { dev: true }, 'op:devgold': { dev: true },
 };
@@ -395,6 +397,7 @@ export function rerollChallenge(i) {
 // Levelling was too quick. Raising the level curve would take levels away from existing players, so matches give
 // less XP instead (credits are unchanged).
 export const XP_RATE = 0.6;
+export function addCredits(n) { profile.credits += Math.max(0, Math.round(n) || 0); saveProfile(); }
 export function addXP(amount) {
   const before = levelInfo().level;
   profile.xp += Math.max(1, Math.round(amount * XP_RATE));

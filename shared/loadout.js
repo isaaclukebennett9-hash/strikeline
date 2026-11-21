@@ -22,9 +22,11 @@ export const PERK_IDS = Object.values(PERKS).flat().map(p => p.id);
 export const perkInfo = id => Object.values(PERKS).flat().find(p => p.id === id);
 
 export const STREAKS = {
+  adrenaline: { name: 'Adrenaline', kills: 3, lvl: 1, desc: 'Instantly back to full health and 30% faster for 15 s' },
   radar: { name: 'Radar', kills: 4, lvl: 1, desc: 'Shows enemies on your team\'s minimaps for 25 s' },
   armor: { name: 'Armor Up', kills: 5, lvl: 1, desc: 'Body armour that soaks up the next 60 damage' },
   jammer: { name: 'Jammer', kills: 6, lvl: 8, desc: 'Scrambles enemy minimaps for 20 s' },
+  doubletap: { name: 'Double Tap', kills: 6, lvl: 1, desc: 'Your bullets do double damage for 15 s' },
   airstrike: { name: 'Airstrike', kills: 7, lvl: 1, desc: 'Bombs drop on enemy positions' },
   mortar: { name: 'Mortar Barrage', kills: 8, lvl: 14, desc: 'Six shells land where you are aiming' },
   aradar: { name: 'Advanced Radar', kills: 10, lvl: 22, desc: 'Shows every enemy, even Ghosts, for 40 s' },
