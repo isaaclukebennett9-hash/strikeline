@@ -625,3 +625,7 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 .gift-list li { display: flex; flex-direction: column; padding: 5px 12px; margin-bottom: 4px; background: rgba(255,255,255,0.04); border-left: 3px solid #f2c14e; }
 .gift-list b { font: 800 14px Orbitron, sans-serif; letter-spacing: 1px; color: #fff; }
 .gift-list span { font-size: 13px; color: #aab4c3; }
+#dctag { position: fixed; right: 8px; bottom: 20px; z-index: 100000; pointer-events: none; user-select: none; font: 700 12px Rajdhani, 'Segoe UI', sans-serif; letter-spacing: .5px; color: rgba(255,255,255,0.6); text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+#dctag:empty { display: none; }
+#dctag.ok { color: #5cff9d; }
+#dctag.bad { color: #ff6a6a; }

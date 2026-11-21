@@ -3041,6 +3041,27 @@ if (window.desktop?.presence) setInterval(() => {
   const j = JSON.stringify(p);
   if (j !== lastPresence) { lastPresence = j; window.desktop.presence(p); }
 }, 2000);
+// Discord status line above the version tag (home screen, desktop app only), so it's clear whether your
+// Discord profile can show "Playing Strikeline" and, if not, why.
+if (window.desktop?.state) {
+  const dc = document.createElement('div'); dc.id = 'dctag'; document.body.appendChild(dc);
+  const showDc = async () => {
+    const home = currentScreen === 'scr-home' && !$('ui').classList.contains('hidden');
+    let t = '', cls = '';
+    if (home) {
+      if (!window.desktop.presence) { t = 'Discord status needs the app update'; }
+      else {
+        let d = null; try { d = (await window.desktop.state()).discord; } catch {}
+        if (!d) t = 'Discord: update the app (press INSTALL) to see this';
+        else if (d.state === 'connected') { t = `Discord: connected${d.user ? ' as ' + d.user : ''}`; cls = 'ok'; }
+        else if (d.state === 'error') { t = `Discord said: ${d.error}`; cls = 'bad'; }
+        else t = 'Discord: not found. Is the Discord app open? (not as administrator)';
+      }
+    }
+    dc.textContent = t; dc.className = cls;
+  };
+  showDc(); setInterval(showDc, 2000);
+}
 
 // ---------- the gift bundle (1.6.16): a one-time present from Welsh, with 25,000 credits. Not shown on the developer's PC.
 const GIFT_KEY = 'strikeline_gift_1616', GIFT_CREDITS = 25000;
