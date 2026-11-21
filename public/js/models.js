@@ -2167,16 +2167,38 @@ function buildSoldierReal(sk) {
   part(head, rbox(0.05, 0.035, 0.03, 0.008), metal, 0, 0.2, -0.13);                                       // NVG mount
   part(head, rbox(0.1, 0.05, 0.06, 0.015), strap, 0, 0.17, 0.12);                                        // counterweight
   const aim = new THREE.Group(); aim.position.set(0, 0.52, 0); upper.add(aim);
-  const arm = (side, ux, uy, uz, urx, ury, fx, fy, fz, fry) => {
-    const a = new THREE.Group(); a.position.set(side * 0.27, 0, 0); aim.add(a);
-    part(a, capsuleZ(0.058, 0.22), fabric, ux, uy, uz, urx, ury);                                          // upper arm
-    part(a, rbox(0.12, 0.1, 0.1, 0.03), vestDark, ux * 0.4, uy * 0.3, uz * 0.4, urx, ury);                // shoulder pad
-    part(a, capsuleZ(0.048, 0.2), fabric, fx, fy, fz, 0, fry);                                             // forearm
-    part(a, rbox(0.075, 0.06, 0.1, 0.025), glove, fx + Math.sin(fry) * -0.13, fy - 0.01, fz - Math.cos(fry) * 0.13, 0, fry); // hand
+  // Arms: real shoulder -> elbow -> hand chains (two-bone IK) so both hands sit on the gun and the elbows bend
+  // naturally down and out, instead of fixed blocks floating in front of the chest.
+  const Y = new THREE.Vector3(0, 1, 0);
+  const seg = (g, a, b, r1, r2, mat) => { // tapered limb segment from point a to point b
+    const d = b.clone().sub(a), len = d.length();
+    const m = part(g, new THREE.CylinderGeometry(r2, r1, len, 14), mat, 0, 0, 0);
+    m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(Y, d.normalize());
+    return m;
+  };
+  const arm = (side, S, H, hint) => {
+    const a = new THREE.Group(); aim.add(a);
+    const A = 0.3, B = 0.29, D = Math.min(S.distanceTo(H), A + B - 0.01);
+    const dir = H.clone().sub(S).normalize(), x = (A * A - B * B + D * D) / (2 * D), h = Math.sqrt(Math.max(0, A * A - x * x));
+    const perp = hint.clone().sub(dir.clone().multiplyScalar(hint.dot(dir))).normalize();
+    const E = S.clone().addScaledVector(dir, x).addScaledVector(perp, h);
+    const Hh = S.clone().addScaledVector(dir, D);
+    part(a, new THREE.SphereGeometry(0.075, 14, 10), fabric, S.x, S.y, S.z);                              // shoulder
+    part(a, new THREE.SphereGeometry(0.082, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), vestDark, S.x + side * 0.01, S.y + 0.01, S.z, 0, 0, -side * 0.5, 1, 0.8, 1); // shoulder pad
+    seg(a, S, E, 0.068, 0.052, fabric);                                                                     // upper arm
+    part(a, new THREE.SphereGeometry(0.054, 12, 8), fabric, E.x, E.y, E.z);                                // elbow
+    part(a, new THREE.SphereGeometry(0.05, 10, 8), vestDark, E.x, E.y, E.z, 0, 0, 0, 1.15, 1.15, 1.15);    // elbow pad
+    seg(a, E, Hh, 0.05, 0.04, fabric);                                                                      // forearm
+    const cuff = seg(a, E.clone().lerp(Hh, 0.82), Hh, 0.046, 0.044, fabricDark);                           // sleeve cuff
+    const hand = part(a, rbox(0.07, 0.05, 0.1, 0.022), glove, Hh.x, Hh.y, Hh.z);                           // gloved hand, along the forearm
+    hand.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), Hh.clone().sub(E).normalize());
+    cuff.castShadow = hand.castShadow = true;
     return a;
   };
-  arm(1, -0.04, -0.12, -0.12, 0.5, 0.25, -0.12, -0.17, -0.38, 0.35);
-  arm(-1, 0.04, -0.12, -0.12, 0.5, -0.35, 0.18, -0.12, -0.4, -0.6);
+  // aim space: shoulders at the origin height; right hand on the pistol grip, left hand under the handguard
+  // (left shoulder turned slightly forward, as when shouldering a rifle)
+  arm(1, new THREE.Vector3(0.215, -0.01, 0.01), new THREE.Vector3(0.1, -0.19, -0.33), new THREE.Vector3(0.7, -1, 0.3));
+  arm(-1, new THREE.Vector3(-0.2, -0.02, -0.05), new THREE.Vector3(0.07, -0.14, -0.57), new THREE.Vector3(-0.8, -1, 0.1));
   const gunMount = new THREE.Group(); gunMount.position.set(0.1, -0.12, -0.42); aim.add(gunMount);
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
   root.userData = { legs, upper, head, aim, gunMount, lower, real: true };
