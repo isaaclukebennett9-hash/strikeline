@@ -32,4 +32,31 @@ const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(N, 0); ihdr.writeUInt32BE(N, 4
 fs.writeFileSync(path.join(__dirname, 'icon.png'), Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]));
 
 if (!fs.existsSync(path.join(__dirname, 'bin', 'cloudflared.exe'))) { console.error('Missing desktop/bin/cloudflared.exe'); process.exit(1); }
-console.log('Prebuild done.');
+
+// electron-builder's Windows tools (winCodeSign) come in an archive that also holds Mac symbolic links, and
+// Windows refuses to create those without Developer Mode / admin, so the build fails. Unpack it ourselves
+// into electron-builder's cache without the Mac part; electron-builder then finds it and skips its own unpack.
+(async () => {
+  if (process.platform === 'win32') {
+    const cache = process.env.ELECTRON_BUILDER_CACHE || path.join(process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local'), 'electron-builder', 'Cache');
+    const dir = path.join(cache, 'winCodeSign'), dest = path.join(dir, 'winCodeSign-2.6.0');
+    if (!fs.existsSync(path.join(dest, 'windows-10'))) {
+      try {
+        const { execFileSync } = require('child_process');
+        const seven = require('7zip-bin').path7za;
+        fs.mkdirSync(dir, { recursive: true });
+        const archive = path.join(dir, 'winCodeSign-2.6.0.7z'), tmp = dest + '.tmp';
+        console.log('Getting the Windows build tools (one time)…');
+        const r = await fetch('https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z');
+        if (!r.ok) throw new Error(`download failed (${r.status})`);
+        fs.writeFileSync(archive, Buffer.from(await r.arrayBuffer()));
+        fs.rmSync(tmp, { recursive: true, force: true });
+        execFileSync(seven, ['x', '-bd', '-y', `-o${tmp}`, '-xr!darwin', archive], { stdio: 'ignore' });
+        fs.rmSync(dest, { recursive: true, force: true });
+        fs.renameSync(tmp, dest);
+        fs.rmSync(archive, { force: true });
+      } catch (err) { console.error(`(couldn't prepare the Windows build tools: ${err.message} — the build may still work)`); }
+    }
+  }
+  console.log('Prebuild done.');
+})();
