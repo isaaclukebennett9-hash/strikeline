@@ -176,6 +176,7 @@
     <div class="scr-head"><button class="back panel-back">‹ BACK</button><h1>ARMORY</h1><div class="spacer"></div><span class="hint">Changes apply on your next respawn</span><div class="credits big"><i>◆</i><span class="creditNum">0</span></div></div>
     <div class="split">
       <div class="lists">
+        <label>LOADOUTS <small>(click to equip · ✎ to rename)</small></label><div id="loBar" class="lobar"></div>
         <label>PRIMARY</label><div id="armTabs" class="chips armtabs"></div><div id="primaries" class="wlist"></div>
         <label>SECONDARY</label><div id="secondaries" class="wlist"></div>
         <div class="throwrow">
@@ -186,17 +187,36 @@
         <label>KILLSTREAKS <small>(pick three · press 5, 6, 7 in a match to use them)</small></label><div id="streakList" class="wlist small"></div>
       </div>
       <div class="preview-col">
-        <div class="pv-slot" id="pv-loadout"></div>
-        <div id="pvTabs" class="chips pvtabs"><button data-pt="stats" class="on">WEAPON</button><button data-pt="gs">GUNSMITH</button></div>
+        <div class="pv-slot" id="pv-loadout" title="Open the Gunsmith"></div>
         <div id="pvStats"><div id="wstats"></div></div>
-        <div id="pvGs" class="hidden">
-          <div id="gsLock" class="gs-lock hidden">Locked during a match: leave the match to change attachments and reticles.</div>
-          <div id="gsHead" class="gs-head"></div><div id="gunsmith" class="gunsmith"></div>
-          <div id="gsCamo" class="gs-camo"></div>
-          <label class="gs-retlabel">RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
-        </div>
+        <button class="btn primary wide gs-open" id="btnGunsmith">GUNSMITH ›</button>
       </div>
     </div>
+  </section>
+
+  <!-- GUNSMITH (full screen) -->
+  <section id="scr-gunsmith" class="screen">
+    <div class="pv-slot gs-stage" id="pv-gs"></div>
+    <svg id="gsLines" class="gs-lines"></svg>
+    <div class="gs-top">
+      <button class="gs-back" id="gsBack">←</button>
+      <div class="gs-title"><span>MODS:</span> <b id="gsGunName"></b></div>
+      <div class="spacer"></div>
+      <div class="gs-wlv" id="gsWlv"></div>
+    </div>
+    <div class="gs-tabs" id="gsTabs"><button data-gt="att" class="on">ATTACHMENTS</button><button data-gt="cust">CUSTOMIZE</button></div>
+    <div id="gsLock" class="gs-lock hidden">Locked during a match: leave the match to change attachments and reticles.</div>
+    <div id="gsCards" class="gs-cards"></div>
+    <div id="gsCust" class="gs-cust hidden">
+      <div id="gsCamo" class="gs-camo"></div>
+      <label class="gs-retlabel">RETICLE <small>(red dots, holos and prism sights)</small></label><div id="retStyle" class="chips"></div><div id="retColor" class="chips" style="margin-top:6px"></div>
+    </div>
+    <div class="gs-bl" id="gsBL">
+      <div class="gs-btns"><button id="gsPreview">PREVIEW</button><button id="gsRandom">RANDOMIZE</button><button id="gsStrip">STRIP</button></div>
+      <div class="gs-eq"><span>EQUIPPED</span><div id="gsPips"></div></div>
+      <div class="gs-stats" id="gsStats"></div>
+    </div>
+    <div class="gs-hint" id="gsHint">Click a slot to change it · hover an attachment to preview it</div>
   </section>
 
   <!-- SKINS PANEL -->

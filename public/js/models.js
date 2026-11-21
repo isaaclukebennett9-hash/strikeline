@@ -1758,7 +1758,8 @@ function buildGunInner(model, S, att, g) {
   const muzzle = new THREE.Object3D();
   muzzle.position.set(0, muzzleY, muzzleZ);
   g.add(muzzle);
-  g.userData = { ...g.userData, muzzle, sightY, adsZ, left, skin: S, parts, optic: opticKind, scoped };
+  g.userData = { ...g.userData, muzzle, sightY, adsZ, left, skin: S, parts, optic: opticKind, scoped,
+    anchors: { optic: spot ? [0, spot.y, spot.z] : irons ? [0, irons.cy, (irons.zr + irons.zf) / 2] : null, under: under ? [0, under.y, under.z] : null } };
   return g;
 }
 // Weapon model for a weapon definition (applies its default sight unless an attachment overrides it).

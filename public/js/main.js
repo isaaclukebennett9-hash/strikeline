@@ -31,11 +31,19 @@ if (cfg.announcer === undefined) cfg.announcer = true;
 Announcer.setEnabled(cfg.announcer); Announcer.setVolume(Math.min(1, cfg.vol * 1.4));
 if (!TACTICALS.includes(cfg.tactical)) cfg.tactical = 'smoke';
 setReticle(cfg.reticle, cfg.reticleColor);
-const saveCfg = () => PR.store.set('strikeline', JSON.stringify(cfg));
+// Loadouts: five saved sets of primary, secondary, throwables, perks and killstreaks (attachments stay with each gun).
+// cfg.primary etc. are always the equipped loadout; saveCfg copies them back into cfg.loadouts[cfg.activeLoadout].
+const LO_COUNT = 5;
+const loSnap = () => ({ primary: cfg.primary, secondary: cfg.secondary, lethal: cfg.lethal, tactical: cfg.tactical, perks: [...cfg.perks], streaks: [...cfg.streaks] });
+if (!Array.isArray(cfg.loadouts)) cfg.loadouts = [];
+cfg.loadouts = cfg.loadouts.filter(l => l && typeof l === 'object').slice(0, LO_COUNT);
+for (let i = cfg.loadouts.length; i < LO_COUNT; i++) cfg.loadouts.push({ name: `LOADOUT ${i + 1}`, ...loSnap() });
+cfg.activeLoadout = clamp(cfg.activeLoadout | 0, 0, LO_COUNT - 1);
+const saveCfg = () => { Object.assign(cfg.loadouts[cfg.activeLoadout], loSnap()); PR.store.set('strikeline', JSON.stringify(cfg)); };
 // camo for one gun (falls back to the default finish from the Skins screen) and its attachments' camo
 const gunSkin = wid => (cfg.wcamo && cfg.wcamo[wid] && PR.isUnlocked('ws:' + cfg.wcamo[wid]) ? cfg.wcamo[wid] : cfg.wskin);
 const attSkinFor = wid => { const a = cfg.acamo && cfg.acamo[wid]; return a && (a === 'black' || a === 'match' || PR.isUnlocked('ws:' + a)) ? a : 'black'; };
-let pvCamo = null, pvAttCamo = null, pvGun = null; // temporary preview (hovering a camo, buy pop-up)
+let pvCamo = null, pvAttCamo = null, pvGun = null, pvAttOverride = null; // temporary preview (hovering a camo, buy pop-up)
 
 // ================================================================ renderer / scenes
 if (!['low', 'high', 'ultra'].includes(cfg.gfx)) cfg.gfx = 'high';
@@ -2176,12 +2184,14 @@ function go(id) {
   currentScreen = id;
   $('ui').classList.remove('hidden');
   document.querySelectorAll('#ui .screen').forEach(s => s.classList.toggle('active', s.id === id));
-  const slot = { 'scr-home': 'pv-home', 'pnl-loadout': 'pv-loadout', 'pnl-skins': 'pv-skins' }[id];
+  if (id !== 'scr-gunsmith') { gsOpen = null; gsHover = null; pvAttOverride = null; }
+  const slot = { 'scr-home': 'pv-home', 'pnl-loadout': 'pv-loadout', 'pnl-skins': 'pv-skins', 'scr-gunsmith': 'pv-gs' }[id];
   if (slot) { $(slot).appendChild(pv.renderer.domElement); pv.mode = id; rebuildPreview(); resizePreview(); }
   if (id === 'scr-browser') { send({ t: 'list' }); loadInfo(); }
   if (id === 'scr-home') { renderLoadoutSummary(); updateProfileUI(); }
   if (id === 'pnl-challenges') renderChallenges();
   if (id === 'pnl-loadout') buildArmory();
+  if (id === 'scr-gunsmith') renderGunsmith();
   if (id === 'pnl-skins') buildSkins();
   // show the lobby's map in the background while browsing the lobby
   if (id === 'scr-lobby' && room && !inGame && MAPS[room.settings.map]) loadMap(room.settings.map);
@@ -2221,7 +2231,8 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape' || chatOpen || locked) return;
   if (!$('modal-feedback').classList.contains('hidden')) { closeFeedback(); return; }
   if (!$('modal-create').classList.contains('hidden')) { closeCreate(); return; }
-  if (currentScreen?.startsWith('pnl-')) go(panelReturn);
+  if (currentScreen === 'scr-gunsmith') { if (gsPreviewOnly) { gsPreviewOnly = false; renderGunsmith(); } else if (gsOpen) { gsOpen = null; gsHover = null; pvAttOverride = null; renderGunsmith(); rebuildPreview(); } else go('pnl-loadout'); }
+  else if (currentScreen?.startsWith('pnl-')) go(panelReturn);
   else if (currentScreen === 'scr-browser') go('scr-home');
 });
 
@@ -2234,7 +2245,7 @@ $('name').addEventListener('input', () => { cfg.name = $('name').value.replace(/
 $('name').addEventListener('change', () => send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin }));
 function updateChip() { const s = charSkin(cfg.cskin); document.querySelector('#playerchip .av').style.background = `linear-gradient(135deg, ${s.body} 60%, ${s.visor} 60%)`; }
 function renderLoadoutSummary() {
-  $('loadoutSummary').innerHTML = `<div><small>PRIMARY</small><b>${WEAPONS[cfg.primary].name}</b></div><div><small>SECONDARY</small><b>${WEAPONS[cfg.secondary].name}</b></div>`;
+  $('loadoutSummary').innerHTML = `<div class="los-name"><small>LOADOUT</small><b>${esc(cfg.loadouts[cfg.activeLoadout].name)}</b></div><div><small>PRIMARY</small><b>${WEAPONS[cfg.primary].name}</b></div><div><small>SECONDARY</small><b>${WEAPONS[cfg.secondary].name}</b></div>`;
 }
 
 // ---------- browser
@@ -2335,15 +2346,18 @@ $('btnQuit').addEventListener('click', () => send({ t: 'leave' }));
 $('btnEndMatch').addEventListener('click', () => { send({ t: 'stop' }); hideUI(); });
 
 // ---------- loadout
-function statBars(def) {
+function statVals(def) {
   const dmg = def.flame ? 0.6 : Math.min(1, (def.dmg * def.pellets) / 140);
-  const rows = [['Damage', dmg], ['Fire rate', Math.min(1, def.rpm / 1000)], ['Range', Math.min(1, def.falloff[1] / 150)], ['Accuracy', Math.max(0.05, 1 - def.spread * 10)],
+  return [['Damage', dmg], ['Fire rate', Math.min(1, def.rpm / 1000)], ['Range', Math.min(1, def.falloff[1] / 150)], ['Accuracy', Math.max(0.05, 1 - def.spread * 10)],
     ['Mobility', Math.min(1, Math.max(0.05, (def.speed - 0.7) / 0.45))], ['Aim speed', Math.min(1, Math.max(0.05, (0.3 - (def.ads || 0.17)) / 0.2))], ['Control', Math.max(0.05, 1 - def.recoil * 14)]];
+}
+function statBars(def) {
+  const rows = statVals(def);
   const extra = [def.bolt && 'Bolt-action', def.pump && 'Pump-action', def.flame && 'Sets targets on fire', def.dart && 'Foam darts', def.suppressed && 'Suppressed', def.slug && 'Slug rounds', def.burst && `${def.burst}-round burst`, def.scope && 'Scoped'].filter(Boolean);
   return `<div style="font-size:22px;font-weight:700">${def.name}</div><div class="hint">${def.type}${def.mag ? ` · ${def.mag} ${def.flame ? 'fuel' : 'rounds'}` : ''}${extra.length ? ' · ' + extra.join(' · ') : ''}</div>` +
     rows.map(([n, v]) => `<div class="stat"><span>${n}</span><div class="sb"><div style="width:${(v * 100).toFixed(0)}%"></div></div></div>`).join('');
 }
-let previewWeapon = cfg.primary, armTab = 'all', gsOpen = null, gsBuyPending = null, pvTab = 'stats';
+let previewWeapon = cfg.primary, armTab = 'all', gsOpen = null, gsBuyPending = null;
 const lockText = key => { const u = PR.UNLOCKS[key]; if (!u) return ''; if (u.dev) return '🔒 DEV ONLY'; return u.price ? `◆${u.price}${u.level > 1 ? ` · needs level ${u.level}` : ''}` : `🔒 Level ${u.level}`; };
 function tryBuy(key, label) {
   const u = PR.UNLOCKS[key];
@@ -2369,7 +2383,7 @@ function buildArmory() {
         if (!PR.isUnlocked(id)) { if (!small) { previewWeapon = id; gsOpen = null; buildArmory(); rebuildPreview(); } toast(`${WEAPONS[id].name} unlocks at level ${PR.UNLOCKS[id].level}`); return; }
         cfg[key] = id; saveCfg(); if (!small) { previewWeapon = id; gsOpen = null; } buildArmory(); rebuildPreview(); SFX.uiBlip();
       };
-      if (!small) b.onmouseenter = () => { if (previewWeapon === b.dataset.w) return; previewWeapon = b.dataset.w; gsOpen = null; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); renderGunsmith(); };
+      if (!small) b.onmouseenter = () => { if (previewWeapon === b.dataset.w) return; previewWeapon = b.dataset.w; gsOpen = null; $('wstats').innerHTML = statBars(PR.attachedDef(b.dataset.w)); rebuildPreview(); };
     });
   };
   mk(PRIMARIES.filter(id => armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era)).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
@@ -2378,7 +2392,7 @@ function buildArmory() {
   mk(TACTICALS, 'tactical', $('tacticals'), true);
   buildPerkPickers();
   $('wstats').innerHTML = statBars(PR.attachedDef(previewWeapon));
-  renderGunsmith();
+  renderLoBar();
   updateProfileUI();
 }
 // Gunsmith camo rows: this gun's camo and its attachments' camo. Hover to preview; locked camos open the buy pop-up.
@@ -2429,39 +2443,186 @@ function buildPerkPickers() {
     saveCfg(); sendLoadout(); buildPerkPickers(); SFX.uiBlip();
   });
 }
-// Gunsmith: one row per attachment slot; open a row to pick (attachments unlock with weapon level)
-function renderGunsmith() {
-  const id = previewWeapon, d = WEAPONS[id], open = PR.isUnlocked(id), wl = PR.weaponLevelInfo(id), att = PR.getAtt(id);
-  const slots = PR.slotsFor(id);
-  const pct = wl.next ? (wl.kills - wl.cur) / (wl.next - wl.cur) : 1;
-  $('gsLock').classList.toggle('hidden', !inGame); $('pvGs').classList.toggle('locked-match', inGame);
-  $('gsHead').innerHTML = `<span>${esc(d.name.toUpperCase())} · WEAPON LEVEL ${wl.level}</span><small>${wl.next ? `${wl.kills}/${wl.next} kills to level ${wl.level + 1}` : 'MAX LEVEL'}</small>`;
-  if (!slots.length) { $('gunsmith').innerHTML = `<div class="hint">No attachments for the ${esc(d.name)}.</div>`; return; }
-  $('gunsmith').innerHTML = `<div class="gs-wl"><div style="width:${(pct * 100).toFixed(0)}%"></div></div>` + slots.map(slot => {
-    const cur = att[slot], opts = PR.optionsFor(id, slot);
-    const curName = cur ? opts.find(o => o.id === cur)?.name : slot === 'optic' ? `Default (${({ irons: 'Iron Sights', reddot: 'Reflex', holo: 'Holographic', acog: '2.5x Prism', scope4: '4x Scope', scope8: '8x Scope', toyscope: 'Toy Scope' })[d.optic] || 'Iron Sights'})` : 'None';
-    const isOpen = gsOpen === slot;
-    return `<div class="gs-slot ${isOpen ? 'open' : ''}"><button data-slot="${slot}"><span>${PR.SLOT_NAMES[slot].toUpperCase()}</span><b>${esc(curName || 'None')}</b></button>` +
-      (isOpen ? `<div class="gs-opts"><button data-a="" class="${!cur ? 'on' : ''}"><b>${slot === 'optic' ? 'Default sight' : 'None'}</b></button>` + opts.map(o => {
-        const locked = !PR.attOwned(id, slot, o);
-        return `<button data-a="${o.id}" class="${cur === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><span class="lv">${locked ? `🔒 LV ${o.lvl} · ◆${PR.attPrice(o)}` : `LV ${o.lvl}`}</span><b>${esc(o.name)}</b><br>${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join(' ')} ${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join(' ')}</button>`;
-      }).join('') + '</div>' : '') + '</div>';
+// ---------- Gunsmith (full screen): attachment cards around the gun with leader lines to where each part sits,
+// stats bottom-left (hover an attachment to see what it changes), camo + reticle on the CUSTOMIZE tab.
+// [row, centre % across the screen]; top row above the gun, bottom row below it
+const GS_POS = { muzzle: ['t', 13], barrel: ['t', 32], optic: ['t', 55], stock: ['t', 83], under: ['b', 37], mag: ['b', 50], ammo: ['b', 63], grip: ['b', 76], perk: ['b', 89] };
+const OPTIC_NAMES = { irons: 'Iron Sights', reddot: 'Reflex', holo: 'Holographic', acog: '2.5x Prism', scope4: '4x Scope', scope8: '8x Scope', toyscope: 'Toy Scope' };
+let gsTab = 'att', gsHover = null, gsPreviewOnly = false, gsYaw = 0, gsDrag = null;
+const withAtt = (att, slot, a) => { const o = { ...att }; if (a) o[slot] = a; else delete o[slot]; return o; };
+function openGunsmith(id) { if (id) previewWeapon = id; gsOpen = null; gsHover = null; gsPreviewOnly = false; gsYaw = 0; pvAttOverride = null; gsTab = 'att'; go('scr-gunsmith'); SFX.uiBlip(); }
+// where each slot's line points on the model (gun-local coordinates, measured before it is centred)
+function gunAnchors(gun, bb) {
+  const ud = gun.userData, A = ud.anchors || {}, c = bb.getCenter(new THREE.Vector3()), V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const mz = ud.muzzle ? ud.muzzle.position : V(0, c.y, bb.min.z), back = bb.max.z, L = back - bb.min.z;
+  let mag = null;
+  if (ud.parts?.mag) { const mb = new THREE.Box3().setFromObject(ud.parts.mag); if (!mb.isEmpty()) mag = mb; }
+  const magC = mag ? mag.getCenter(new THREE.Vector3()) : null;
+  return {
+    muzzle: V(0, mz.y, mz.z + 0.015),
+    barrel: V(0, mz.y, lerp(mz.z, c.z, 0.42)),
+    optic: A.optic ? V(A.optic[0], A.optic[1] + 0.012, A.optic[2]) : V(0, bb.max.y - 0.01, c.z),
+    under: A.under ? V(0, A.under[1] - 0.008, A.under[2]) : V(0, lerp(c.y, bb.min.y, 0.3), bb.min.z + L * 0.3),
+    mag: magC ? V(0, lerp(magC.y, mag.min.y, 0.55), magC.z) : V(0, lerp(c.y, bb.min.y, 0.5), c.z),
+    ammo: magC ? V(0, lerp(magC.y, mag.max.y, 0.5), magC.z) : V(0, c.y, c.z),
+    stock: V(0, c.y, back - L * 0.07),
+    grip: V(0, lerp(c.y, bb.min.y, 0.55), lerp(c.z, back, 0.3)),
+    perk: V(0, lerp(c.y, bb.max.y, 0.35), lerp(c.z, back, 0.1)),
+  };
+}
+// leader lines: from each card's edge to its anchor on the gun, redrawn every frame (the gun sways)
+const _gsV = new THREE.Vector3();
+function drawGsLines() {
+  const svg = $('gsLines');
+  if (!pv.anchors || !pv.gun || gsTab !== 'att' || gsPreviewOnly) { if (svg.childElementCount) svg.innerHTML = ''; return; }
+  const host = $('scr-gunsmith').getBoundingClientRect(), cv = pv.renderer.domElement.getBoundingClientRect();
+  pv.obj.updateMatrixWorld(true);
+  let out = '';
+  for (const card of $('gsCards').querySelectorAll('.gs-card')) {
+    const slot = card.dataset.slot, a = pv.anchors[slot]; if (!a) continue;
+    _gsV.copy(a); pv.gun.localToWorld(_gsV); _gsV.project(pv.camera);
+    const ax = cv.left - host.left + (_gsV.x + 1) / 2 * cv.width, ay = cv.top - host.top + (1 - _gsV.y) / 2 * cv.height;
+    const r = card.firstElementChild.getBoundingClientRect(), top = card.classList.contains('t');
+    const cx = r.left - host.left + r.width / 2, cy = (top ? r.bottom : r.top) - host.top;
+    const hot = card.classList.contains('open') || card.matches(':hover'), eq = card.classList.contains('eq');
+    out += `<line x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" class="${hot ? 'hot' : eq ? 'eq' : ''}"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="${hot ? 4 : 2.5}" class="${hot ? 'hot' : eq ? 'eq' : ''}"/>`;
+  }
+  svg.innerHTML = out;
+}
+// stat bars; with a second def (hovered attachment) the change shows green (better) or red (worse)
+function gsStatsHTML(cur, cmp) {
+  const a = statVals(cur), b = cmp ? statVals(cmp) : a;
+  return a.map(([n, v], i) => {
+    const w = b[i][1], lo = Math.min(v, w), hi = Math.max(v, w), cls = w > v + 0.004 ? 'up' : w < v - 0.004 ? 'down' : '';
+    return `<div class="gs-st"><span>${n}</span><div class="gs-sb"><i style="width:${(lo * 100).toFixed(1)}%"></i>${cls ? `<i class="${cls}" style="left:${(lo * 100).toFixed(1)}%;width:${((hi - lo) * 100).toFixed(1)}%"></i>` : ''}</div></div>`;
   }).join('');
+}
+function renderGsStats() {
+  const id = previewWeapon, d = WEAPONS[id], att = PR.getAtt(id), cur = PR.attachedDef(id);
+  const cmp = gsHover ? PR.attachedDef(id, withAtt(att, gsHover.slot, gsHover.id)) : null;
+  const magTxt = d.mag ? `${cur.mag}${cmp && cmp.mag !== cur.mag ? ` → <em class="${cmp.mag > cur.mag ? 'up' : 'down'}">${cmp.mag}</em>` : ''} ${d.flame ? 'fuel' : 'rounds'}` : '';
+  $('gsStats').innerHTML = `<div class="gs-sname">${esc(d.type)}${magTxt ? ' · ' + magTxt : ''}</div>` + gsStatsHTML(cur, cmp);
+}
+function renderGunsmith() {
+  const id = previewWeapon, d = WEAPONS[id], wl = PR.weaponLevelInfo(id), att = PR.getAtt(id), slots = PR.slotsFor(id);
+  const pct = wl.next ? (wl.kills - wl.cur) / (wl.next - wl.cur) : 1;
+  const scr = $('scr-gunsmith');
+  scr.classList.toggle('gs-preview', gsPreviewOnly); scr.classList.toggle('gs-locked', inGame);
+  $('gsGunName').textContent = d.name.toUpperCase() + (PR.isUnlocked(id) ? '' : '  🔒');
+  $('gsWlv').innerHTML = `<div class="gs-wlrow"><span>Weapon Level: <b>${wl.level}</b></span><em>${wl.next ? `${wl.kills} / ${wl.next} kills` : 'MAX'}</em></div><div class="gs-wlbar"><div style="width:${(pct * 100).toFixed(0)}%"></div></div>`;
+  $('gsLock').classList.toggle('hidden', !inGame);
+  document.querySelectorAll('#gsTabs button').forEach(b => b.classList.toggle('on', b.dataset.gt === gsTab));
+  $('gsCards').classList.toggle('hidden', gsTab !== 'att'); $('gsCust').classList.toggle('hidden', gsTab !== 'cust');
+  $('gsPips').innerHTML = slots.length ? slots.map(s => `<i class="${att[s] ? 'on' : ''}" title="${PR.SLOT_NAMES[s]}"></i>`).join('') : '<small>none</small>';
+  renderGsStats();
   renderGsCamo(id);
-  $('gunsmith').querySelectorAll('[data-slot]').forEach(b => b.onclick = () => { gsOpen = gsOpen === b.dataset.slot ? null : b.dataset.slot; renderGunsmith(); SFX.uiBlip(); });
-  $('gunsmith').querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
-    const a = b.dataset.a, o = PR.optionsFor(id, gsOpen).find(x => x.id === a);
-    if (inGame) { toast('The Gunsmith is locked during a match'); return; }
-    if (a && !PR.attOwned(id, gsOpen, o)) {
-      const price = PR.attPrice(o), key = id + gsOpen + a;
-      if (gsBuyPending !== key) { gsBuyPending = key; toast(`${o.name} unlocks at ${d.name} level ${o.lvl} — or click again to buy it now for ◆${price}`); return; }
-      gsBuyPending = null;
-      if (!PR.buyAtt(id, gsOpen, a)) { toast(`Not enough credits — need ◆${price}, you have ◆${PR.profile.credits}`); return; }
-      toast(`Bought ${o.name} for the ${d.name}${open ? '' : ' — ready when the gun unlocks'}`); SFX.killConfirm(); updateProfileUI();
-    }
-    PR.setAtt(id, gsOpen, a || null); SFX.uiBlip();
-    $('wstats').innerHTML = statBars(PR.attachedDef(id)); renderGunsmith(); rebuildPreview();
+  if (!slots.length) { $('gsCards').innerHTML = `<div class="gs-none">The ${esc(d.name)} has no attachments.</div>`; return; }
+  $('gsCards').innerHTML = slots.map(slot => {
+    const [row, x] = GS_POS[slot], cur = att[slot], opts = PR.optionsFor(id, slot);
+    const curName = cur ? opts.find(o => o.id === cur)?.name : slot === 'optic' ? `${OPTIC_NAMES[d.optic] || 'Iron Sights'} (default)` : '';
+    let list = '';
+    if (gsOpen === slot) list = '<div class="gs-list">' + [{ id: '', name: slot === 'optic' ? 'Default sight' : 'None' }, ...opts].map(o => {
+      const locked = o.id && !PR.attOwned(id, slot, o);
+      const tag = !o.id ? '' : locked ? `🔒 LV ${o.lvl} · ◆${PR.attPrice(o)}` : `LV ${o.lvl}`;
+      return `<button data-a="${o.id}" class="${(cur || '') === o.id ? 'on' : ''} ${locked ? 'locked' : ''}"><div class="gs-ot"><b>${esc(o.name)}</b><span>${tag}</span></div>` +
+        ((o.pros || []).length || (o.cons || []).length ? `<div class="gs-pc">${(o.pros || []).map(p => `<span class="pro">+ ${esc(p)}</span>`).join('')}${(o.cons || []).map(c => `<span class="con">− ${esc(c)}</span>`).join('')}</div>` : '') + '</button>';
+    }).join('') + '</div>';
+    return `<div class="gs-card ${row} ${cur ? 'eq' : ''} ${gsOpen === slot ? 'open' : ''}" data-slot="${slot}" style="left:${x}%"><button class="gs-cb"><div class="gs-ch"><span>${PR.SLOT_NAMES[slot]}</span><i></i></div><b>${esc(curName || '—')}</b></button>${list}</div>`;
+  }).join('');
+  $('gsCards').querySelectorAll('.gs-cb').forEach(b => b.onclick = e => {
+    e.stopPropagation(); const slot = b.parentElement.dataset.slot;
+    gsOpen = gsOpen === slot ? null : slot; gsHover = null; if (pvAttOverride) { pvAttOverride = null; rebuildPreview(); }
+    renderGunsmith(); SFX.uiBlip();
   });
+  $('gsCards').querySelectorAll('[data-a]').forEach(b => {
+    b.onmouseenter = () => { gsHover = { slot: gsOpen, id: b.dataset.a }; pvAttOverride = withAtt(att, gsOpen, b.dataset.a); renderGsStats(); rebuildPreview(); };
+    b.onmouseleave = () => { gsHover = null; pvAttOverride = null; renderGsStats(); rebuildPreview(); };
+    b.onclick = e => {
+      e.stopPropagation();
+      const a = b.dataset.a, slot = gsOpen, o = PR.optionsFor(id, slot).find(x => x.id === a);
+      if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+      if (a && !PR.attOwned(id, slot, o)) {
+        const price = PR.attPrice(o), key = id + slot + a;
+        if (gsBuyPending !== key) { gsBuyPending = key; toast(`${o.name} unlocks at ${d.name} level ${o.lvl} — or click again to buy it now for ◆${price}`); return; }
+        gsBuyPending = null;
+        if (!PR.buyAtt(id, slot, a)) { toast(`Not enough credits — need ◆${price}, you have ◆${PR.profile.credits}`); return; }
+        toast(`Bought ${o.name} for the ${d.name}${PR.isUnlocked(id) ? '' : ' — ready when the gun unlocks'}`); SFX.killConfirm(); updateProfileUI();
+      }
+      PR.setAtt(id, slot, a || null); SFX.uiBlip();
+      gsOpen = null; gsHover = null; pvAttOverride = null;
+      $('wstats').innerHTML = statBars(PR.attachedDef(id)); renderGunsmith(); rebuildPreview();
+    };
+  });
+}
+document.querySelectorAll('#gsTabs button').forEach(b => b.onclick = () => { gsTab = b.dataset.gt; gsOpen = null; gsHover = null; pvAttOverride = null; renderGunsmith(); rebuildPreview(); SFX.uiBlip(); });
+$('gsBack').onclick = () => { SFX.uiBlip(); go('pnl-loadout'); };
+$('btnGunsmith').onclick = () => openGunsmith(previewWeapon);
+$('pv-loadout').onclick = () => openGunsmith(previewWeapon);
+$('gsPreview').onclick = e => { e.stopPropagation(); gsPreviewOnly = true; gsOpen = null; renderGunsmith(); SFX.uiBlip(); };
+// randomize: a random owned option (or nothing) in every slot; strip: take everything off
+$('gsRandom').onclick = () => {
+  if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+  const id = previewWeapon;
+  for (const slot of PR.slotsFor(id)) {
+    const own = PR.optionsFor(id, slot).filter(o => PR.attOwned(id, slot, o));
+    const pick = Math.random() < 0.2 || !own.length ? null : own[Math.floor(Math.random() * own.length)].id;
+    PR.setAtt(id, slot, pick);
+  }
+  gsOpen = null; renderGunsmith(); rebuildPreview(); SFX.uiBlip();
+};
+$('gsStrip').onclick = () => {
+  if (inGame) { toast('The Gunsmith is locked during a match'); return; }
+  for (const slot of PR.slotsFor(previewWeapon)) PR.setAtt(previewWeapon, slot, null);
+  gsOpen = null; renderGunsmith(); rebuildPreview(); SFX.uiBlip();
+};
+// clicking the empty stage closes an open list (or leaves PREVIEW); dragging turns the gun
+$('scr-gunsmith').addEventListener('pointerdown', e => {
+  if (e.target.closest('.gs-card, .gs-bl, .gs-top, .gs-tabs, .gs-cust')) return;
+  gsDrag = { x: e.clientX, moved: false };
+});
+addEventListener('pointermove', e => { if (!gsDrag) return; const dx = e.clientX - gsDrag.x; if (Math.abs(dx) > 3) gsDrag.moved = true; gsYaw = clamp(gsYaw + dx * 0.008, -2.4, 2.4); gsDrag.x = e.clientX; });
+addEventListener('pointerup', () => {
+  if (!gsDrag) return; const moved = gsDrag.moved; gsDrag = null;
+  if (moved || currentScreen !== 'scr-gunsmith') return;
+  if (gsPreviewOnly) { gsPreviewOnly = false; renderGunsmith(); }
+  else if (gsOpen) { gsOpen = null; gsHover = null; if (pvAttOverride) { pvAttOverride = null; rebuildPreview(); } renderGunsmith(); }
+});
+
+// ---------- loadouts bar (Armory): click to equip, ✎ to rename
+let loRenaming = -1;
+function equipLoadout(i) {
+  saveCfg(); // keep the current loadout's edits
+  const L = cfg.loadouts[i]; cfg.activeLoadout = i;
+  const pick = (v, ok, def) => (ok(v) && PR.isUnlocked(v) ? v : def);
+  cfg.primary = pick(L.primary, v => WEAPONS[v]?.slot === 'primary', 'falcon');
+  cfg.secondary = pick(L.secondary, v => WEAPONS[v]?.slot === 'secondary', 'viper');
+  cfg.lethal = pick(L.lethal, v => LETHALS.includes(v), 'frag');
+  cfg.tactical = pick(L.tactical, v => TACTICALS.includes(v), 'smoke');
+  cfg.perks = cleanPerks(L.perks); cfg.streaks = cleanStreaks(L.streaks);
+  previewWeapon = cfg.primary; gsOpen = null;
+  saveCfg(); sendLoadout(); buildArmory(); rebuildPreview(); renderLoadoutSummary(); SFX.uiBlip();
+  toast(`${L.name} equipped${inGame ? ' — you get it on your next respawn' : ''}`);
+}
+function renderLoBar() {
+  $('loBar').innerHTML = cfg.loadouts.map((L, i) => `<div class="lo ${i === cfg.activeLoadout ? 'on' : ''}" data-lo="${i}">` +
+    (loRenaming === i ? `<input class="lo-name" maxlength="18" value="${esc(L.name)}">` : `<div class="lo-h"><b>${esc(L.name)}</b><button class="lo-ren" data-ren="${i}" title="Rename">✎</button></div>`) +
+    `<small>${esc(WEAPONS[L.primary]?.name || '—')}</small><small>${esc(WEAPONS[L.secondary]?.name || '—')}</small>${i === cfg.activeLoadout ? '<span class="lo-eq">EQUIPPED</span>' : ''}</div>`).join('');
+  $('loBar').querySelectorAll('.lo').forEach(el => el.onclick = () => { const i = +el.dataset.lo; if (loRenaming >= 0 || i === cfg.activeLoadout) return; equipLoadout(i); });
+  $('loBar').querySelectorAll('.lo-ren').forEach(b => b.onclick = e => { e.stopPropagation(); loRenaming = +b.dataset.ren; renderLoBar(); });
+  const inp = $('loBar').querySelector('.lo-name');
+  if (inp) {
+    const done = save => {
+      if (loRenaming < 0) return;
+      const v = inp.value.replace(/[^\w \-\[\]\.!?'#]/g, '').trim().slice(0, 18);
+      if (save && v) { cfg.loadouts[loRenaming].name = v.toUpperCase(); saveCfg(); renderLoadoutSummary(); }
+      loRenaming = -1; renderLoBar();
+    };
+    inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') done(true); else if (e.key === 'Escape') done(false); };
+    inp.onkeyup = e => e.stopPropagation();
+    inp.onclick = e => e.stopPropagation();
+    inp.onblur = () => done(true);
+    inp.focus(); inp.select();
+  }
 }
 // throwables + reticle/crosshair are part of the loadout / settings
 function applyCrosshair() {
@@ -2600,13 +2761,6 @@ const retPickable = () => { if (inGame) { toast('Reticles can only be changed ou
 const retPicked = () => { setReticle(cfg.reticle, cfg.reticleColor); rebuildPreview(); };
 chipRow($('retStyle'), RETICLE_STYLES, 'reticle', v => RET_NAMES[v], retPicked, false, retPickable);
 chipRow($('retColor'), Object.keys(RETICLE_COLORS), 'reticleColor', capWord, retPicked, true, retPickable);
-function setPvTab(t) {
-  pvTab = t;
-  document.querySelectorAll('#pvTabs button').forEach(b => b.classList.toggle('on', b.dataset.pt === t));
-  $('pvStats').classList.toggle('hidden', t !== 'stats'); $('pvGs').classList.toggle('hidden', t !== 'gs');
-  if (t === 'gs') renderGunsmith();
-}
-document.querySelectorAll('#pvTabs button').forEach(b => b.onclick = () => { setPvTab(b.dataset.pt); SFX.uiBlip(); });
 chipRow($('xhStyle'), ['lines', 'dot', 'circle', 'none'], 'xh', capWord, applyCrosshair);
 chipRow($('xhColor'), Object.keys(RETICLE_COLORS), 'xhColor', capWord, applyCrosshair, true);
 applyCrosshair();
@@ -2628,14 +2782,18 @@ function resizePreview() {
 function rebuildPreview() {
   if (pv.obj) { pv.scene.remove(pv.obj); disposeObject(pv.obj); }
   const g = new THREE.Group();
-  if (pv.mode === 'pnl-loadout' || pvCamo || pvGun) {
-    const wid = pvGun || (pv.mode === 'pnl-loadout' ? previewWeapon : cfg.primary);
-    const gun = buildWeapon(WEAPONS[wid], pvCamo || gunSkin(wid), { ...PR.getAtt(wid), attSkin: pvAttCamo || attSkinFor(wid) });
+  pv.gun = null; pv.anchors = null;
+  const gsMode = pv.mode === 'pnl-loadout' || pv.mode === 'scr-gunsmith';
+  if (gsMode || pvCamo || pvGun) {
+    const wid = pvGun || (gsMode ? previewWeapon : cfg.primary);
+    const gun = buildWeapon(WEAPONS[wid], pvCamo || gunSkin(wid), { ...(pvAttOverride || PR.getAtt(wid)), attSkin: pvAttCamo || attSkinFor(wid) });
+    gun.updateMatrixWorld(true);
     const box3 = new THREE.Box3().setFromObject(gun), c = box3.getCenter(new THREE.Vector3()), size = box3.getSize(new THREE.Vector3()).length();
+    if (pv.mode === 'scr-gunsmith') { pv.anchors = gunAnchors(gun, box3); pv.gun = gun; }
     gun.position.sub(c);
     const holder = new THREE.Group(); holder.add(gun); holder.scale.setScalar(1.15 / size);
     g.add(holder);
-    pv.camera.position.set(0, 0.15, pv.mode === 'buy' ? 1.15 : 1.6);
+    pv.camera.position.set(0, pv.mode === 'scr-gunsmith' ? 0.02 : 0.15, pv.mode === 'buy' ? 1.15 : pv.mode === 'scr-gunsmith' ? 1.5 : 1.6);
   } else {
     const s = buildSoldier(cfg.cskin);
     s.userData.gunMount.add(buildWeapon(WEAPONS[cfg.primary], gunSkin(cfg.primary), { ...PR.getAtt(cfg.primary), attSkin: attSkinFor(cfg.primary) }));
@@ -2650,8 +2808,15 @@ function renderPreview(now) {
   if (!pv.obj || !pv.renderer.domElement.isConnected || !pv.renderer.domElement.offsetParent) return;
   const par = pv.renderer.domElement.parentElement;
   if (par && Math.abs(par.clientWidth * Math.min(devicePixelRatio, 2) - pv.renderer.domElement.width) > 4) resizePreview();
-  pv.obj.rotation.y = now * 0.0005 + (pv.mode === 'pnl-loadout' ? Math.PI / 2 : -0.5);
+  if (pv.mode === 'scr-gunsmith') {
+    // side-on like a workbench: gentle sway plus mouse drag; PREVIEW spins it slowly
+    if (gsPreviewOnly) gsYaw += 0.006;
+    else if (!gsDrag) gsYaw *= 0.94;
+    pv.obj.rotation.y = Math.PI / 2 + gsYaw + Math.sin(now * 0.0007) * 0.06;
+    pv.obj.rotation.x = gsPreviewOnly ? 0 : Math.sin(now * 0.0005) * 0.02;
+  } else { pv.obj.rotation.x = 0; pv.obj.rotation.y = now * 0.0005 + (pv.mode === 'pnl-loadout' ? Math.PI / 2 : -0.5); }
   pv.renderer.render(pv.scene, pv.camera);
+  if (pv.mode === 'scr-gunsmith') drawGsLines();
 }
 
 // ================================================================ boot
