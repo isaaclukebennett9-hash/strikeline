@@ -49,6 +49,7 @@ const M = {
   dotGreen: new THREE.MeshBasicMaterial({ color: '#39ff6a' }),
   dotWhite: new THREE.MeshBasicMaterial({ color: '#f4f4f4' }),
   orange: new THREE.MeshBasicMaterial({ color: '#ff7a1a' }),
+  red: new THREE.MeshBasicMaterial({ color: '#ff2a2a' }),           // red fibre-optic front sight (shotguns)
   skinTone: new THREE.MeshStandardMaterial({ color: '#c99a78', roughness: 0.8 }),
   // toy foam-dart blasters
   toyBlue: new THREE.MeshStandardMaterial({ color: '#2a5bd7', roughness: 0.45 }),
@@ -75,7 +76,7 @@ const FACTORY = {
   pistol: M.polyBlack, hawk: M.chrome, revolver: M.blued, mpistol: M.polyBlack,
   r4c: M.polyBlack, burst: M.polyBlack, ak12: M.polyBlack, galil: M.polyBlack,
   scarh: M.fde, aug: M.odGreen, g36: M.polyGG, famas: M.polyBlack, pdw: M.polyBlack,
-  dmr: M.polyBlack, autoshotgun: M.polyBlack, tcsg: M.polyBlack, ksg: M.polyBlack, smg: M.wolf,
+  dmr: M.polyBlack, autoshotgun: M.polyBlack, tcsg: M.polyBlack, ksg: M.polyBlack, smg: M.wolf, spas12: M.polyBlack, benelli: M.polyBlack,
 };
 // reticle drawn into a small canvas so players can pick the style/colour (see setReticle)
 const reticleCanvas = document.createElement('canvas'); reticleCanvas.width = reticleCanvas.height = 64;
@@ -160,42 +161,45 @@ function torus(g, r, tube, mat, x, y, z, seg = 20) {
 function ironSights(g, cy, zRear, zFront, dot = M.dotGreen, style = 'notch') {
   if (style !== 'bead') { box(g, 0.016, 0.026, 0.012, style === 'toy' ? M.toyYellow : M.dark, 0, cy - 0.03, zRear); box(g, 0.008, 0.022, 0.009, style === 'toy' ? M.toyOrange : M.dark, 0, cy - 0.026, zFront); }
   const post = (h = 0.012, w = 0.004) => { box(g, w, h, 0.005, M.dark, 0, cy - h / 2, zFront); box(g, 0.012, 0.007, 0.012, M.dark, 0, cy - h - 0.002, zFront); };
-  if (style === 'aperture' || style === 'ring') {
-    const ring = style === 'ring';
-    post(0.011, 0.0035);
-    torus(g, ring ? 0.0125 : 0.0105, 0.0022, M.dark, 0, cy - 0.001, zFront - 0.002);          // round front hood around the post
-    box(g, 0.006, 0.01, 0.006, M.dark, 0, cy - 0.0155 - (ring ? 0.002 : 0), zFront - 0.002); // hood stem
-    torus(g, ring ? 0.0085 : 0.0075, ring ? 0.0045 : 0.003, M.dark, 0, cy, zRear);           // rear peep
-    box(g, 0.026, 0.009, 0.014, M.dark, 0, cy - 0.013, zRear);                                // rear sight base
-    if (ring) torus(g, 0.0095, 0.0042, M.dark, 0, cy, zRear + 0.01);                          // drum diopter (hollow, you look through it)
-    for (const s of [-1, 1]) box(g, 0.004, 0.016, 0.012, M.dark, s * 0.0145, cy - 0.004, zRear); // protective ears
-    box(g, 0.0022, 0.0022, 0.001, dot, 0, cy - 0.0025, zFront - 0.003);
-  } else if (style === 'ghost') {
-    post(0.012, 0.0045);
-    for (const s of [-1, 1]) box(g, 0.004, 0.016, 0.008, M.dark, s * 0.012, cy - 0.006, zFront); // wings
-    torus(g, 0.0105, 0.0048, M.dark, 0, cy, zRear);
-    box(g, 0.03, 0.01, 0.014, M.dark, 0, cy - 0.016, zRear);
-    box(g, 0.003, 0.003, 0.001, dot, 0, cy - 0.003, zFront - 0.003);
-  } else if (style === 'bead') {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.0032, 8, 6), M.steel); b.position.set(0, cy - 0.003, zFront); g.add(b);
-    box(g, 0.01, 0.003, 0.01, M.dark, 0, cy - 0.0075, zRear);
-    for (const s of [-1, 1]) box(g, 0.004, 0.005, 0.01, M.dark, s * 0.006, cy - 0.004, zRear);
+  // Sights are kept thin and open so they frame the target instead of blocking it; each style has its own bright
+  // front marker so they're easy to pick up and don't all look alike.
+  const fiber = (mat, s = 0.0032) => box(g, s, s, 0.002, mat, 0, cy - s * 0.6, zFront - 0.004); // glowing front insert
+  if (style === 'aperture') {                       // thin rear peep + plain post with a green tritium dot
+    post(0.011, 0.0032);
+    torus(g, 0.0125, 0.0013, M.dark, 0, cy, zRear);                                           // wide thin rear ring
+    box(g, 0.022, 0.006, 0.012, M.dark, 0, cy - 0.0165, zRear);                               // rear sight base (below the ring)
+    box(g, 0.003, 0.004, 0.006, M.dark, 0, cy - 0.0125, zRear);                               // ring stem
+    fiber(dot);
+  } else if (style === 'ring') {                    // PPSh/MP5: round front hood around an orange post, thin rear peep
+    post(0.0105, 0.003);
+    torus(g, 0.0118, 0.0011, M.dark, 0, cy - 0.001, zFront - 0.002);                          // thin round front hood
+    box(g, 0.004, 0.008, 0.005, M.dark, 0, cy - 0.0155, zFront - 0.002);                      // hood stem
+    torus(g, 0.0105, 0.0014, M.dark, 0, cy, zRear);                                           // thin rear peep
+    box(g, 0.02, 0.006, 0.012, M.dark, 0, cy - 0.0145, zRear); box(g, 0.003, 0.004, 0.006, M.dark, 0, cy - 0.011, zRear);
+    fiber(M.orange, 0.0034);
+  } else if (style === 'ghost') {                   // shotguns: big thin ghost ring + post with a red fibre
+    post(0.012, 0.0038);
+    torus(g, 0.0145, 0.0018, M.dark, 0, cy, zRear);
+    box(g, 0.026, 0.006, 0.012, M.dark, 0, cy - 0.019, zRear); box(g, 0.003, 0.004, 0.006, M.dark, 0, cy - 0.015, zRear);
+    fiber(M.red || M.orange, 0.0038);
+  } else if (style === 'bead') {                    // brass bead on the rib, shallow rear groove
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.0038, 10, 8), M.brass || M.steel); b.position.set(0, cy - 0.003, zFront); g.add(b);
+    box(g, 0.012, 0.003, 0.01, M.dark, 0, cy - 0.0085, zRear);
   } else if (style === 'toy') {
     torus(g, 0.012, 0.004, M.toyOrange, 0, cy, zRear);
     box(g, 0.03, 0.012, 0.014, M.toyYellow, 0, cy - 0.017, zRear);
     box(g, 0.006, 0.016, 0.008, M.toyOrange, 0, cy - 0.008, zFront);
     box(g, 0.0035, 0.0035, 0.001, M.toyYellow, 0, cy - 0.003, zFront - 0.0045);
-  } else if (style === 'pistol') {
-    for (const s of [-1, 1]) { box(g, 0.007, 0.011, 0.008, M.dark, s * 0.0085, cy - 0.002, zRear); box(g, 0.0025, 0.0025, 0.001, M.dotWhite || dot, s * 0.0085, cy - 0.003, zRear - 0.0045); }
-    box(g, 0.026, 0.006, 0.01, M.dark, 0, cy - 0.01, zRear);
-    post(0.011, 0.0045);
-    box(g, 0.0028, 0.0028, 0.001, dot, 0, cy - 0.003, zFront - 0.003);
-  } else { // notch: tall tangent leaf with a V notch, front post with ears
-    for (const s of [-1, 1]) { box(g, 0.009, 0.013, 0.006, M.dark, s * 0.008, cy - 0.002, zRear); box(g, 0.006, 0.004, 0.006, M.dark, s * 0.0035, cy - 0.0075, zRear, 0, 0, s * 0.8); }
-    box(g, 0.03, 0.006, 0.03, M.dark, 0, cy - 0.011, zRear + 0.012);                          // tangent leaf base
-    post(0.012, 0.0035);
-    for (const s of [-1, 1]) box(g, 0.0035, 0.014, 0.006, M.dark, s * 0.0095, cy - 0.004, zFront); // ears
-    box(g, 0.0022, 0.0022, 0.001, dot, 0, cy - 0.0025, zFront - 0.003);
+  } else if (style === 'pistol') {                  // three-dot: two white rear dots either side of a wide notch, green front
+    for (const s of [-1, 1]) { box(g, 0.006, 0.009, 0.008, M.dark, s * 0.0095, cy - 0.003, zRear); box(g, 0.0028, 0.0028, 0.001, M.dotWhite || dot, s * 0.0095, cy - 0.003, zRear - 0.0045); }
+    box(g, 0.026, 0.005, 0.01, M.dark, 0, cy - 0.0095, zRear);
+    post(0.011, 0.0042);
+    fiber(dot, 0.0034);
+  } else { // notch (AK family): low open V-notch leaf, slim front post with a white dot (no ears in the way)
+    for (const s of [-1, 1]) { box(g, 0.009, 0.007, 0.006, M.dark, s * 0.0085, cy - 0.005, zRear); box(g, 0.005, 0.003, 0.006, M.dark, s * 0.0038, cy - 0.0085, zRear, 0, 0, s * 0.8); }
+    box(g, 0.028, 0.004, 0.026, M.dark, 0, cy - 0.0105, zRear + 0.012);                       // tangent leaf base
+    post(0.012, 0.0032);
+    fiber(M.dotWhite || dot, 0.003);
   }
 }
 // Pistol grip: one moulded piece with finger grooves, palm swell and a flared base, rising into the frame at `topY`.
@@ -1203,6 +1207,67 @@ function buildGunInner(model, S, att, g) {
       irons = { cy: 0.09, zr: 0.06, zf: -0.28 };
       optic(0.1, -0.12, 0.072, -0.3, 0.1);
       muzzleZ = -0.59; muzzleY = 0.045; left = [0, -0.09, -0.4];
+      break;
+    }
+    case 'spas12': {
+      // SPAS-12: tall boxy receiver, perforated heat shield over the barrel, ribbed pump on the mag tube,
+      // pistol grip and a skeleton folding stock with the forearm hook under the butt
+      prof(g, [[0.08, 0.07], [0.08, -0.016], [0.055, -0.024], [-0.22, -0.024], [-0.22, 0.07]], 0.062, S, 0, 0.007);   // receiver
+      seams(g, 0.031, [0.05, -0.004], -0.22, 0.08);
+      box(g, 0.003, 0.028, 0.09, M.black, 0.0315, 0.032, -0.06);                    // ejection port
+      box(g, 0.003, 0.02, 0.07, M.black, -0.0315, 0.0, -0.08);                      // loading gate
+      for (const s of [-1, 1]) box(g, 0.004, 0.012, 0.03, M.steel, s * 0.032, -0.012, 0.03);   // action-mode button
+      cyl(g, 0.017, 0.5, M.dark, 0, 0.052, -0.47);                                  // barrel
+      prof(g, [[-0.22, 0.082], [-0.6, 0.082], ['q', -0.61, 0.082, -0.61, 0.072], [-0.61, 0.03], [-0.22, 0.03]], 0.05, M.dark, 0, 0.005);   // heat shield
+      for (const s of [-1, 1]) for (let zz = -0.58; zz < -0.25; zz += 0.028) for (const yy of [0.045, 0.066]) box(g, 0.003, 0.009, 0.012, M.black, s * 0.0255, yy, zz);   // shield holes
+      for (let zz = -0.58; zz < -0.25; zz += 0.028) box(g, 0.012, 0.003, 0.012, M.black, 0, 0.0835, zz);
+      cyl(g, 0.016, 0.47, M.dark, 0, 0.0, -0.45);                                   // magazine tube
+      cyl(g, 0.019, 0.03, M.steel, 0, 0.0, -0.69);                                  // mag tube cap
+      box(g, 0.04, 0.05, 0.02, M.dark, 0, 0.028, -0.64);                            // barrel band
+      { const pp = part('pump', 0, -0.004, -0.38);
+        pbox(pp, 0.066, 0.056, 0.17, M.grip, 0, -0.004, -0.38);                     // pump
+        for (let i = 0; i < 7; i++) pbox(pp, 0.068, 0.058, 0.006, M.black, 0, -0.004, -0.455 + i * 0.025); }
+      triggerGroup(g, 0.0, M.grip, 0.35, -0.012);
+      // skeleton folding stock: top and bottom struts into a butt plate with the hook underneath
+      box(g, 0.012, 0.012, 0.3, M.dark, 0, 0.052, 0.23);
+      box(g, 0.012, 0.012, 0.29, M.dark, 0, -0.012, 0.225, 0.17);
+      box(g, 0.05, 0.02, 0.024, M.dark, 0, 0.055, 0.085);                           // folding hinge
+      cyl(g, 0.012, 0.06, M.steel, 0, 0.055, 0.085, 10);
+      buttPad(g, 0.044, 0.12, 0.02, 0.385);
+      prof(g, [[0.36, -0.04], [0.36, -0.07], ['q', 0.34, -0.1, 0.3, -0.098], [0.29, -0.088], [0.31, -0.086], ['q', 0.335, -0.084, 0.34, -0.06], [0.34, -0.04]], 0.016, M.dark, 0, 0.003);   // forearm hook
+      sling(g, 0.066, 0.3);                                                         // sling loop on the top strut
+      irons = { cy: 0.104, zr: 0.04, zf: -0.6 };
+      box(g, 0.02, 0.03, 0.02, M.dark, 0, 0.088, -0.6);                             // front sight base on the shield
+      muzzleZ = -0.73; muzzleY = 0.052; sightY = 0.104; left = [-0.02, -0.045, -0.38];
+      break;
+    }
+    case 'benelli': {
+      // M4 Super 90-style semi-auto: slim receiver with a full top rail, ghost-ring sights, twin gas pistons under the
+      // barrel, ribbed fore-end round the mag tube, pistol grip and a collapsible stock with a cheek riser
+      prof(g, [[0.08, 0.066], [0.08, -0.012], [0.055, -0.02], [-0.2, -0.02], [-0.2, 0.066]], 0.056, S, 0, 0.007);   // receiver
+      seams(g, 0.028, [0.046], -0.2, 0.08);
+      box(g, 0.003, 0.026, 0.085, M.black, 0.0285, 0.03, -0.05);                    // ejection port
+      box(g, 0.004, 0.012, 0.024, M.steel, 0.03, 0.03, -0.02);                      // bolt handle
+      box(g, 0.003, 0.016, 0.06, M.black, -0.0285, -0.004, -0.08);                  // loading port
+      cyl(g, 0.016, 0.5, M.dark, 0, 0.045, -0.45);                                  // barrel
+      cyl(g, 0.015, 0.4, M.black, 0, 0.0, -0.4);                                    // magazine tube
+      cyl(g, 0.018, 0.026, M.dark, 0, 0.0, -0.61);                                  // mag cap
+      for (const s of [-1, 1]) cyl(g, 0.006, 0.12, M.steel, s * 0.012, 0.022, -0.27, 8);   // twin gas pistons
+      prof(g, [[-0.2, 0.05], [-0.48, 0.05], ['q', -0.49, 0.05, -0.49, 0.04], [-0.49, -0.024], ['q', -0.49, -0.034, -0.48, -0.034], [-0.2, -0.034]], 0.06, M.grip, 0, 0.007);   // fore-end
+      ribs(g, 0.06, 0.07, 0.008, -0.47, -0.3, 0.022);
+      box(g, 0.04, 0.03, 0.02, M.dark, 0, 0.026, -0.56);                            // barrel clamp
+      triggerGroup(g, 0.0, M.grip, 0.32, -0.012);
+      cyl(g, 0.016, 0.16, M.dark, 0, 0.035, 0.16);                                  // stock tube
+      prof(g, [[0.17, 0.066], [0.35, 0.07], [0.35, -0.05], [0.32, -0.05], ['q', 0.25, -0.03, 0.21, 0.005], [0.17, 0.01]], 0.044, M.grip, 0, 0.006,
+        [[[0.24, 0.044], [0.32, 0.046], [0.32, -0.026], [0.3, -0.026]]]);           // collapsible stock with a cut-out
+      prof(g, [[0.2, 0.068], [0.34, 0.072], [0.34, 0.09], ['q', 0.33, 0.096, 0.31, 0.096], [0.22, 0.09], [0.2, 0.08]], 0.04, M.grip, 0, 0.005);   // cheek riser
+      buttPad(g, 0.046, 0.12, 0.01, 0.36);
+      sling(g, -0.03, 0.3);
+      rail(g, 0.07, -0.2, 0.07);
+      irons = { cy: 0.1, zr: 0.05, zf: -0.6 };
+      box(g, 0.018, 0.03, 0.02, M.dark, 0, 0.07, -0.6);                             // front sight base
+      optic(0.104, -0.07, 0.07, -0.2, 0.07); under = null;
+      muzzleZ = -0.7; muzzleY = 0.045; sightY = 0.1; left = [-0.02, -0.045, -0.38];
       break;
     }
     case 'tcsg': {

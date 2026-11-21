@@ -23,6 +23,8 @@ const LINES = {
   win: ['Victory.', 'Match won. Outstanding.'],
   lose: ['Defeat.', 'Match lost. Regroup.'],
   revenge: ['Payback.'],
+  levelup: ['Level up.', 'You have been promoted.'],
+  gunlevel: ['Weapon level up.', 'Your weapon has levelled up.'],
 };
 
 let enabled = true, volume = 0.8, voice = null, lastAt = {}, queued = 0;

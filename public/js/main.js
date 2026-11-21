@@ -883,7 +883,7 @@ document.addEventListener('pointerlockchange', () => {
     for (const k in keys) keys[k] = false;
     mouseL = mouseR = mouseM = false;
     if (chatOpen) closeChat();
-    if (inGame) showPause();
+    if (inGame && !matchEnded) showPause(); // the end screen stays in view once the match is over
     else if (!currentScreen) go(room ? 'scr-lobby' : 'scr-home');
   }
 });
@@ -1813,7 +1813,14 @@ function onKill(m) {
     }
     const st = PR.profile.stats;
     st.kills++; if (m.h) st.headshots++; st.bestStreak = Math.max(st.bestStreak, m.st);
+    const wlBefore = WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade' ? PR.weaponLevel(m.w) : 0;
     PR.profile.wkills[m.w] = (PR.profile.wkills[m.w] || 0) + 1;
+    if (wlBefore && PR.weaponLevel(m.w) > wlBefore) { // gun levelled up: say so, and name anything it unlocked
+      const wl = PR.weaponLevel(m.w);
+      const att = PR.slotsFor(m.w).flatMap(s => PR.optionsFor(m.w, s).filter(o => o.lvl === wl).map(o => o.name));
+      setTimeout(() => { announce(`${WEAPONS[m.w].name.toUpperCase()} — LEVEL ${wl}`, att.length ? `Unlocked: ${att.join(', ')}` : 'Weapon level up!'); SFX.announce(); Announcer.say('gunlevel', 600); }, 1400);
+      toast(`${WEAPONS[m.w].name} reached weapon level ${wl}${att.length ? ' · Unlocked ' + att.join(', ') : ''}`);
+    }
     challengeToasts(PR.challengeEvent('kill', { w: m.w, head: !!m.h, mode, map: world?.map.id, sliding: slide.t > 0 || slide.roll > 0.3 }));
     challengeToasts(PR.challengeEvent('streak', {}, m.st));
     const names = { 2: 'DOUBLE KILL', 3: 'TRIPLE KILL', 5: 'KILLING SPREE', 7: 'RAMPAGE', 10: 'UNSTOPPABLE', 15: 'GODLIKE' };
@@ -1945,6 +1952,7 @@ function showEnd(m) {
   updateProfileUI();
   $('endscreen').classList.remove('hidden');
   $('deathscreen').classList.add('hidden');
+  if (currentScreen === 'scr-pause') hideUI(); // a pause menu left open would cover the results
   if (won) SFX.announce();
 }
 
@@ -1966,7 +1974,7 @@ const unlockName = k => k.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === k.
 function levelUp(lvl) {
   SFX.announce();
   const unlocks = PR.newUnlocksAt(lvl).map(k => k.startsWith('ws:') ? WEAPON_SKINS.find(s => s.id === k.slice(3))?.name : k.startsWith('op:') ? charSkin(k.slice(3)).name : WEAPONS[k]?.name).filter(Boolean);
-  if (inGame) announce(`LEVEL ${lvl}`, unlocks.length ? `Unlocked: ${unlocks.join(', ')}` : 'Level up!');
+  if (inGame) { announce(`LEVEL UP — LEVEL ${lvl}`, unlocks.length ? `Unlocked: ${unlocks.join(', ')}` : 'Profile level up!'); Announcer.say('levelup', 900); }
   toast(`LEVEL UP — you reached level ${lvl}${unlocks.length ? ' · Unlocked ' + unlocks.join(', ') : ''}`);
   send({ t: 'look', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: lvl });
 }
@@ -2321,7 +2329,9 @@ $('lobbyChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { 
 // ---------- pause
 $('btnResume').addEventListener('click', () => { SFX.initAudio(cfg.vol); lockPointer(); });
 $('btnQuit').addEventListener('click', () => send({ t: 'leave' }));
-$('btnEndMatch').addEventListener('click', () => { send({ t: 'stop' }); lockPointer(); });
+// End the match and close the pause menu (re-grabbing the mouse right after Esc is refused by the browser, which
+// used to leave the pause menu covering the end screen)
+$('btnEndMatch').addEventListener('click', () => { send({ t: 'stop' }); hideUI(); });
 
 // ---------- loadout
 function statBars(def) {

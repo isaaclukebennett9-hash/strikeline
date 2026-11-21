@@ -101,9 +101,16 @@ export const WEAPONS = {
   breacher: W({ id: 'breacher', name: 'Breacher 12', slot: 'primary', cls: 'shotgun', type: 'Pump Shotgun', model: 'shotgun', anim: 'shells', pump: true, shellTime: 0.5,
     dmg: 13, head: 1.4, rpm: 75, pellets: 10, mag: 7, reserve: 42, reload: 2.6, spread: 0.075, adsSpread: 0.055, moveSpread: 0.01, recoil: 0.08, range: 40,
     falloff: [6, 20, 0.3], speed: 1.0, zoom: 1.15, snd: { f: 1400, d: 0.45, b: 70, v: 1.1 } }),
-  ksg: W({ id: 'ksg', name: 'KSG 12', slot: 'primary', cls: 'shotgun', type: 'Pump Shotgun', model: 'ksg', anim: 'shells', pump: true, shellTime: 0.42,
-    dmg: 17, head: 1.4, rpm: 85, pellets: 10, mag: 14, reserve: 42, reload: 3, spread: 0.058, adsSpread: 0.042, moveSpread: 0.01, recoil: 0.07, range: 38,
-    falloff: [9, 26, 0.4], speed: 1.0, zoom: 1.15, snd: { f: 1450, d: 0.42, b: 72, v: 1.05 } }),
+  // KSG fires slugs: one heavy round, accurate at range — two body shots up close, three far out
+  ksg: W({ id: 'ksg', name: 'KSG 12', slot: 'primary', cls: 'shotgun', type: 'Pump Slug Shotgun', model: 'ksg', anim: 'shells', pump: true, shellTime: 0.42, slug: true,
+    dmg: 64, head: 1.6, rpm: 85, mag: 14, reserve: 42, reload: 3, spread: 0.032, adsSpread: 0.004, moveSpread: 0.03, recoil: 0.08, range: 75,
+    falloff: [18, 50, 0.55], speed: 1.0, zoom: 1.35, snd: { f: 1350, d: 0.45, b: 68, v: 1.1 } }),
+  spas12: W({ id: 'spas12', name: 'SPAS-12', slot: 'primary', cls: 'shotgun', type: 'Pump Shotgun', model: 'spas12', anim: 'shells', pump: true, shellTime: 0.45,
+    dmg: 15, head: 1.4, rpm: 80, pellets: 9, mag: 8, reserve: 40, reload: 2.8, spread: 0.066, adsSpread: 0.05, moveSpread: 0.01, recoil: 0.085, range: 38,
+    falloff: [7, 22, 0.32], speed: 0.97, zoom: 1.15, snd: { f: 1300, d: 0.5, b: 66, v: 1.15 } }),
+  benelli: W({ id: 'benelli', name: 'M4 Super 90', slot: 'primary', cls: 'shotgun', type: 'Semi-Auto Shotgun', model: 'benelli', anim: 'shells', shellTime: 0.4,
+    dmg: 12, head: 1.4, rpm: 200, pellets: 8, mag: 7, reserve: 42, reload: 2.6, spread: 0.07, adsSpread: 0.052, moveSpread: 0.01, recoil: 0.06, range: 36,
+    falloff: [6, 19, 0.3], speed: 0.98, zoom: 1.15, snd: { f: 1480, d: 0.38, b: 74, v: 1.05 } }),
   scorpion: W({ id: 'scorpion', name: 'Scorpion Auto', slot: 'primary', cls: 'shotgun', type: 'Auto Shotgun', model: 'autoshotgun',
     dmg: 10, head: 1.4, rpm: 260, auto: true, pellets: 8, mag: 10, reserve: 50, reload: 3.0, spread: 0.08, adsSpread: 0.06, moveSpread: 0.01, recoil: 0.05, range: 35,
     falloff: [5, 16, 0.3], speed: 0.95, zoom: 1.15, snd: { f: 1500, d: 0.35, b: 75, v: 1.0 } }),
@@ -225,7 +232,7 @@ export function falloffMult(def, dist) {
 const IRONS = {
   viper: 'pistol', magnum: 'pistol', hawk: 'pistol', stinger: 'notch', sawedoff: 'bead', dbarrel: 'bead',
   ppsh: 'ring', mp5: 'ring', tommy: 'aperture', bizon: 'notch', skorpion: 'notch', ak47: 'notch', pkm: 'notch', asval: 'notch',
-  hammer: 'notch', breacher: 'ghost', ksg: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
+  hammer: 'notch', breacher: 'ghost', ksg: 'ghost', spas12: 'ghost', benelli: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
   m1911: 'pistol', luger: 'pistol', mp40: 'notch', mp18: 'notch', stg44: 'notch', mg42: 'notch', trench: 'bead',
 };
 for (const w of Object.values(WEAPONS)) if (!w.throwable && !w.melee) w.irons = IRONS[w.id] || 'aperture';
