@@ -19,6 +19,7 @@
   @keyframes s { to { transform: rotate(360deg); } }
   h2 { font: 700 20px Orbitron, sans-serif; letter-spacing: 2px; color: var(--bad); margin: 26px 0 6px; }
   button { cursor: pointer; border: 0; border-radius: 8px; font: 700 16px Rajdhani, sans-serif; letter-spacing: 2px; padding: 12px 26px; color: #111; background: var(--acc); margin-top: 16px; }
+  button.g { background: rgba(255,255,255,0.12); color: #fff; margin-left: 8px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -27,7 +28,7 @@
   <div class="logo">STRIKE<span>LINE</span></div>
   <div id="boot"><div class="msg" id="msg"><span class="spin"></span>Starting…</div></div>
   <div id="err" class="hidden"><h2>COULDN'T START</h2><div class="msg" id="errMsg"></div><button id="btnRetry">TRY AGAIN</button></div>
-  <div id="crash" class="hidden"><h2>THE GAME CRASHED</h2><div class="msg" id="crashMsg">Sorry about that — jump straight back in.</div><button id="btnRejoin">REJOIN</button></div>
+  <div id="crash" class="hidden"><h2>THE GAME CRASHED</h2><div class="msg" id="crashMsg">Sorry about that — jump straight back in.</div><button id="btnRejoin">REJOIN</button> <button id="btnLog" class="g">OPEN CRASH LOG</button></div>
 </div>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -40,6 +41,7 @@
     $('boot').classList.add('hidden'); $('crash').classList.remove('hidden');
     $('crashMsg').textContent = `Sorry about that (${qs.get('crashed')}). Jump straight back in — if it keeps happening, set Graphics to Low in Settings.`;
     $('btnRejoin').onclick = () => D.rejoin(qs.get('rejoin'));
+    $('btnLog').onclick = () => D.openCrashLog && D.openCrashLog();
   }
 </script>
 </body>

@@ -16,12 +16,18 @@ const STORE_FILE = () => path.join(app.getPath('userData'), 'save.json');
 // ---------------------------------------------------------------- crash safety
 // A packaged Windows app has no console: writing to stdout can throw EPIPE and take the whole app down.
 // Never let that (or any stray error) close the game; note it in crash.log in the app's data folder instead.
+// If the player deletes crash.log (or the whole Strikeline data folder) it's simply made again on the next entry.
+const CRASH_FILE = () => path.join(app.getPath('userData'), 'crash.log');
 function crashLog(msg) {
+  const line = `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`;
   try {
-    const f = path.join(app.getPath('userData'), 'crash.log');
+    const f = CRASH_FILE();
+    fs.mkdirSync(path.dirname(f), { recursive: true });
     try { if (fs.statSync(f).size > 512 * 1024) fs.renameSync(f, f + '.old'); } catch {}
-    fs.appendFileSync(f, `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}] ${msg}\n`);
-  } catch {}
+    fs.appendFileSync(f, line);
+  } catch {
+    try { fs.appendFileSync(path.join(require('os').tmpdir(), 'strikeline-crash.log'), line); } catch {}
+  }
 }
 function safeWrite(stream, d) { try { if (stream && stream.writable) stream.write(d); } catch {} }
 for (const s of [process.stdout, process.stderr]) { try { s.on('error', () => {}); } catch {} }
@@ -314,13 +320,24 @@ ipcMain.on('presence', (e, p) => { if (presence && e.sender === win?.webContents
 // crash.log entries the developer hasn't seen yet: the game sends them to the developer's server when playing there
 ipcMain.handle('crash-report', () => {
   try {
-    const txt = fs.readFileSync(path.join(app.getPath('userData'), 'crash.log'), 'utf8');
+    const txt = fs.readFileSync(CRASH_FILE(), 'utf8');
     let from = Number(store.strikeline_crash_sent) || 0;
-    if (from > txt.length) from = 0; // log was rotated
+    // log was rotated, deleted or replaced: its first line no longer matches the one we last sent from
+    if (from > txt.length || (store.strikeline_crash_head || '') !== txt.slice(0, 40)) from = 0;
     return { text: txt.slice(from).slice(-1100), end: txt.length };
   } catch { return { text: '', end: 0 }; }
 });
-ipcMain.handle('crash-report-sent', (e, n) => { store.strikeline_crash_sent = String(Number(n) || 0); saveStore(); });
+ipcMain.handle('crash-report-sent', (e, n) => {
+  store.strikeline_crash_sent = String(Number(n) || 0);
+  try { store.strikeline_crash_head = fs.readFileSync(CRASH_FILE(), 'utf8').slice(0, 40); } catch { store.strikeline_crash_head = ''; }
+  saveStore();
+});
+// "Open crash log" on the crash screen: makes the file if it's missing, then opens it in Notepad
+ipcMain.handle('open-crash-log', () => {
+  const f = CRASH_FILE();
+  try { fs.mkdirSync(path.dirname(f), { recursive: true }); if (!fs.existsSync(f)) fs.writeFileSync(f, ''); } catch {}
+  return shell.openPath(f);
+});
 ipcMain.handle('rejoin', async (e, url) => { if (/^https?:\/\//.test(url) && !url.startsWith(localUrl().slice(0, -1)) && !(await waitFor(`${new URL(url).origin}/info`, 6000))) url = localUrl() + '?lost=1'; if (/^https?:\/\//.test(url)) { joined = url.startsWith(localUrl().slice(0, -1)) ? '' : url.replace(/\/+$/, ''); win.loadURL(url); updateTitle(); } });
 
 // ---------------------------------------------------------------- window

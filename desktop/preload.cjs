@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('desktop', {
   rejoin: (url) => ipcRenderer.invoke('rejoin', url),
   crashReport: () => ipcRenderer.invoke('crash-report'),     // crash.log lines not yet handed to the developer
   crashReportSent: (n) => ipcRenderer.invoke('crash-report-sent', n),
+  openCrashLog: () => ipcRenderer.invoke('open-crash-log'),
   onStatus: (fn) => ipcRenderer.on('status', (e, t) => fn(t)),
   onBootError: (fn) => ipcRenderer.on('boot-error', (e, t) => fn(t)),
   presence: (p) => ipcRenderer.send('presence', p),        // Discord Rich Presence
