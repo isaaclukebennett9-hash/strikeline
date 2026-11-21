@@ -1464,12 +1464,39 @@ const homeOrigin = (() => { try { return sessionStorage.getItem('slHome') || loc
 const onFriendsGame = homeOrigin !== location.origin;
 const goHome = () => { location.href = homeOrigin + '/'; };
 let friendLostAt = 0;
+// ---------- chat bans: this app's player id + any ban go with every server we connect to
+const PID_KEY = 'strikeline_pid', BAN_KEY = 'strikeline_ban';
+const myPid = (() => {
+  let p = PR.store.get(PID_KEY);
+  if (!/^[a-z0-9]{8,32}$/.test(p || '')) { p = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => (b % 36).toString(36)).join(''); PR.store.set(PID_KEY, p); }
+  return p;
+})();
+let banUntil = Number(PR.store.get(BAN_KEY)) || 0, banTimer = 0;
+function showBan() {
+  let el = $('banBanner');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'banBanner';
+    el.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99998;padding:10px 18px;border-radius:8px;'
+      + 'background:rgba(120,14,14,.92);border:1px solid #ff5b5b;color:#fff;font:700 15px Rajdhani,"Segoe UI",sans-serif;letter-spacing:.5px;'
+      + 'box-shadow:0 4px 18px rgba(0,0,0,.5);pointer-events:none;text-align:center';
+    document.body.appendChild(el);
+  }
+  const tick = () => {
+    const left = banUntil - Date.now();
+    if (left <= 0) { el.remove(); clearInterval(banTimer); banTimer = 0; return; }
+    const mins = Math.ceil(left / 60000);
+    el.textContent = `BANNED for using a slur in chat — you can play again in ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}`;
+  };
+  tick();
+  clearInterval(banTimer); banTimer = setInterval(tick, 15000);
+}
+if (banUntil > Date.now()) setTimeout(showBan, 500);
 function setNet(ok, text) { const n = $('netstatus'); n.className = ok ? 'ok' : 'bad'; n.querySelector('span').textContent = text; }
 function connect() {
   if (location.protocol === 'file:') { setNet(false, 'Open via http://localhost:3080'); return; }
   setNet(false, 'Connecting…');
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  ws.onopen = () => send({ t: 'hello', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level });
+  ws.onopen = () => send({ t: 'hello', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level, pid: myPid, ban: banUntil > Date.now() ? banUntil : 0 });
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     ws = null;
@@ -1514,6 +1541,10 @@ function handle(m) {
     case 'lobbies': lobbies = [...m.list, ...(m.remote || []).map(l => ({ ...l, remote: true }))]; online = m.online; setNet(true, `Online · ${online} player${online === 1 ? '' : 's'}`); renderLobbyList(); break;
     case 'err': toast(m.m); $('loading').classList.add('hidden'); break;
     case 'toast': toast(m.m); break;
+    case 'banned':
+      if (Number(m.until) > banUntil) { banUntil = Number(m.until); PR.store.set(BAN_KEY, String(banUntil)); }
+      showBan(); toast('You have been banned for 2 hours for using a slur in chat.');
+      break;
     case 'pong': { const rtt = performance.now() - m.c; perfStats.ping = perfStats.ping ? perfStats.ping * 0.7 + rtt * 0.3 : rtt; break; }
     case 'room': {
       const wasNull = !room;

@@ -13,6 +13,7 @@ import { moveBody, raycastBoxes, PLAYER } from './shared/physics.js';
 import { MODES, GUNGAME_LADDER, ZONE_RADIUS, ZONE_MOVE, targetScore, PICKUP_RESPAWN, POWER_TIME } from './shared/modes.js';
 import { buildNav } from './shared/nav.js';
 import { STREAKS, cleanPerks, cleanStreaks, streakCost } from './shared/loadout.js';
+import { filterChat, BAN_MS } from './shared/chatfilter.js';
 
 const PORT = Number(process.env.PORT) || 3080;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -147,6 +148,29 @@ const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const r2 = n => Math.round(n * 100) / 100;
 const clampInt = (v, a, b, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
 const cleanText = (n, len) => String(n || '').replace(/[^\w \-\[\]\.!?']/g, '').trim().slice(0, len);
+// names and lobby names: no slurs (→ fallback), swears starred out
+const cleanName = (n, len, fallback) => { const t = cleanText(n, len); if (!t) return ''; const f = filterChat(t); return f.ban ? fallback : f.text; };
+
+// ---------- chat bans: a slur in chat bans the player for 2 h. Kept by player id (the app's saved id, so it
+// follows them between servers) and, for players coming in over the tunnel, their internet address.
+const BANS_FILE = path.join(DATA, 'bans.json');
+const bans = readJson(BANS_FILE, {});
+const saveBans = () => { const now = Date.now(); for (const k in bans) if (bans[k] <= now) delete bans[k]; try { fs.writeFileSync(BANS_FILE, JSON.stringify(bans)); } catch {} };
+const banUntil = c => Math.max(c.banUntil || 0, bans['p:' + c.pid] || 0, c.ip ? bans['ip:' + c.ip] || 0 : 0);
+const isBanned = c => banUntil(c) > Date.now();
+function banMsg(c) { const mins = Math.max(1, Math.ceil((banUntil(c) - Date.now()) / 60000)); return `You're banned for using a slur in chat. Time left: ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}.`; }
+function banClient(c) {
+  const until = Date.now() + BAN_MS;
+  c.banUntil = until;
+  if (c.pid) bans['p:' + c.pid] = until;
+  if (c.ip) bans['ip:' + c.ip] = until;
+  saveBans();
+  const room = c.room;
+  console.log(`[ban] ${c.name} banned for 2 h (slur in chat)`);
+  errLog(`chat ban: ${c.name} (2 h)`);
+  sendTo(c, { t: 'banned', until }); // first, so the client has saved the ban before 'left' can send it home
+  if (room) { leaveRoom(c); roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} was banned for 2 hours for hate speech` }); }
+}
 const isVec = (v, n = 3) => Array.isArray(v) && v.length === n && v.every(x => typeof x === 'number' && Number.isFinite(x));
 const wrapAngle = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
@@ -354,8 +378,9 @@ function genCode() {
   }
 }
 function createRoom(c, m) {
+  if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); return; }
   const room = {
-    id: nextId++, code: genCode(), name: cleanText(m.name, 28) || `${c.name}'s lobby`, hostId: c.id, private: !!m.private,
+    id: nextId++, code: genCode(), name: cleanName(m.name, 28, '') || `${c.name}'s lobby`, hostId: c.id, private: !!m.private,
     settings: sanitizeSettings(m.settings || {}, DEFAULT_SETTINGS), state: 'lobby', members: new Set(), ready: new Set(),
     ents: new Map(), map: null, mapId: null, nav: null, rockets: [], nades: [], fireZones: [], smokes: [], nextProjId: 1, timeLeft: 0, endTimer: 0, tick: 0,
     teamScore: [0, 0], zones: [], zone: null, firstBlood: false, hpAcc: 0, tags: [], strikes: [],
@@ -366,6 +391,7 @@ function createRoom(c, m) {
 }
 function joinRoom(c, room) {
   if (c.room === room) return;
+  if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); return; }
   if (room.members.size >= room.settings.maxPlayers) { sendTo(c, { t: 'err', m: 'That lobby is full.' }); return; }
   if (c.room) leaveRoom(c, true);
   room.members.add(c.id);
@@ -1157,8 +1183,10 @@ function tickRoom(room, now) {
 
 // ------------------------------------------------------------------ networking
 const wss = new WebSocketServer({ server, path: '/ws' });
-wss.on('connection', ws => {
-  const c = { id: nextId++, ws, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
+wss.on('connection', (ws, req) => {
+  // players over the Cloudflare tunnel all arrive from localhost; their real address is in this header
+  const ip = String(req?.headers?.['cf-connecting-ip'] || '').slice(0, 64);
+  const c = { id: nextId++, ws, ip, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
   clients.set(c.id, c);
   ws.on('message', raw => {
     let m;
@@ -1168,12 +1196,16 @@ wss.on('connection', ws => {
     const e = room && room.state !== 'lobby' ? room.ents.get(c.id) : null;
     switch (m.t) {
       case 'hello':
-        c.name = cleanText(m.name, 16) || 'Player';
+        c.name = cleanName(m.name, 16, 'Player') || 'Player';
         c.dev = isDevCode(m.dev);
+        c.pid = /^[a-z0-9]{8,32}$/.test(m.pid || '') ? m.pid : '';
+        // a ban from another server travels with the player's app
+        if (Number(m.ban) > Date.now()) c.banUntil = Math.min(Number(m.ban), Date.now() + BAN_MS);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
+        if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c) });
         sendLobbies(c);
         scheduleLobbies();
         break;
@@ -1199,7 +1231,7 @@ wss.on('connection', ws => {
       case 'set':
         if (room && room.hostId === c.id && room.state === 'lobby') {
           room.settings = sanitizeSettings({ ...room.settings, ...(m.settings || {}) }, room.settings);
-          if (typeof m.name === 'string') room.name = cleanText(m.name, 28) || room.name;
+          if (typeof m.name === 'string') room.name = cleanName(m.name, 28, '') || room.name;
           if (typeof m.private === 'boolean') room.private = m.private;
           room.ready.clear();
           sendRoom(room);
@@ -1270,11 +1302,15 @@ wss.on('connection', ws => {
       }
       case 'chat': {
         const text = String(m.m || '').slice(0, 120).trim();
-        if (text && room) roomBroadcast(room, { t: 'chat', n: c.name, dv: c.dev ? 1 : 0, m: text });
+        if (!text || !room) break;
+        if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); break; }
+        const f = filterChat(text);
+        if (f.ban) { banClient(c); break; }
+        roomBroadcast(room, { t: 'chat', n: c.name, dv: c.dev ? 1 : 0, m: f.text });
         break;
       }
       case 'look':
-        c.name = cleanText(m.name, 16) || c.name;
+        c.name = cleanName(m.name, 16, 'Player') || c.name;
         if (m.dev !== undefined) c.dev = isDevCode(m.dev);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
