@@ -30,13 +30,16 @@ function encode(op, data) {
 // Discord rejects text shorter than 2 or longer than 128 characters
 const txt = (s) => { s = String(s || '').trim(); if (!s) return undefined; if (s.length < 2) s += ' '; return s.length > 128 ? s.slice(0, 127) + '…' : s; };
 
-function createPresence(log = () => {}) {
+// onStatus gets { state: 'searching' | 'connected' | 'error', user, error } whenever it changes (shown in the app)
+function createPresence(log = () => {}, onStatus = () => {}) {
   let sock = null, ready = false, stopped = !CLIENT_ID, retry = null, nonce = 0;
+  let status = { state: CLIENT_ID ? 'searching' : 'off' };
+  const setStatus = (st) => { if (JSON.stringify(st) === JSON.stringify(status)) return; status = st; if (st.state !== 'searching') log(`discord: ${st.state}${st.user ? ' as ' + st.user : ''}${st.error ? ' - ' + st.error : ''}`); try { onStatus(st); } catch {} };
   let wanted = null, sentJson = '', lastSend = 0, sendTimer = null;
 
   function connect(i = 0) {
     if (stopped || sock) return;
-    if (i > 9) { schedule(); return; }
+    if (i > 9) { setStatus(status.state === 'error' ? status : { state: 'searching' }); schedule(); return; }
     const s = net.createConnection(pipePath(i));
     let buf = Buffer.alloc(0), opened = false;
     s.once('connect', () => {
@@ -52,10 +55,10 @@ function createPresence(log = () => {}) {
         try { msg = JSON.parse(buf.slice(8, 8 + len).toString('utf8')); } catch {}
         buf = buf.slice(8 + len);
         if (op === OP.PING) { try { s.write(encode(OP.PONG, msg)); } catch {} }
-        else if (op === OP.CLOSE) { if (msg) log(`discord closed the connection: ${msg.message || msg.code}`); s.destroy(); }
+        else if (op === OP.CLOSE) { setStatus({ state: 'error', error: msg ? `${msg.message || ''} (${msg.code})` : 'closed' }); s.destroy(); }
         else if (op === OP.FRAME && msg) {
-          if (msg.evt === 'READY') { ready = true; sentJson = ''; flush(); }
-          else if (msg.evt === 'ERROR') log(`discord: ${msg.data && msg.data.message}`);
+          if (msg.evt === 'READY') { ready = true; sentJson = ''; const u = msg.data && msg.data.user; setStatus({ state: 'connected', user: u ? (u.global_name || u.username) : '' }); flush(); }
+          else if (msg.evt === 'ERROR') setStatus({ ...status, state: 'error', error: (msg.data && msg.data.message) || 'error' });
         }
       }
     });
@@ -63,6 +66,7 @@ function createPresence(log = () => {}) {
     s.on('close', () => {
       if (!opened) { connect(i + 1); return; } // try the next pipe (several Discord builds can be running)
       if (sock === s) { sock = null; ready = false; }
+      if (status.state === 'connected') setStatus({ state: 'searching' });
       schedule();
     });
   }
@@ -100,7 +104,7 @@ function createPresence(log = () => {}) {
   }
 
   connect();
-  return { set, stop, enabled: !!CLIENT_ID };
+  return { set, stop, enabled: !!CLIENT_ID, status: () => status };
 }
 
 module.exports = { createPresence };

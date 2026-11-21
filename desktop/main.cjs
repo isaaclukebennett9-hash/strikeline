@@ -229,7 +229,7 @@ async function goOnline() {
 function stopAll() { quitting = true; if (presence) { try { presence.stop(); } catch {} presence = null; } if (host.tunnel) { try { host.tunnel.kill(); } catch {} } if (host.server) { try { host.server.kill(); } catch {} } }
 
 function hostState() {
-  return { port: host.port, code: host.code, url: host.url, online: host.online, joined, update, gameUpdate, version: appVersion(), gameVersion: devConfig() ? 'dev' : installedGame().version };
+  return { port: host.port, code: host.code, url: host.url, online: host.online, joined, update, gameUpdate, version: appVersion(), gameVersion: devConfig() ? 'dev' : installedGame().version, discord: presence ? presence.status() : null };
 }
 function pushState() { send('state', hostState()); }
 function updateTitle() {
@@ -445,7 +445,7 @@ else {
     // (reloads the page = "kicked to the main menu"), plus Ctrl+-/= zoom and Ctrl+M minimise.
     Menu.setApplicationMenu(null);
     createWindow();
-    if (!process.env.STRIKELINE_SELFTEST) { try { presence = createPresence(crashLog); presence.set({ details: 'Starting up', start: Date.now() }); } catch (err) { crashLog(`discord presence: ${err.message}`); } }
+    if (!process.env.STRIKELINE_SELFTEST) { try { presence = createPresence(crashLog, pushState); presence.set({ details: 'Starting up', start: Date.now() }); } catch (err) { crashLog(`discord presence: ${err.message}`); } }
     win.webContents.once('did-finish-load', boot);
     if (process.env.STRIKELINE_SELFTEST) selfTest();
   });

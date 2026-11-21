@@ -75,6 +75,12 @@ if (location.protocol.startsWith('http')) {
               <div class="row"><input id="dkCode" placeholder="Paste their code or link" spellcheck="false" autocomplete="off"><button id="dkJoin" ${busy ? 'disabled' : ''}>${busy ? '…' : 'JOIN'}</button></div>`;
         if (joinMsg) h += `<div class="msg ${joinErr ? 'err' : ''}">${esc(joinMsg)}</div>`;
       }
+      if (st.discord) { // Discord Rich Presence status, so it's clear why your status does or doesn't show
+        const d = st.discord;
+        const t = d.state === 'connected' ? `Connected${d.user ? ' as ' + d.user : ''} — your status shows "Playing Strikeline"`
+          : d.state === 'error' ? `Discord said: ${d.error}` : `Looking for Discord… (is the Discord app open? Discord in a browser can't show game status)`;
+        h += `<div class="sep"></div><div class="hd">DISCORD</div><div class="msg ${d.state === 'error' ? 'err' : ''}">${esc(t)}</div>`;
+      }
       const keep = badge.querySelector('#dkCode')?.value || '';
       badge.innerHTML = h;
       const ci = badge.querySelector('#dkCode'); if (ci) ci.value = keep;
