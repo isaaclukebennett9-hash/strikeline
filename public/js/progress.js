@@ -161,14 +161,22 @@ const DEV_KEY = 'strikeline_devcode', DEV_SHA = '592825ecebd9678f878dfce975fbb05
 const shaHex = str => [...sha256(enc.encode(str))].map(v => v.toString(16).padStart(2, "0")).join("");
 const normCode = code => String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const checkCode = code => { const c = normCode(code); return c.length >= 12 && shaHex(c) === DEV_SHA; };
+// Kept in the app's own save (like the profile), so it survives the game opening on a new address — a different
+// local port or a friend's tunnel link each have their own empty browser storage. Browser storage is the fallback.
 let devCache = null;
+const readDevCode = () => { try { return store.get(DEV_KEY) || localStorage.getItem(DEV_KEY) || ''; } catch { return ''; } };
 export const isDev = () => {
-  if (devCache === null) { try { devCache = checkCode(localStorage.getItem(DEV_KEY)); } catch { devCache = false; } }
+  if (devCache === null) {
+    const c = readDevCode();
+    devCache = checkCode(c);
+    if (devCache && desk) { try { if (desk.get(DEV_KEY) !== c) desk.set(DEV_KEY, c); } catch {} } // older saves: copy into the app save
+  }
   return devCache;
 };
-export const devCode = () => { try { return isDev() ? localStorage.getItem(DEV_KEY) || '' : ''; } catch { return ''; } };
+export const devCode = () => (isDev() ? readDevCode() : '');
 export function tryDevCode(code) {
   if (!checkCode(code)) return false;
+  store.set(DEV_KEY, normCode(code));
   try { localStorage.setItem(DEV_KEY, normCode(code)); localStorage.removeItem('strikeline_dev'); } catch {}
   devCache = true;
   return true;
