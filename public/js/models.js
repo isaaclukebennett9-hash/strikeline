@@ -1713,7 +1713,7 @@ function buildGunInner(model, S, att, g) {
       cyl(g, 0.014, 0.012, M.plasmaCore, 0, 0.0425, -0.807, 12);                    // emitter
       // energy cell magazine (glowing window) + pistol grip
       magObj = mag(g, -0.12, 0.12, 0.05, 0.036, 0.06, M.dark, -0.02, 0.0);
-      box(g, 0.038, 0.06, 0.03, M.plasma, 0, -0.08, -0.12);
+      box(magObj, 0.038, 0.06, 0.03, M.plasma, 0, -0.06, 0);                       // glowing cell window (moves with the mag)
       triggerGroup(g, 0.03, M.grip, 0.3, -0.02);
       // skeleton stock
       prof(g, [[0.1, 0.085], [0.34, 0.07], [0.36, 0.06], [0.36, -0.04], [0.33, -0.04], [0.2, 0.0], [0.1, 0.0]], 0.04, M.dark, 0, 0.006, [[[0.15, 0.06], [0.3, 0.052], [0.3, 0.0], [0.2, 0.02], [0.15, 0.02]]]);
