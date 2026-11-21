@@ -153,12 +153,7 @@ export const UNLOCKS = {
   'op:ghost': { price: 4500, level: 8 }, 'op:toxic': { price: 6000, level: 14 }, 'op:shadow': { price: 9000, level: 20 }, 'op:royal': { price: 14000, level: 28 },
   // developer skins: unlocked on this PC with the dev code (Skins screen)
   'ws:dev': { dev: true }, 'ws:glitch': { dev: true }, 'op:dev': { dev: true }, 'op:devgold': { dev: true },
-  // the developer's own PC only, while it hosts (its server says so in 'hi'; the server also refuses it for anyone else)
-  annihilator: { host: true },
 };
-const HOST_KEY = 'strikeline_hostpc';
-let hostPC = (() => { try { return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && store.get(HOST_KEY) === '1'; } catch { return false; } })();
-export const setHostPC = v => { hostPC = !!v; store.set(HOST_KEY, v ? '1' : '0'); };
 // Only the SHA-256 of the code lives here; the PC keeps the code itself, so the unlock can't be faked by copying a value from this file.
 const DEV_KEY = 'strikeline_devcode', DEV_SHA = '592825ecebd9678f878dfce975fbb0509465067ff1f8966038b7b36d7cf067e6';
 const shaHex = str => [...sha256(enc.encode(str))].map(v => v.toString(16).padStart(2, "0")).join("");
@@ -181,7 +176,6 @@ export const isUnlocked = key => {
   const u = UNLOCKS[key];
   if (!u) return true;
   if (u.dev) return isDev();
-  if (u.host) return hostPC;
   if (isCosmetic(key)) return !u.price || profile.owned.includes(key);
   return levelInfo().level >= u.level;
 };

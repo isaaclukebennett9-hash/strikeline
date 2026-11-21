@@ -1186,10 +1186,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws, req) => {
   // players over the Cloudflare tunnel all arrive from localhost; their real address is in this header
   const ip = String(req?.headers?.['cf-connecting-ip'] || '').slice(0, 64);
-  // the player sitting at this PC (not through the tunnel or the LAN), on the developer's own server: may use host-only guns
-  const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(String(req?.socket?.remoteAddress || ''));
-  const hostPC = FB_OWNER && local && !ip && !req?.headers?.['cf-ray'] && !req?.headers?.['x-forwarded-for'];
-  const c = { id: nextId++, ws, ip, hostPC, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
+  const c = { id: nextId++, ws, ip, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
   clients.set(c.id, c);
   ws.on('message', raw => {
     let m;
@@ -1207,7 +1204,7 @@ wss.on('connection', (ws, req) => {
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
-        sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER, hostPC: c.hostPC ? 1 : 0 });
+        sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
         if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c) });
         sendLobbies(c);
         scheduleLobbies();
@@ -1349,13 +1346,12 @@ wss.on('connection', (ws, req) => {
           if (e.alive) { (e.hist || (e.hist = [])).push([Math.round(e.pt), r2(e.pos[0]), r2(e.pos[1]), r2(e.pos[2]), r2(+m.ry || 0), r2(+m.rx || 0), m.c ? 1 : 0]); if (e.hist.length > 16) e.hist.shift(); }
         } else e.pt = undefined;
         e.ry = +m.ry || 0; e.rx = +m.rx || 0; e.c = m.c ? 1 : 0;
-        if (WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade' && (!WEAPONS[m.w].hostOnly || c.hostPC)) e.w = m.w;
+        if (WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade') e.w = m.w;
         break;
       }
       case 'fire': {
         const def = WEAPONS[m.w];
         if (!e || !def || def.slot === 'grenade' || !e.alive || room.state !== 'playing') return;
-        if (def.hostOnly && !c.hostPC) return;
         const zombie = room.settings.mode === 'infected' && e.team === 1;
         if (zombie && def.id !== 'knife') return;
         const now = Date.now();

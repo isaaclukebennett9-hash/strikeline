@@ -59,8 +59,6 @@ const M = {
   toyWhite: new THREE.MeshStandardMaterial({ color: '#f2f4f7', roughness: 0.5 }),
   redTank: new THREE.MeshStandardMaterial({ color: '#b8261e', roughness: 0.35, metalness: 0.5 }),
   laser: new THREE.MeshBasicMaterial({ color: '#ff2020' }),
-  plasma: new THREE.MeshBasicMaterial({ color: '#c04bff' }),        // Annihilator coils / energy cell
-  plasmaCore: new THREE.MeshBasicMaterial({ color: '#f3d8ff' }),
   // real-world furniture / factory finishes so guns don't all look the same grey
   fde: new THREE.MeshStandardMaterial({ color: '#b39a6e', roughness: 0.62, metalness: 0.15 }),
   coyote: new THREE.MeshStandardMaterial({ color: '#7c6646', roughness: 0.66, metalness: 0.1 }),
@@ -1687,43 +1685,6 @@ function buildGunInner(model, S, att, g) {
       irons = { cy: 0.09, zr: 0.08, zf: -0.63 };
       optic(0.112, -0.05, 0.077, -0.14, 0.04); spot.side = true;
       muzzleZ = -0.682; muzzleY = 0.042; left = [-0.02, -0.04, -0.34];
-      break;
-    }
-
-    case 'annihilator': {
-      // prototype rail rifle: angular armoured receiver, twin rails wrapped in glowing coils, energy-cell mag, skeleton stock
-      prof(g, [[0.1, 0.0], [0.1, 0.085], [0.05, 0.1], [-0.3, 0.1], [-0.34, 0.08], [-0.34, 0.0], [-0.3, -0.02], [0.06, -0.02]], 0.07, S, 0, 0.008);   // receiver
-      prof(g, [[0.0, 0.07], [-0.26, 0.07], [-0.26, 0.05], [0.0, 0.05]], 0.0715, M.black, 0, 0.002);   // side groove
-      for (const s of [-1, 1]) {
-        box(g, 0.004, 0.014, 0.24, M.plasma, s * 0.036, 0.06, -0.13);              // glowing side strips
-        for (let z = -0.28; z < 0.06; z += 0.04) box(g, 0.006, 0.006, 0.006, M.steel, s * 0.036, 0.088, z);   // rivets
-        for (let z = -0.25; z < -0.05; z += 0.018) box(g, 0.004, 0.03, 0.008, M.black, s * 0.0365, 0.018, z);   // cooling slots
-      }
-      // twin rails with coils between two armoured shrouds
-      for (const y of [0.065, 0.02]) box(g, 0.022, 0.012, 0.42, M.steel, 0, y, -0.55);
-      cyl(g, 0.008, 0.42, M.plasmaCore, 0, 0.0425, -0.55, 10);                     // charge core between the rails
-      for (let i = 0; i < 9; i++) {
-        const z = -0.38 - i * 0.038;
-        box(g, 0.05, 0.062, 0.012, M.dark, 0, 0.0425, z);                           // coil frame
-        box(g, 0.054, 0.012, 0.014, M.plasma, 0, 0.0425, z);                        // glowing coil band
-      }
-      box(g, 0.06, 0.08, 0.05, S, 0, 0.0425, -0.78);                                // muzzle block
-      box(g, 0.062, 0.016, 0.052, M.plasma, 0, 0.0425, -0.78);
-      for (let i = 0; i < 3; i++) box(g, 0.064, 0.006, 0.006, M.black, 0, 0.012 + i * 0.03, -0.8);   // vents
-      cyl(g, 0.014, 0.012, M.plasmaCore, 0, 0.0425, -0.807, 12);                    // emitter
-      // energy cell magazine (glowing window) + pistol grip
-      magObj = mag(g, -0.12, 0.12, 0.05, 0.036, 0.06, M.dark, -0.02, 0.0);
-      box(magObj, 0.038, 0.06, 0.03, M.plasma, 0, -0.06, 0);                       // glowing cell window (moves with the mag)
-      triggerGroup(g, 0.03, M.grip, 0.3, -0.02);
-      // skeleton stock
-      prof(g, [[0.1, 0.085], [0.34, 0.07], [0.36, 0.06], [0.36, -0.04], [0.33, -0.04], [0.2, 0.0], [0.1, 0.0]], 0.04, M.dark, 0, 0.006, [[[0.15, 0.06], [0.3, 0.052], [0.3, 0.0], [0.2, 0.02], [0.15, 0.02]]]);
-      box(g, 0.003, 0.012, 0.18, M.plasma, 0.0205, 0.06, 0.24);
-      buttPad(g, 0.044, 0.1, 0.022, 0.37);
-      rail(g, 0.101, -0.3, 0.06);
-      irons = { cy: 0.124, zr: 0.04, zf: -0.3 };
-      optic(0.135, -0.12, 0.105, -0.29, 0.05);
-      under = { y: 0.0, z: -0.45 };
-      muzzleZ = -0.82; muzzleY = 0.0425; left = [-0.02, -0.03, -0.42];
       break;
     }
 
