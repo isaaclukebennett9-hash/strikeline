@@ -262,7 +262,7 @@ body.regret-dead { background: #000 !important; animation: none; }
 #topbar small { font-size: 11px; color: var(--muted); letter-spacing: 1px; display: block; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 700; }
 #timer { font: 800 26px Orbitron, sans-serif; min-width: 120px; }
 #netgraph { position: absolute; top: 12px; right: 16px; font: 700 12px Rajdhani, monospace; letter-spacing: 1px; color: #cfd6e4; background: rgba(0,0,0,0.45); border-radius: 6px; padding: 4px 8px; white-space: nowrap; }
-#flashfx, #stunfx, #burnfx { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+#flashfx, #stunfx, #burnfx, #frostfx { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
 #flashfx { background: #fff; z-index: 30; }
 #stunfx { background: radial-gradient(ellipse at center, rgba(120,170,255,0.05) 30%, rgba(40,90,200,0.55) 100%); backdrop-filter: blur(2px); }
 #burnfx { background: radial-gradient(ellipse at center, transparent 45%, rgba(255,110,20,0.55) 100%); }
@@ -632,3 +632,21 @@ td.t0 { color: #7fb2ff; } td.t1 { color: #ff8a8a; }
 
 /* Armory: the gun the Gunsmith will open (clicked), shown even when it isn't the equipped one */
 #primaries button.viewing, #secondaries button.viewing { outline: 2px solid rgba(255, 176, 102, 0.85); outline-offset: -2px; }
+
+/* Christmas: snowball frost on the screen edges */
+#frostfx { background: radial-gradient(ellipse at center, rgba(255,255,255,0) 45%, rgba(225,240,255,0.55) 78%, rgba(255,255,255,0.92) 100%); transition: opacity 0.25s; }
+
+/* Christmas Update: home tag, menu snowfall, Christmas tab, update card */
+.xmas-tag { display: inline-flex; align-items: center; gap: 10px; margin: 8px 0 4px; padding: 6px 14px; border: 1px solid rgba(255,77,94,0.6); background: linear-gradient(90deg, rgba(200,16,46,0.55), rgba(29,107,58,0.55)); color: #fff; font: 800 13px Orbitron, sans-serif; letter-spacing: 2px; cursor: pointer; box-shadow: 0 0 18px rgba(255,77,94,0.25); }
+.xmas-tag small { font: 600 12px Rajdhani, sans-serif; letter-spacing: 0; color: #ffe9a8; }
+.xmas-tag:hover { filter: brightness(1.15); }
+#menuSnow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+#menuSnow i { position: absolute; top: -12px; border-radius: 50%; background: #fff; opacity: 0.8; animation: menuFlake linear infinite; }
+@keyframes menuFlake { to { transform: translate3d(var(--dx), 105vh, 0); } }
+body.nosnow #menuSnow { display: none; }
+#armTabs button.xmas { color: #ffd6da; border-color: rgba(255,77,94,0.55); }
+#armTabs button.xmas.on { background: linear-gradient(90deg, #b3141f, #1d6b3a); color: #fff; }
+.xmas-card { border-top-color: #ff4d5e; background: linear-gradient(180deg, rgba(200,16,46,0.3), rgba(29,107,58,0.18) 35%, transparent 60%), var(--panel-2); }
+.xmas-card .gift-from { color: #ff8a96; }
+.xmas-card .gift-list li { border-left-color: #ff4d5e; }
+.xmas-card .gift-list li:nth-child(even) { border-left-color: #2fae4e; }

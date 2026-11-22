@@ -224,6 +224,10 @@ export const WEAPONS = {
     dmg: 130, splash: 4.5, fuse: 1.8, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 40, falloff: [40, 41, 1], snd: { f: 900, d: 0.6, b: 55, v: 1.0 } }),
   molotov: W({ id: 'molotov', name: 'Molotov', slot: 'grenade', throwable: 'lethal', desc: 'Shatters into a pool of fire', type: 'Incendiary', model: 'none',
     dmg: 8, splash: 3.6, fuse: 6, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 40, falloff: [40, 41, 1], snd: { f: 900, d: 0.6, b: 55, v: 1.0 } }),
+  present: W({ id: 'present', name: 'Exploding Present', slot: 'grenade', throwable: 'lethal', desc: 'Christmas: bounces, bursts into confetti after 2.2s', type: 'Grenade', model: 'none',
+    dmg: 135, splash: 5.5, fuse: 2.2, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 40, falloff: [40, 41, 1], snd: { f: 900, d: 0.6, b: 55, v: 1.0 } }),
+  snowball: W({ id: 'snowball', name: 'Snowball', slot: 'grenade', throwable: 'tactical', desc: 'Christmas: splats on impact, slows and frosts anyone it hits', type: 'Snowball', model: 'none',
+    dmg: 12, splash: 2.4, fuse: 4, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 40, falloff: [40, 41, 1], snd: { f: 900, d: 0.6, b: 55, v: 1.0 } }),
   tknife: W({ id: 'tknife', name: 'Throwing Knife', slot: 'grenade', throwable: 'lethal', desc: 'One-hit kill on a direct hit', type: 'Throwing Knife', model: 'none',
     dmg: 150, head: 1, rpm: 60, mag: 0, reserve: 0, reload: 0, spread: 0, adsSpread: 0, moveSpread: 0, recoil: 0, range: 60, falloff: [60, 61, 1], snd: { f: 5000, d: 0.08, b: 0, v: 0.3 } }),
   smoke: W({ id: 'smoke', name: 'Smoke Grenade', slot: 'grenade', throwable: 'tactical', desc: 'Thick smoke wall for 14 seconds', type: 'Smoke', model: 'none',
@@ -241,6 +245,19 @@ export const WEAPONS = {
     falloff: [10, 11, 1], speed: 1.15, zoom: 1, snd: { f: 5000, d: 0.08, b: 0, v: 0.3 } }),
 };
 
+// =========================================================== CHRISTMAS (Christmas Update): festive versions of base guns,
+// each with its own model decorations and tuning. xmas: true puts them on the Armory's Christmas tab.
+const XMAS = {
+  nutcracker: ['falcon', { name: 'Nutcracker AR', type: 'Festive Assault Rifle', dmg: 28, rpm: 630, mag: 32, reserve: 192 }],
+  sleighbell: ['vector', { name: 'Sleigh Bell SMG', type: 'Festive SMG', dmg: 19, rpm: 960, mag: 36, reserve: 216, snd: { f: 3500, d: 0.13, b: 155, v: 0.68, bell: true } }],
+  krampus: ['breacher', { name: 'Krampus', type: 'Festive Pump Shotgun', dmg: 17, falloff: [8, 22, 0.3], range: 30 }],
+  northstar: ['longbow', { name: 'North Star', type: 'Festive Bolt-Action Sniper', dmg: 120, bolt: 0.9 }],
+  candycane: ['viper', { name: 'Candy Cane .45', type: 'Festive Pistol', dmg: 31, rpm: 390, mag: 14, reserve: 84 }],
+};
+for (const [id, [from, o]] of Object.entries(XMAS)) {
+  const b = WEAPONS[from];
+  WEAPONS[id] = { ...b, ...o, id, model: id, xmas: true, snd: o.snd || { ...b.snd }, falloff: o.falloff || [...b.falloff] };
+}
 for (const id of ['tommy', 'ppsh', 'kar98']) WEAPONS[id].era = 'ww2';
 export const ERA_NAMES = { ww1: 'WW1', ww2: 'WW2' };
 for (const id of ['dartsniper', 'dartshotgun']) WEAPONS[id].cls = 'foam';
@@ -249,10 +266,11 @@ for (const w of Object.values(WEAPONS)) if (w.dart) w.snd = { ...(w.snd || {}), 
 export const CLASS_NAMES = { ar: 'Assault Rifles', smg: 'SMGs', lmg: 'LMGs', shotgun: 'Shotguns', dmr: 'Marksman', sniper: 'Snipers', special: 'Special', energy: 'Energy', foam: 'Foam Blasters', pistol: 'Secondaries' };
 export const PRIMARIES = Object.values(WEAPONS).filter(w => w.slot === 'primary').map(w => w.id);
 export const SECONDARIES = Object.values(WEAPONS).filter(w => w.slot === 'secondary').map(w => w.id);
-export const LETHALS = ['frag', 'semtex', 'molotov', 'tknife'];
-export const TACTICALS = ['smoke', 'flash', 'stun'];
-export const THROWABLE_KINDS = ['frag', 'semtex', 'molotov', 'tknife', 'smoke', 'flash', 'stun'];
-export const BOT_WEAPONS = ['falcon', 'vector', 'marksman', 'hammer', 'kestrel', 'tri', 'ak47', 'mp5', 'm249', 'g36c', 'famas', 'scarh', 'ppsh', 'tommy', 'aug', 'galil', 'r4c', 'bizon', 'mp40', 'stg44', 'bar', 'sten'];
+export const LETHALS = ['frag', 'semtex', 'molotov', 'tknife', 'present'];
+export const TACTICALS = ['smoke', 'flash', 'stun', 'snowball'];
+// new kinds go on the end: the index is what snapshots send
+export const THROWABLE_KINDS = ['frag', 'semtex', 'molotov', 'tknife', 'smoke', 'flash', 'stun', 'present', 'snowball'];
+export const BOT_WEAPONS = ['falcon', 'vector', 'marksman', 'hammer', 'kestrel', 'tri', 'ak47', 'mp5', 'm249', 'g36c', 'famas', 'scarh', 'ppsh', 'tommy', 'aug', 'galil', 'r4c', 'bizon', 'mp40', 'stg44', 'bar', 'sten', 'nutcracker', 'sleighbell'];
 
 export function falloffMult(def, dist) {
   const [a, b, m] = def.falloff;
@@ -270,6 +288,7 @@ const IRONS = {
   ppsh: 'ring', mp5: 'ring', tommy: 'aperture', bizon: 'notch', skorpion: 'notch', ak47: 'notch', pkm: 'notch', asval: 'notch',
   hammer: 'notch', breacher: 'ghost', ksg: 'ghost', spas12: 'ghost', benelli: 'ghost', scorpion: 'ghost', tcsg: 'ghost', dartshotgun: 'toy', dartsniper: 'toy', kar98: 'notch',
   foamlmg: 'toy', ballblaster: 'toy', breakfoam: 'toy', megabolt: 'toy', foampistol: 'toy', minigun: 'notch',
+  candycane: 'pistol', krampus: 'ghost',
   m1911: 'pistol', luger: 'pistol', mp40: 'notch', mp18: 'notch', stg44: 'notch', mg42: 'notch', trench: 'bead',
 };
 for (const w of Object.values(WEAPONS)) if (!w.throwable && !w.melee) w.irons = IRONS[w.id] || 'aperture';
@@ -351,6 +370,7 @@ const RELOAD = {
   marksman: { insert: 'push', charge: 'release', roll: 0.28, tilt: 0.2, bump: true },
   longbow: { insert: 'push', charge: 'bolt', roll: 0.3, tilt: 0.15, bump: true },
 };
+for (const [id, from] of [['nutcracker', 'falcon'], ['sleighbell', 'vector'], ['candycane', 'viper']]) RELOAD[id] = { ...RELOAD[from] };
 for (const w of Object.values(WEAPONS)) {
   if (w.throwable || w.melee) continue;
   const r = hash(w.id + 'r');

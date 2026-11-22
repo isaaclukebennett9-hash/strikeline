@@ -690,10 +690,114 @@ export const WEAPON_SKINS = [
   { id: 'dragon', name: 'Dragon Scale', rarity: 'epic', swatch: 'radial-gradient(circle at 50% 30%, #e0303a, #9c1620 60%, #3a0609)' },
   { id: 'aurora', name: 'Aurora', rarity: 'legendary', swatch: 'linear-gradient(180deg, #05101c 15%, #38ffb0 40%, #7a5cff 65%, #05101c 90%)' },
   { id: 'gift', name: "Logan's Gift", rarity: 'legendary', swatch: 'linear-gradient(90deg, #0d4a2c 42%, #f2c14e 42% 58%, #0d4a2c 58%)' },
+  // Christmas Update: festive camos
+  { id: 'xcandy', name: 'Candy Cane', rarity: 'festive', swatch: 'repeating-linear-gradient(45deg, #f6f2ea 0 6px, #d4142a 6px 11px)' },
+  { id: 'xsweater', name: 'Ugly Sweater', rarity: 'festive', swatch: 'linear-gradient(180deg, #b3141f 30%, #f4efe4 30% 40%, #1d6b3a 40% 60%, #f4efe4 60% 70%, #b3141f 70%)' },
+  { id: 'xwrap', name: 'Wrapping Paper', rarity: 'festive', swatch: 'radial-gradient(circle, #ffffff 15%, transparent 16%) 0 0/9px 9px, #c8102e' },
+  { id: 'xginger', name: 'Gingerbread', rarity: 'festive', swatch: 'radial-gradient(circle at 50% 45%, #fff 18%, #a0612d 20%)' },
+  { id: 'xfrost', name: 'Hoarfrost', rarity: 'festive', swatch: 'linear-gradient(135deg, #e9f6ff, #9fd2ff 50%, #e9f6ff)' },
+  { id: 'xkrampus', name: 'Krampus', rarity: 'festive', swatch: 'linear-gradient(135deg, #120708 40%, #8c0f16 40% 50%, #120708 50%)' },
+  { id: 'xnut', name: 'Nutcracker', rarity: 'festive', swatch: 'linear-gradient(180deg, #b0121c 40%, #e8c15a 40% 52%, #b0121c 52%)' },
+  { id: 'xlights', name: 'Fairy Lights', rarity: 'festive', swatch: 'radial-gradient(circle at 25% 30%, #ff3b3b 10%, transparent 12%), radial-gradient(circle at 70% 40%, #3bff6a 10%, transparent 12%), radial-gradient(circle at 45% 75%, #ffd23b 10%, transparent 12%), #0c1a12' },
   { id: 'dev', name: 'Dev Circuit', rarity: 'dev', swatch: 'repeating-linear-gradient(90deg, #07140e 0 6px, #39ff9c 6px 8px)' },
   { id: 'glitch', name: 'Glitch', rarity: 'dev', swatch: 'linear-gradient(90deg, #0a0a0f 30%, #ff2a3a 30% 45%, #0a0a0f 45% 60%, #22e5ff 60% 75%, #0a0a0f 75%)' },
 ];
-export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e', dev: '#39ff9c' };
+export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e', festive: '#ff4d5e', dev: '#39ff9c' };
+
+// ---------------------------------------------------------------- Christmas camos
+const snowflake = (x, cx, cy, r, w = 1.5) => {
+  x.lineWidth = w; x.lineCap = 'round'; x.beginPath();
+  for (let k = 0; k < 6; k++) {
+    const a = k / 6 * Math.PI * 2, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+    x.moveTo(cx, cy); x.lineTo(ex, ey);
+    for (const s of [-1, 1]) { const mx = cx + Math.cos(a) * r * 0.6, my = cy + Math.sin(a) * r * 0.6, b = a + s * 0.7; x.moveTo(mx, my); x.lineTo(mx + Math.cos(b) * r * 0.32, my + Math.sin(b) * r * 0.32); }
+  }
+  x.stroke();
+};
+function festiveSkin(id) {
+  const rnd = mulberry32(id.length * 977 + id.charCodeAt(1));
+  switch (id) {
+    case 'xcandy': { // red and white peppermint stripes with a thin green pinstripe and a glossy finish
+      const [c, x] = mkCanvas(256); x.fillStyle = '#f6f2ea'; x.fillRect(0, 0, 256, 256);
+      x.save(); x.translate(128, 128); x.rotate(-Math.PI / 4); x.translate(-256, -256);
+      for (let i = 0; i < 512; i += 48) { x.fillStyle = '#d4142a'; x.fillRect(i, 0, 22, 512); x.fillStyle = '#2f8a46'; x.fillRect(i + 30, 0, 4, 512); }
+      x.restore();
+      noise(x, 256, 5);
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.18, metalness: 0.05 });
+    }
+    case 'xsweater': { // knitted Christmas jumper: red/green/cream bands, snowflakes, reindeer row, zigzags, knit texture
+      const [c, x] = mkCanvas(256);
+      const band = (y, h, col) => { x.fillStyle = col; x.fillRect(0, y, 256, h); };
+      band(0, 256, '#b3141f'); band(64, 64, '#1d6b3a'); band(176, 40, '#1d6b3a');
+      band(58, 6, '#f4efe4'); band(128, 6, '#f4efe4'); band(170, 6, '#f4efe4'); band(216, 6, '#f4efe4');
+      x.fillStyle = '#f4efe4';
+      for (let i = 0; i < 256; i += 16) { x.beginPath(); x.moveTo(i, 140); x.lineTo(i + 8, 148); x.lineTo(i + 16, 140); x.lineTo(i + 16, 144); x.lineTo(i + 8, 152); x.lineTo(i, 144); x.fill(); } // zigzag
+      x.strokeStyle = '#f4efe4'; for (let i = 0; i < 4; i++) snowflake(x, 32 + i * 64, 96, 18, 3);
+      for (let i = 0; i < 8; i++) { const px = 16 + i * 32, py = 196; x.fillRect(px - 8, py - 3, 14, 6); x.fillRect(px + 4, py - 9, 5, 6); x.fillRect(px - 7, py + 3, 2, 7); x.fillRect(px + 3, py + 3, 2, 7); x.fillRect(px + 6, py - 13, 1, 4); x.fillRect(px + 8, py - 13, 1, 4); }
+      for (let i = 0; i < 8; i++) { x.fillStyle = '#f4efe4'; x.fillRect(12 + i * 32, 24, 8, 8); x.fillStyle = '#1d6b3a'; x.fillRect(14 + i * 32, 26, 4, 4); }
+      x.fillStyle = 'rgba(0,0,0,0.13)'; for (let yy = 0; yy < 256; yy += 4) for (let xx = (yy / 4) % 2 * 2; xx < 256; xx += 4) x.fillRect(xx, yy, 2, 3); // knit stitches
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.95, metalness: 0 });
+    }
+    case 'xwrap': { // glossy red wrapping paper with white snowflakes and gold dots
+      const [c, x] = mkCanvas(256); x.fillStyle = '#c8102e'; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = '#ffffff'; for (let r = 0; r < 5; r++) for (let k = 0; k < 5; k++) snowflake(x, k * 52 + (r % 2) * 26 + 13, r * 52 + 13, 12, 2);
+      x.fillStyle = '#f2c14e'; for (let r = 0; r < 5; r++) for (let k = 0; k < 5; k++) { x.beginPath(); x.arc(k * 52 + (r % 2 ? 0 : 26) + 13, r * 52 + 39, 3, 0, 7); x.fill(); }
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.32, metalness: 0.15 });
+    }
+    case 'xginger': { // baked gingerbread with white icing squiggles, dots and gumdrop buttons
+      const [c, x] = mkCanvas(256); x.fillStyle = '#a0612d'; x.fillRect(0, 0, 256, 256);
+      blotches(x, 256, '#8a4f22', 40, 6, 22, 0.35); blotches(x, 256, '#b8743a', 30, 6, 18, 0.3);
+      x.strokeStyle = '#fbf7ef'; x.lineWidth = 4; x.lineCap = 'round';
+      for (let y = 20; y < 256; y += 64) { x.beginPath(); for (let px = 0; px <= 256; px += 4) x.lineTo(px, y + Math.sin(px / 10) * 6); x.stroke(); }
+      const gum = ['#e3243b', '#2fae4e', '#f2c14e'];
+      for (let r = 0; r < 4; r++) for (let k = 0; k < 6; k++) { x.fillStyle = gum[(r + k) % 3]; x.beginPath(); x.arc(k * 44 + 20 + (r % 2) * 22, r * 64 + 52, 6, 0, 7); x.fill(); x.fillStyle = 'rgba(255,255,255,0.5)'; x.beginPath(); x.arc(k * 44 + 18 + (r % 2) * 22, r * 64 + 50, 2, 0, 7); x.fill(); }
+      noise(x, 256, 10);
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.85, metalness: 0 });
+    }
+    case 'xfrost': { // icy blue-white metal with frost crystals growing across it
+      const [c, x] = mkCanvas(256);
+      const g = x.createLinearGradient(0, 0, 256, 256); g.addColorStop(0, '#dff1ff'); g.addColorStop(0.5, '#8fc6f2'); g.addColorStop(1, '#e7f5ff');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = 'rgba(255,255,255,0.85)';
+      const branch = (px, py, a, len, d) => { if (d > 4 || len < 3) return; const ex = px + Math.cos(a) * len, ey = py + Math.sin(a) * len; x.lineWidth = Math.max(0.6, 2.2 - d * 0.4); x.beginPath(); x.moveTo(px, py); x.lineTo(ex, ey); x.stroke(); branch(ex, ey, a + 0.5 + rnd() * 0.3, len * 0.62, d + 1); branch(ex, ey, a - 0.5 - rnd() * 0.3, len * 0.62, d + 1); branch(ex, ey, a, len * 0.7, d + 1); };
+      for (let i = 0; i < 14; i++) branch(rnd() * 256, rnd() * 256, rnd() * 6.28, 16 + rnd() * 14, 0);
+      for (let i = 0; i < 160; i++) { x.fillStyle = `rgba(255,255,255,${0.4 + rnd() * 0.6})`; x.fillRect(rnd() * 256, rnd() * 256, 1, 1); }
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.2, metalness: 0.6 });
+    }
+    case 'xkrampus': { // soot black with dark red claw marks and rusty chain links
+      const [c, x] = mkCanvas(256); x.fillStyle = '#120708'; x.fillRect(0, 0, 256, 256);
+      blotches(x, 256, '#2a0c0e', 30, 10, 40, 0.5);
+      for (let i = 0; i < 5; i++) { const px = rnd() * 256, py = rnd() * 256; for (let k = 0; k < 3; k++) { x.strokeStyle = '#8c0f16'; x.lineWidth = 3; x.beginPath(); x.moveTo(px + k * 9, py); x.quadraticCurveTo(px + k * 9 + 10, py + 30, px + k * 9 + 4, py + 60); x.stroke(); } }
+      x.strokeStyle = '#6b4a2a'; x.lineWidth = 3;
+      for (let i = 0; i < 12; i++) { x.beginPath(); x.ellipse(i * 22 + 10, 128 + (i % 2 ? 0 : 0), i % 2 ? 4 : 10, i % 2 ? 10 : 5, 0, 0, 7); x.stroke(); }
+      noise(x, 256, 10);
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.6, metalness: 0.35 });
+    }
+    case 'xnut': { // toy-soldier lacquer: gloss red with gold braid bands and buttons
+      const [c, x] = mkCanvas(256); x.fillStyle = '#b0121c'; x.fillRect(0, 0, 256, 256);
+      for (const y of [40, 168]) { x.fillStyle = '#e8c15a'; x.fillRect(0, y, 256, 18); x.fillStyle = '#b8902e'; for (let i = 0; i < 256; i += 8) { x.beginPath(); x.moveTo(i, y); x.lineTo(i + 4, y + 9); x.lineTo(i, y + 18); x.fill(); } }
+      for (let i = 0; i < 6; i++) for (const y of [104, 230]) { x.fillStyle = '#f2d27a'; x.beginPath(); x.arc(20 + i * 44, y, 6, 0, 7); x.fill(); x.fillStyle = '#9c7a22'; x.beginPath(); x.arc(20 + i * 44, y, 2.5, 0, 7); x.fill(); }
+      return new THREE.MeshStandardMaterial({ map: toTex(c), roughness: 0.15, metalness: 0.25 });
+    }
+    case 'xlights': { // dark pine green wrapped in a wire of glowing fairy lights (they twinkle)
+      const [c, x] = mkCanvas(256); const [e, ex] = mkCanvas(256);
+      x.fillStyle = '#0c1a12'; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
+      blotches(x, 256, '#173322', 30, 8, 30, 0.5);
+      const cols = ['#ff3b3b', '#3bff6a', '#ffd23b', '#3bb8ff', '#ff5bd6'];
+      for (let w = 0; w < 4; w++) {
+        const y0 = 32 + w * 64; x.strokeStyle = '#101010'; x.lineWidth = 2; x.beginPath();
+        for (let px = 0; px <= 256; px += 4) x.lineTo(px, y0 + Math.sin(px / 20 + w) * 12); x.stroke();
+        for (let px = 8; px < 256; px += 21) {
+          const py = y0 + Math.sin(px / 20 + w) * 12 + 5, col = cols[(px / 21 + w * 2 | 0) % cols.length];
+          for (const ctx of [x, ex]) { ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(px, py, 3.5, 5, 0, 0, 7); ctx.fill(); }
+        }
+      }
+      const m = new THREE.MeshStandardMaterial({ map: toTex(c), emissiveMap: toTex(e), emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.6, roughness: 0.5, metalness: 0.15 });
+      m.userData.pulse = true; return m;
+    }
+  }
+  return null;
+}
 
 function camo(cols, size = 256, count = 70) {
   const [c, x] = mkCanvas(size); x.fillStyle = cols[0]; x.fillRect(0, 0, size, size);
@@ -714,8 +818,8 @@ function camo(cols, size = 256, count = 70) {
 const skinCache = {};
 export function weaponSkinMaterial(id) {
   if (skinCache[id]) return skinCache[id];
-  let m;
-  switch (id) {
+  let m = festiveSkin(id);
+  if (!m) switch (id) {
     case 'woodland': m = new THREE.MeshStandardMaterial({ map: toTex(camo(['#4b5a32', '#2e3a1f', '#6b5a3a', '#1c1f16'])), roughness: 0.75, metalness: 0.1 }); break;
     case 'arctic': m = new THREE.MeshStandardMaterial({ map: toTex(camo(['#e3e8ed', '#aeb8c2', '#7b8794', '#ffffff'])), roughness: 0.7, metalness: 0.1 }); break;
     case 'crimson': {

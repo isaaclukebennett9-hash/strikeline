@@ -305,11 +305,90 @@ function muzzleBrake(g, y, z, r = 0.016, len = 0.06) {
 // Each model records where things mount: `spot` (optic: reticle height y, centre z, rail y), `under` (underbarrel),
 // `irons` (default iron sights). Moving parts for animations go in named groups (mag, bolt, pump, break, cover, tank).
 // userData: muzzle, sightY, adsZ, left, skin, parts {mag, bolt, pump, brk, cover, tank}, optic, scoped
+// Christmas guns are built on a base model, wear a festive factory finish and get their own decorations.
+const FESTIVE = { nutcracker: ['rifle', 'xnut'], sleighbell: ['smg', 'xsweater'], krampus: ['shotgun', 'xkrampus'], northstar: ['sniper', 'xfrost'], candycane: ['pistol', 'xcandy'] };
 export function buildGun(model, skinId = 'factory', att = {}) {
-  const S = (skinId === 'factory' && FACTORY[model]) || weaponSkinMaterial(skinId);
+  const fest = FESTIVE[model];
+  const S = (skinId === 'factory' && (fest ? weaponSkinMaterial(fest[1]) : FACTORY[model])) || weaponSkinMaterial(skinId);
   const g = new THREE.Group();
   ROUND = true;
-  try { return buildGunInner(model, S, att, g); } finally { ROUND = false; M.dark = M_DARK; M.grip = M_GRIP; }
+  try { const out = buildGunInner(fest ? fest[0] : model, S, att, g); if (fest) festiveDecor(model, out); return out; }
+  finally { ROUND = false; M.dark = M_DARK; M.grip = M_GRIP; }
+}
+const XM = {
+  gold: new THREE.MeshStandardMaterial({ color: '#e8c15a', roughness: 0.22, metalness: 1 }),
+  red: new THREE.MeshStandardMaterial({ color: '#c8102e', roughness: 0.45, metalness: 0.05 }),
+  white: new THREE.MeshStandardMaterial({ color: '#f6f2ea', roughness: 0.6 }),
+  fur: new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 1 }),
+  green: new THREE.MeshStandardMaterial({ color: '#1d6b3a', roughness: 0.6 }),
+  holly: new THREE.MeshStandardMaterial({ color: '#16502c', roughness: 0.4, metalness: 0.05 }),
+  berry: new THREE.MeshStandardMaterial({ color: '#d0101e', roughness: 0.2 }),
+  horn: new THREE.MeshStandardMaterial({ color: '#2a1d14', roughness: 0.5 }),
+  chain: new THREE.MeshStandardMaterial({ color: '#5a4a3a', roughness: 0.45, metalness: 0.8 }),
+  star: new THREE.MeshStandardMaterial({ color: '#fff1a8', emissive: new THREE.Color('#ffd23b'), emissiveIntensity: 2.2, roughness: 0.3 }),
+  ice: new THREE.MeshStandardMaterial({ color: '#cfeaff', emissive: new THREE.Color('#6cc4ff'), emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.85 }),
+};
+for (const m of Object.values(XM)) m.userData.shared = true;
+function starGeo(r, depth) {
+  const s = new THREE.Shape();
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + Math.PI / 2, rr = i % 2 ? r * 0.45 : r; i ? s.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : s.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  return new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: depth * 0.4, bevelThickness: depth * 0.4, bevelSegments: 1 }).translate(0, 0, -depth / 2);
+}
+// a sprig of holly: two leaves and three berries, centred on (x, y, z)
+function holly(g, x, y, z, s = 1, side = 1) {
+  for (const k of [-1, 1]) { const l = new THREE.Mesh(new THREE.SphereGeometry(0.014 * s, 8, 6), XM.holly); l.scale.set(0.5, 0.35, 1.6); l.position.set(x + side * 0.004, y + 0.004 * s, z + k * 0.016 * s); l.rotation.set(0, 0, side * 0.5); g.add(l); }
+  for (const [dy, dz] of [[0.01, -0.004], [0.006, 0.006], [0.016, 0.004]]) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.0055 * s, 8, 6), XM.berry); b.position.set(x + side * 0.006, y + dy * s, z + dz * s); g.add(b); }
+}
+function bow(g, x, y, z, s = 1) {
+  const r = XM.red;
+  for (const k of [-1, 1]) { const loop = new THREE.Mesh(new THREE.TorusGeometry(0.012 * s, 0.004 * s, 6, 12), r); loop.position.set(x + k * 0.012 * s, y, z); loop.scale.set(1, 0.7, 1); loop.rotation.y = Math.PI / 2; loop.rotation.x = k * 0.5; g.add(loop); }
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.006 * s, 8, 6), r); knot.position.set(x, y, z); g.add(knot);
+  for (const k of [-1, 1]) { const tail = new THREE.Mesh(new THREE.BoxGeometry(0.004 * s, 0.024 * s, 0.006 * s), r); tail.position.set(x + k * 0.006 * s, y - 0.014 * s, z); tail.rotation.z = k * 0.35; g.add(tail); }
+}
+function festiveDecor(model, g) {
+  const mz = g.userData.muzzle.position, my = mz.y, add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; g.add(m); return m; };
+  switch (model) {
+    case 'nutcracker': { // gold bands down the barrel, a gold star on the muzzle, holly on the stock, a little bearskin-hat plume
+      for (let i = 0; i < 3; i++) add(new THREE.TorusGeometry(0.019, 0.0035, 6, 18), XM.gold, 0, my, mz.z + 0.08 + i * 0.05);
+      add(starGeo(0.018, 0.006), XM.gold, 0, my + 0.04, mz.z + 0.04);
+      holly(g, 0.03, 0.02, 0.2, 1.1, 1); holly(g, -0.03, 0.02, 0.2, 1.1, -1);
+      for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.004, 0.018, 0.05), XM.gold, s * 0.03, 0.03, -0.08); // gold braid on the receiver
+      break;
+    }
+    case 'sleighbell': { // a red ribbon round the shroud with golden sleigh bells hanging off it
+      add(new THREE.TorusGeometry(0.03, 0.005, 6, 20), XM.red, 0, 0.035, -0.22);
+      for (const [x, z] of [[-0.03, -0.215], [0.0, -0.205], [0.03, -0.225]]) {
+        add(new THREE.CylinderGeometry(0.0015, 0.0015, 0.02, 4), XM.red, x, 0.0, z);
+        const bell = add(new THREE.SphereGeometry(0.011, 12, 10), XM.gold, x, -0.014, z);
+        add(new THREE.BoxGeometry(0.014, 0.002, 0.003), XM.horn, x, -0.016, z - 0.008); // the slot in the bell
+        bell.userData.bell = true;
+      }
+      bow(g, 0, 0.068, -0.22, 0.9);
+      add(new THREE.CylinderGeometry(0.009, 0.009, 0.012, 12), XM.fur, 0, -0.06, 0.03); // furry trim on the grip
+      break;
+    }
+    case 'krampus': { // curled horns on the stock, a rusty chain hanging under the barrel, birch switch tied on
+      for (const s of [-1, 1]) {
+        const c = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 8, 16, Math.PI * 1.3), XM.horn); c.position.set(s * 0.035, 0.07, 0.27); c.rotation.set(0, s * Math.PI / 2, -0.4); c.castShadow = true; g.add(c);
+        add(new THREE.ConeGeometry(0.01, 0.03, 8), XM.horn, s * 0.035, 0.105, 0.24, -0.6);
+      }
+      for (let i = 0; i < 7; i++) { const t = i / 6, z = -0.2 - t * 0.36, y = -0.015 - Math.sin(t * Math.PI) * 0.045; add(new THREE.TorusGeometry(0.009, 0.0025, 5, 10), XM.chain, 0, y, z, 0, i % 2 ? Math.PI / 2 : 0, 0); }
+      for (let i = 0; i < 4; i++) add(new THREE.CylinderGeometry(0.002, 0.0015, 0.18, 4), XM.horn, 0.035 + i * 0.003, 0.03, -0.25 - i * 0.004, Math.PI / 2 + (i - 1.5) * 0.05, 0, 0);
+      add(new THREE.TorusGeometry(0.008, 0.003, 5, 10), XM.red, 0.037, 0.03, -0.22, 0, Math.PI / 2, 0);
+      break;
+    }
+    case 'northstar': { // glowing star on the muzzle brake, icicles hanging off the barrel, frosted scope rings
+      add(starGeo(0.03, 0.008), XM.star, 0, my + 0.05, mz.z + 0.07);
+      for (let i = 0; i < 6; i++) add(new THREE.ConeGeometry(0.004 + (i % 3) * 0.0015, 0.025 + (i % 3) * 0.012, 6), XM.ice, 0, 0.018 - (i % 3) * 0.006, -0.35 - i * 0.07, Math.PI);
+      holly(g, 0.03, 0.01, 0.3, 1.2, 1);
+      break;
+    }
+    case 'candycane': { // a hooked candy-cane grip cap and a bow on the slide
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.007, 8, 16, Math.PI), weaponSkinMaterial('xcandy')); hook.position.set(0, -0.1, 0.03); hook.rotation.set(0, Math.PI / 2, Math.PI); g.add(hook);
+      bow(g, 0, 0.068, -0.02, 0.8);
+      break;
+    }
+  }
 }
 function buildGunInner(model, S, att, g) {
   let muzzleZ = -0.5, muzzleY = 0.04, sightY = 0.1, adsZ = -0.3, left = [-0.02, -0.02, -0.3];
@@ -2255,6 +2334,20 @@ export function buildSoldier(skinId) {
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
   root.userData = { legs, upper, head, aim, gunMount, lower };
   return root;
+}
+
+// Christmas: a floppy Santa hat on a soldier's helmet (fur brim, red cone bent over, pompom)
+export function addSantaHat(soldier) {
+  const head = soldier.userData.head; if (!head || head.userData.santa) return;
+  const real = soldier.userData.real, y = real ? 0.2 : 0.29, r = real ? 0.125 : 0.165;
+  const hat = new THREE.Group(); hat.position.set(0, y, real ? 0.01 : 0.01);
+  const brim = new THREE.Mesh(new THREE.TorusGeometry(r, real ? 0.03 : 0.035, 10, 24), XM.fur); brim.rotation.x = Math.PI / 2; brim.scale.set(1, 1.08, 1); hat.add(brim);
+  const c1 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.98, 0.12, 18), XM.red); c1.position.y = 0.06; hat.add(c1);
+  const tip = new THREE.Group(); tip.position.set(0, 0.12, 0); tip.rotation.x = 0.9; hat.add(tip); // flops backwards
+  const c2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.72, 0.2, 16), XM.red); c2.position.y = 0.09; tip.add(c2);
+  const pom = new THREE.Mesh(new THREE.SphereGeometry(real ? 0.032 : 0.04, 12, 10), XM.fur); pom.position.y = 0.195; tip.add(pom);
+  hat.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  head.add(hat); head.userData.santa = hat;
 }
 
 export function buildRocket() {

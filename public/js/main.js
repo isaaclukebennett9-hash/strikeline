@@ -6,7 +6,8 @@ import { buildMap, MAPS, MAP_ORDER } from '/shared/maps.js';
 import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
 import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
 import { THEMES, getMaterial, MAT_COLORS, WEAPON_SKINS, CHAR_SKINS, RARITY_COLORS, charSkin, radialSprite, flashSprite, decalTexture, nameTagTexture } from './textures.js';
-import { buildGun, buildWeapon, buildArms, buildSoldier, buildRocket, setReticle, RETICLE_STYLES, RETICLE_COLORS } from './models.js';
+import { buildGun, buildWeapon, buildArms, buildSoldier, buildRocket, setReticle, RETICLE_STYLES, RETICLE_COLORS, addSantaHat } from './models.js';
+import { buildXmas, confettiBurst, snowSplat, updateXmasFx } from './xmas.js';
 import * as SFX from './audio.js';
 import * as Announcer from './announcer.js';
 import { MODES, MODE_ORDER, TEAM_NAMES, TEAM_COLORS, GUNGAME_LADDER, targetScore, teamName, teamColor, POWER_TIME } from '/shared/modes.js';
@@ -21,7 +22,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 
 // ================================================================ settings
 const DEFAULTS = { name: 'Operator' + Math.floor(Math.random() * 900 + 100), primary: 'falcon', secondary: 'viper', wskin: 'factory', cskin: 'ranger', sens: 1, fov: 85, vol: 0.6, gfx: 'high', invert: false,
-  lethal: 'frag', tactical: 'smoke', reticle: 'dot', reticleColor: 'red', xh: 'lines', xhColor: 'white' };
+  lethal: 'frag', tactical: 'smoke', reticle: 'dot', reticleColor: 'red', xh: 'lines', xhColor: 'white',
+  snow: true, snowGround: true, santa: true }; // Christmas Update: falling snow, snow on the ground, Santa hats
 let cfg = { ...DEFAULTS };
 try { Object.assign(cfg, JSON.parse(PR.store.get('strikeline') || '{}')); } catch {}
 if (!WEAPONS[cfg.primary] || WEAPONS[cfg.primary].slot !== 'primary') cfg.primary = 'falcon';
@@ -452,15 +454,6 @@ function loadMap(id) {
   group.add(sun); group.add(sun.target);
   for (const [col, x, z] of theme.lamps) { const l = new THREE.PointLight(col, 90, 38, 1.4); l.position.set(x, 5, z); group.add(l); }
 
-  let snow = null;
-  if (map.theme === 'snow') {
-    const N = 2500, pos = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 60; pos[i * 3 + 1] = Math.random() * 25; pos[i * 3 + 2] = (Math.random() - 0.5) * 60; }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    snow = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffffff', size: 0.07, transparent: true, opacity: 0.85, depthWrite: false }));
-    snow.frustumCulled = false;
-    group.add(snow);
-  }
   scene.add(group);
   scene.fog = new THREE.Fog(theme.fog, theme.fogNear * (REAL ? 0.7 : 1), theme.fogFar * (REAL ? 0.92 : 1)); // realistic: a little atmospheric haze
   renderer.toneMappingExposure = theme.exposure;
@@ -475,9 +468,26 @@ function loadMap(id) {
   const pickupGroup = new THREE.Group();
   const pickupMeshes = (map.pickups || []).map(p => { const pm = makePickupMesh(p.kind); pm.position.set(p.x, 0.68, p.z); pm.userData.kind = p.kind; pickupGroup.add(pm); return pm; });
   group.add(pickupGroup);
-  world = { map, group, meshes, snow, minimap: renderMapCanvas(map, 512, true), pickupGroup, pickupMeshes };
+  world = { map, group, meshes, xmas: null, minimap: renderMapCanvas(map, 512, true), pickupGroup, pickupMeshes };
   $('mapname').textContent = map.name.toUpperCase();
+  applyXmas();
 }
+// Christmas Update: falling snow / snow on the ground (Settings can turn either off)
+function applyXmas() {
+  if (!world) return;
+  if (world.xmas) { world.group.remove(world.xmas.group); disposeObject(world.xmas.group); world.xmas.dispose(); world.xmas = null; }
+  if (!cfg.snow && !cfg.snowGround) return;
+  const theme = world.map.theme;
+  try {
+    world.xmas = buildXmas(world.map, {
+      fall: cfg.snow, ground: cfg.snowGround, shadows: renderer.shadowMap.enabled,
+      flakes: cfg.gfx === 'low' ? 3500 : cfg.gfx === 'ultra' ? 11000 : 7000,
+      skip: n => { const m = getMaterial(n, theme); return !!(m.transparent || (m.emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0.5) || /water|glass|lava|neon|light|lamp/i.test(n)); }, // no snow on water, glass or lights
+    });
+    world.group.add(world.xmas.group);
+  } catch (e) { console.error('snow failed', e); world.xmas = null; }
+}
+const snowyGround = () => world && (world.map.theme === 'snow' || cfg.snowGround);
 // Ultra: materials without their own bump map use their colour texture as one, so bricks, planks, rock and
 // concrete pick up light and shade instead of looking flat-printed.
 function addSurfaceDetail(names, themeId) {
@@ -557,7 +567,7 @@ let sprintLock = 0, meleeAnim = 0, lastShotTime = 0, deathTime = 0, respawnAt = 
 const scores = new Map();
 let uavAdvanced = false, jamUntil = 0, myStreaks = [], streakReady = [], myArmor = 0;
 let mode = 'ffa', target = 30, teamScore = [0, 0], myTeam = -1, zone = null, uavUntil = 0, ggWeapon = null, nadesLeft = 2, tacsLeft = 2;
-let stunUntil = 0, burnUntil = 0;
+let stunUntil = 0, burnUntil = 0, frostUntil = 0;
 const smokes = new Map(), fires = new Map(); // active smoke clouds / fire pools from the server
 let matchXP = 0, matchStart = null, matchStartedAt = 0; const matchXPReasons = {};
 const teamsMode = () => MODES[mode]?.teams;
@@ -642,6 +652,7 @@ function addRemote(info) {
   if (r && (r.info.skin !== info.skin || r.info.wskin !== info.wskin || r.info.name !== info.name || r.info.dv !== info.dv || r.info.team !== info.team)) { removeRemote(info.id); r = null; }
   if (r) { r.info = info; return; }
   const model = buildSoldier(info.skin);
+  if (cfg.santa) addSantaHat(model);
   if (info.team >= 0) { // team armband + helmet stripe
     const tm = new THREE.MeshStandardMaterial({ color: teamColor(mode, info.team), emissive: new THREE.Color(teamColor(mode, info.team)), emissiveIntensity: 1.2 });
     const band = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), tm); band.position.set(0.3, 0.42, 0); model.userData.upper.add(band);
@@ -712,6 +723,7 @@ nadeMat.userData.shared = nadeLed.userData.shared = true;
 const THROW_LOOK = {
   frag: ['#3d4a2c', [0.11, 0.13, 0.11], '#ff2a2a'], semtex: ['#c8c2a8', [0.12, 0.08, 0.12], '#2aff5a'], molotov: ['#5a3a1a', [0.07, 0.2, 0.07], '#ff8a1a'],
   tknife: ['#b8bec6', [0.02, 0.03, 0.22], null], smoke: ['#6a7078', [0.08, 0.16, 0.08], '#cfd6e4'], flash: ['#2a2e34', [0.08, 0.15, 0.08], '#ffffff'], stun: ['#2a3a5a', [0.09, 0.13, 0.09], '#4ab0ff'],
+  present: ['#c8102e', [0.14, 0.12, 0.14], null], snowball: ['#f4f8fc', [0.11, 0.11, 0.11], null],
 };
 const throwMats = {};
 function makeNadeMesh(kind = 'frag') {
@@ -719,6 +731,12 @@ function makeNadeMesh(kind = 'frag') {
   const mat = throwMats[col] || (throwMats[col] = Object.assign(new THREE.MeshStandardMaterial({ color: col, roughness: 0.55, metalness: 0.3 }), { userData: { shared: true } }));
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(...size), kind === 'frag' ? nadeMat : mat));
+  if (kind === 'snowball') { g.clear(); g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 1), mat)); }
+  if (kind === 'present') { // gift box: red with a gold ribbon cross and a bow
+    const gold = throwMats.gold || (throwMats.gold = Object.assign(new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.3, metalness: 0.8 }), { userData: { shared: true } }));
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.125, 0.03), gold)); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.125, 0.145), gold));
+    for (const k of [-1, 1]) { const b = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.008, 6, 10), gold); b.position.set(k * 0.02, 0.08, 0); b.rotation.y = Math.PI / 2; g.add(b); }
+  }
   if (led) { const lm = throwMats[led + 'L'] || (throwMats[led + 'L'] = Object.assign(new THREE.MeshBasicMaterial({ color: led }), { userData: { shared: true } }));
     const l = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.03), lm); l.position.y = size[1] / 2 + 0.01; g.add(l); }
   g.userData.kind = kind;
@@ -853,6 +871,7 @@ function updateZonesFx(dt, now) {
   const fl = Math.max(0, (flashUntil - now) / 3500);
   $('flashfx').style.opacity = fl > 0 ? Math.min(1, fl * 1.4) * flashPower : 0;
   $('stunfx').style.opacity = now < stunUntil ? 0.55 : 0;
+  $('frostfx').style.opacity = now < frostUntil ? Math.min(1, (frostUntil - now) / 600) : 0;
   $('burnfx').style.opacity = now < burnUntil ? 0.7 + Math.sin(now * 0.02) * 0.2 : 0;
 }
 let flashUntil = 0, flashPower = 0;
@@ -971,12 +990,8 @@ function updateFx(dt) {
     for (const pm of world.pickupMeshes) { pm.userData.spin.rotation.y = tnow * 1.6; pm.userData.spin.position.y = Math.sin(tnow * 2.5 + pm.position.x) * 0.1; }
   }
   for (const tg of fx.tags.values()) { const [x, y, z] = tg.userData.base; tg.position.set(x, y + Math.sin(tnow * 3 + x) * 0.08, z); tg.userData.plate.rotation.y = tnow * 2.5; }
-  if (world?.snow) {
-    world.snow.position.set(camera.position.x, 0, camera.position.z);
-    const a = world.snow.geometry.attributes.position;
-    for (let i = 0; i < a.count; i++) { let y = a.getY(i) - dt * 1.6; if (y < 0) y += 25; a.setY(i, y); a.setX(i, a.getX(i) + Math.sin(y + i) * dt * 0.3); }
-    a.needsUpdate = true;
-  }
+  if (world?.xmas) world.xmas.update(tnow, camera.position, renderer.domElement.height * 0.5);
+  updateXmasFx(dt);
 }
 
 // ================================================================ input
@@ -1309,6 +1324,8 @@ function throwableModel(kind) {
   if (kind === 'frag') { add(new THREE.SphereGeometry(0.034, 12, 10), mat('#4a5530')); add(new THREE.CylinderGeometry(0.012, 0.014, 0.022, 10), mat('#8a8f96', { metalness: 0.8 }), 0, 0.038); add(new THREE.BoxGeometry(0.008, 0.05, 0.012), mat('#8a8f96', { metalness: 0.8 }), 0.016, 0.022, 0, 0, -0.2); add(new THREE.TorusGeometry(0.01, 0.0025, 6, 12), mat('#c9ced4', { metalness: 1 }), -0.014, 0.05); }
   else if (kind === 'semtex') { add(new THREE.BoxGeometry(0.07, 0.04, 0.05), mat('#d8c9a0')); add(new THREE.BoxGeometry(0.02, 0.012, 0.02), new THREE.MeshBasicMaterial({ color: '#ff2a2a' }), 0, 0.026); add(new THREE.BoxGeometry(0.072, 0.006, 0.052), mat('#222'), 0, -0.008); }
   else if (kind === 'molotov') { add(new THREE.CylinderGeometry(0.03, 0.032, 0.11, 12), mat('#2f6b3a', { transparent: true, opacity: 0.85, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.011, 0.016, 0.05, 10), mat('#2f6b3a', { roughness: 0.1 }), 0, 0.078); add(new THREE.BoxGeometry(0.02, 0.05, 0.02), mat('#f0e2c0', { emissive: new THREE.Color('#ff7a1a'), emissiveIntensity: 0.6 }), 0, 0.12); }
+  else if (kind === 'present') { add(new THREE.BoxGeometry(0.07, 0.06, 0.07), mat('#c8102e', { metalness: 0.05 })); add(new THREE.BoxGeometry(0.072, 0.062, 0.014), mat('#f2c14e', { metalness: 0.8 })); add(new THREE.BoxGeometry(0.014, 0.062, 0.072), mat('#f2c14e', { metalness: 0.8 })); for (const k of [-1, 1]) add(new THREE.TorusGeometry(0.012, 0.004, 6, 10), mat('#f2c14e', { metalness: 0.8 }), k * 0.01, 0.04, 0, 0, 0); }
+  else if (kind === 'snowball') { add(new THREE.IcosahedronGeometry(0.036, 1), mat('#f4f8fc', { roughness: 0.95, metalness: 0 })); }
   else if (kind === 'tknife') { add(new THREE.BoxGeometry(0.006, 0.02, 0.13), mat('#c9ced4', { metalness: 1, roughness: 0.2 }), 0, 0, -0.06); add(new THREE.BoxGeometry(0.012, 0.022, 0.06), mat('#1b1d20'), 0, 0, 0.035); }
   else { const col = kind === 'smoke' ? '#7b8188' : kind === 'flash' ? '#2b2f35' : '#2d4f86'; add(new THREE.CylinderGeometry(0.028, 0.028, 0.1, 14), mat(col)); add(new THREE.CylinderGeometry(0.029, 0.029, 0.014, 14), mat(kind === 'flash' ? '#d8d23a' : '#e6e6e6'), 0, 0.02); add(new THREE.CylinderGeometry(0.012, 0.014, 0.02, 10), mat('#8a8f96', { metalness: 0.8 }), 0, 0.06); }
   return g;
@@ -1381,7 +1398,7 @@ function updateMovement(dt) {
     me.vel[0] = slide.dir[0] * sp; me.vel[2] = slide.dir[1] * sp;
     if (keys.Space && me.onGround) { slide.t = 0; me.vel[1] = PLAYER.jump; me.onGround = false; }
     if (me.blocked) slide.t = 0;
-    if (Math.random() < 0.6) particle(new THREE.Vector3(me.pos[0], me.pos[1] + 0.05, me.pos[2]), new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2), world.map.theme === 'snow' ? '#ffffff' : '#9a9080', 0.04, 0.4, 4);
+    if (Math.random() < 0.6) particle(new THREE.Vector3(me.pos[0], me.pos[1] + 0.05, me.pos[2]), new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2), snowyGround() ? '#ffffff' : '#9a9080', 0.04, 0.4, 4);
   } else {
     const accel = me.onGround ? 14 : 2.5;
     me.vel[0] += (wx * speed - me.vel[0]) * Math.min(1, accel * dt);
@@ -1413,7 +1430,7 @@ function updateMovement(dt) {
   const hs = Math.hypot(me.vel[0], me.vel[2]);
   if (me.onGround && hs > 1) {
     bobPhase += dt * hs * 1.6; stepDist += hs * dt;
-    if (stepDist > (sprint ? 2.6 : 2.1)) { stepDist = 0; if (!me.crouch && slide.t <= 0) SFX.step(0.12, world.map.theme === 'snow'); }
+    if (stepDist > (sprint ? 2.6 : 2.1)) { stepDist = 0; if (!me.crouch && slide.t <= 0) SFX.step(0.12, snowyGround()); }
   }
   me.eyeH = lerp(me.eyeH, me.crouch ? PLAYER.crouchEye : PLAYER.eye, Math.min(1, dt * 12));
   if (sprintLock > 0) sprintLock -= dt;
@@ -1991,6 +2008,15 @@ function handle(m) {
       const dir = p.clone().sub(eye).normalize();
       if (raycastBoxes(eye.toArray(), dir.toArray(), d - 0.2, world.map.query(Math.min(eye.x, p.x), Math.min(eye.z, p.z), Math.max(eye.x, p.x), Math.max(eye.z, p.z)))) break;
       stunUntil = performance.now() + 4000 * (hasPerk('tacmask') ? 0.3 : 1); shake = Math.max(shake, 0.4);
+      break;
+    }
+    case 'confetti': if (inGame) { confettiBurst(scene, m.p); SFX.jingle(0.35); } break;
+    case 'snowball': {
+      if (!inGame) break;
+      snowSplat(scene, m.p); SFX.splat(0.45);
+      if (!me.alive) break;
+      const d = Math.hypot(me.pos[0] - m.p[0], me.pos[1] + 1.2 - m.p[1], me.pos[2] - m.p[2]);
+      if (m.hit === me.id || d < WEAPONS.snowball.splash) { frostUntil = performance.now() + (m.hit === me.id ? 2200 : 1400); stunUntil = Math.max(stunUntil, performance.now() + 1500 * (hasPerk('tacmask') ? 0.3 : 1)); }
       break;
     }
     case 'burn': if (m.id === me.id) burnUntil = performance.now() + (m.dur || 2500); break;
@@ -2619,7 +2645,7 @@ function statVals(def) {
 }
 function statBars(def) {
   const rows = statVals(def);
-  const extra = [def.bolt && 'Bolt-action', def.pump && 'Pump-action', def.flame && 'Sets targets on fire', def.dart && 'Foam darts', def.suppressed && 'Suppressed', def.slug && 'Slug rounds', def.burst && `${def.burst}-round burst`, def.scope && 'Scoped'].filter(Boolean);
+  const extra = [def.xmas && '🎄 Christmas', def.bolt && 'Bolt-action', def.pump && 'Pump-action', def.flame && 'Sets targets on fire', def.dart && 'Foam darts', def.suppressed && 'Suppressed', def.slug && 'Slug rounds', def.burst && `${def.burst}-round burst`, def.scope && 'Scoped'].filter(Boolean);
   return `<div style="font-size:22px;font-weight:700">${def.name}</div><div class="hint">${def.type}${def.mag ? ` · ${def.mag} ${def.flame ? 'fuel' : 'rounds'}` : ''}${extra.length ? ' · ' + extra.join(' · ') : ''}</div>` +
     rows.map(([n, v]) => `<div class="stat"><span>${n}</span><div class="sb"><div style="width:${(v * 100).toFixed(0)}%"></div></div></div>`).join('');
 }
@@ -2633,8 +2659,8 @@ function tryBuy(key, label) {
   return false;
 }
 function buildArmory() {
-  const tabs = ['all', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special', 'energy', 'foam', 'era'];
-  $('armTabs').innerHTML = tabs.map(t => `<button data-t="${t}" class="${armTab === t ? 'on' : ''}">${t === 'all' ? 'ALL' : t === 'era' ? 'WW1 & WW2' : CLASS_NAMES[t].toUpperCase()}</button>`).join('');
+  const tabs = ['all', 'xmas', 'ar', 'smg', 'lmg', 'shotgun', 'dmr', 'sniper', 'special', 'energy', 'foam', 'era'];
+  $('armTabs').innerHTML = tabs.map(t => `<button data-t="${t}" class="${armTab === t ? 'on' : ''}${t === 'xmas' ? ' xmas' : ''}">${t === 'all' ? 'ALL' : t === 'era' ? 'WW1 & WW2' : t === 'xmas' ? '🎄 CHRISTMAS' : CLASS_NAMES[t].toUpperCase()}</button>`).join('');
   $('armTabs').querySelectorAll('button').forEach(b => b.onclick = () => { armTab = b.dataset.t; buildArmory(); SFX.uiBlip(); });
   const card = (id, selected, small) => {
     const d = WEAPONS[id], open = PR.isUnlocked(id);
@@ -2656,8 +2682,8 @@ function buildArmory() {
       }
     });
   };
-  mk(PRIMARIES.filter(id => (armTab === 'all' || WEAPONS[id].cls === armTab || (armTab === 'era' && WEAPONS[id].era))).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
-  mk(SECONDARIES, 'secondary', $('secondaries'));
+  mk(PRIMARIES.filter(id => (armTab === 'all' || (armTab === 'xmas' ? WEAPONS[id].xmas : WEAPONS[id].cls === armTab) || (armTab === 'era' && WEAPONS[id].era))).sort((a, b) => (PR.UNLOCKS[a]?.level || 0) - (PR.UNLOCKS[b]?.level || 0)), 'primary', $('primaries'));
+  mk(armTab === 'xmas' ? SECONDARIES.filter(id => WEAPONS[id].xmas) : SECONDARIES, 'secondary', $('secondaries'));
   mk(LETHALS, 'lethal', $('lethals'), true);
   mk(TACTICALS, 'tactical', $('tacticals'), true);
   buildPerkPickers();
@@ -3012,6 +3038,10 @@ updateStyleChips();
 if (cfg.gore === undefined) cfg.gore = false;
 $('goreOn').checked = !!cfg.gore;
 $('goreOn').addEventListener('change', () => { cfg.gore = $('goreOn').checked; saveCfg(); });
+$('snowOn').checked = cfg.snow !== false; $('snowGroundOn').checked = cfg.snowGround !== false; $('santaOn').checked = cfg.santa !== false;
+$('snowOn').addEventListener('change', () => { cfg.snow = $('snowOn').checked; saveCfg(); applyXmas(); });
+$('snowGroundOn').addEventListener('change', () => { cfg.snowGround = $('snowGroundOn').checked; saveCfg(); applyXmas(); });
+$('santaOn').addEventListener('change', () => { cfg.santa = $('santaOn').checked; saveCfg(); toast(cfg.santa ? 'Santa hats on (from the next round)' : 'Santa hats off (from the next round)'); });
 const updateGfxChips = () => {
   document.querySelectorAll('#gfx button').forEach(b => b.classList.toggle('on', b.dataset.g === cfg.gfx));
   $('gfxnote').textContent = (cfg.gfx === 'ultra') !== ULTRA ? 'Restart Strikeline to ' + (ULTRA ? 'turn Ultra off.' : 'turn Ultra on.')
@@ -3093,6 +3123,7 @@ function rebuildPreview() {
     pv.camera.lookAt(pv.camera.position.x, 0, 0); pv.obj = g; pv.scene.add(g); return;
   } else {
     const s = buildSoldier(cfg.cskin);
+    if (cfg.santa) addSantaHat(s);
     s.userData.gunMount.add(buildWeapon(WEAPONS[cfg.primary], gunSkin(cfg.primary), { ...PR.getAtt(cfg.primary), attSkin: attSkinFor(cfg.primary) }));
     s.position.set(0, -0.95, 0);
     g.add(s);
@@ -3236,3 +3267,49 @@ function showGift() {
   };
 }
 setTimeout(showGift, 3000); // after the server's hello, which marks the developer's own PC
+
+// ---------- the Christmas Update (1.7.0): one-time "what's new" card with a present of credits. The home-screen tag reopens it.
+const XMAS_KEY = 'strikeline_xmas_170', XMAS_CREDITS = 10000;
+function showXmas(force = false) {
+  if ((!force && PR.store.get(XMAS_KEY)) || inGame || $('modal-xmas') || $('modal-gift')) return;
+  const claimed = !!PR.store.get(XMAS_KEY);
+  const m = document.createElement('div');
+  m.id = 'modal-xmas'; m.className = 'modal';
+  m.innerHTML = `<div class="modal-card gift-card xmas-card">
+    <div class="gift-box">🎄</div>
+    <small class="gift-from">MERRY CHRISTMAS FROM WELSH</small>
+    <h2>THE CHRISTMAS UPDATE</h2>
+    <p class="gift-note">It's snowing on every map. Here's what's new:</p>
+    <ul class="gift-list">
+      <li><b>❄ Snow everywhere</b><span>snow falls on every map and lies on the ground, roofs, walls and crates (turn it off in Settings)</span></li>
+      <li><b>🎄 Christmas decorations</b><span>fairy lights along the rooftops and decorated trees with presents</span></li>
+      <li><b>🎅 Santa hats</b><span>on every soldier (Settings has an off switch)</span></li>
+      <li><b>🔫 5 Christmas guns</b><span>Nutcracker AR, Sleigh Bell SMG, Krampus shotgun, North Star sniper and Candy Cane .45: the Armory's Christmas tab</span></li>
+      <li><b>🎁 Exploding Present &amp; Snowball</b><span>a new lethal that bursts into confetti, and a tactical that splats, slows and frosts</span></li>
+      <li><b>🍬 8 Christmas camos</b><span>Candy Cane (free), Ugly Sweater, Wrapping Paper, Gingerbread, Hoarfrost, Krampus, Nutcracker, Fairy Lights</span></li>
+      <li><b>◆ ${XMAS_CREDITS.toLocaleString()} credits</b><span>a present to spend on the new camos</span></li>
+    </ul>
+    <div class="modal-actions"><button class="btn primary big" id="xmasClaim">${claimed ? 'CLOSE' : 'OPEN PRESENT'}</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  SFX.jingle?.(0.4);
+  m.querySelector('#xmasClaim').onclick = () => {
+    const first = !PR.store.get(XMAS_KEY);
+    if (first) { PR.addCredits(XMAS_CREDITS); PR.store.set(XMAS_KEY, String(Date.now())); }
+    m.remove(); updateProfileUI(); SFX.uiBlip();
+    if (first) toast(`Merry Christmas! +${XMAS_CREDITS.toLocaleString()} credits. Try the Christmas tab in the Armory.`);
+  };
+}
+$('xmasTag').onclick = () => { SFX.uiBlip(); showXmas(true); };
+setTimeout(() => showXmas(), 3500);
+// gentle snowfall behind the menus (follows the Falling snow setting)
+{
+  const box = $('menuSnow');
+  for (let i = 0; i < 70; i++) {
+    const f = document.createElement('i'), s = 2 + Math.random() * 4;
+    f.style.cssText = `left:${Math.random() * 100}%;width:${s}px;height:${s}px;animation-duration:${7 + Math.random() * 9}s;animation-delay:${-Math.random() * 16}s;opacity:${0.35 + Math.random() * 0.5};--dx:${(Math.random() - 0.3) * 120}px`;
+    box.appendChild(f);
+  }
+  const syncMenuSnow = () => document.body.classList.toggle('nosnow', cfg.snow === false);
+  syncMenuSnow(); $('snowOn').addEventListener('change', syncMenuSnow);
+}

@@ -100,6 +100,23 @@ export function shot(snd, vol = 1, pan = 0, distant = false) {
   if (snd.b) tone(o, t, 0.05, snd.b * 4, snd.b * 1.5, 'triangle', 0.25);
   noiseBurst(o, t + 0.01, snd.d * (1.8 + heavy), 650 + snd.f * 0.12, 'lowpass', 0.5, 0.22 + heavy * 0.12, 0.02); // rolling tail
   if (snd.d < 0.3) clank(o, t + 0.035 + Math.random() * 0.01, 3200 + Math.random() * 600, 0.12); // action cycling
+  if (snd.bell && Math.random() < 0.5) jingle(0.25 * vol, pan); // Sleigh Bell SMG: the bells rattle as it fires
+}
+// Christmas: a little cluster of sleigh bells
+export function jingle(vol = 0.4, pan = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime, o = out(vol, pan, 0.4);
+  for (let i = 0; i < 4; i++) {
+    const at = t + i * 0.035 + Math.random() * 0.02, f = 2600 + Math.random() * 900;
+    tone(o, at, 0.22, f, f * 0.995, 'sine', 0.5); tone(o, at, 0.16, f * 2.76, f * 2.75, 'sine', 0.18);
+    noiseBurst(o, at, 0.02, 6000, 'highpass', 1, 0.25);
+  }
+}
+// snowball splat: soft crunchy thud
+export function splat(vol = 0.5, pan = 0) {
+  if (!ctx) return;
+  const t = ctx.currentTime, o = out(vol, pan, 0.2);
+  noiseBurst(o, t, 0.14, 900, 'lowpass', 0.8, 1); noiseBurst(o, t + 0.01, 0.08, 3500, 'bandpass', 1.5, 0.35); tone(o, t, 0.08, 160, 70, 'sine', 0.5);
 }
 // energy weapons: a bright descending zap with a crackle and a short hum
 function laser(snd, vol, pan) {

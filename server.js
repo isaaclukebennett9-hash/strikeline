@@ -651,7 +651,7 @@ function kill(room, victim, attacker, weaponId, head) {
     if (head) giveXP(room, attacker, 50, 'HEADSHOT');
     if (!room.firstBlood) { room.firstBlood = true; giveXP(room, attacker, 100, 'FIRST BLOOD'); }
     if (weaponId === 'knife') giveXP(room, attacker, 50, 'MELEE');
-    if (weaponId === 'frag') giveXP(room, attacker, 50, 'GRENADE');
+    if (weaponId === 'frag' || weaponId === 'present') giveXP(room, attacker, 50, 'GRENADE');
     if (attacker.lastKiller === victim.id) { giveXP(room, attacker, 50, 'PAYBACK'); attacker.lastKiller = 0; }
     if (victimStreak >= 5) giveXP(room, attacker, 100, 'BUZZKILL');
     if (!WEAPONS[weaponId]?.splash && dist3(attacker.pos, victim.pos) > 40) giveXP(room, attacker, 50, 'LONGSHOT');
@@ -965,6 +965,18 @@ function detonate(room, n, at) {
       break;
     }
     case 'tknife': break;
+    case 'present': roomBroadcast(room, { t: 'confetti', p: p.map(r2) }); explode(room, n.owner, [p[0], p[1] + 0.15, p[2]], 'present'); break;
+    case 'snowball': { // Christmas: splat, a little damage on a direct hit, slows anyone in the splash
+      const def = WEAPONS.snowball, owner = room.ents.get(n.owner);
+      roomBroadcast(room, { t: 'snowball', p: p.map(r2), hit: n.hitId || 0 });
+      for (const v of room.ents.values()) {
+        if (!v.alive || v.id === n.owner) continue;
+        const d = dist3(chest(v), p);
+        if (v.id === n.hitId) applyDamage(room, v, owner || null, def.dmg, 'snowball', false);
+        if ((v.id === n.hitId || d < def.splash) && v.bot && v.ai) v.ai.slowUntil = now + 1800;
+      }
+      break;
+    }
     default: explode(room, n.owner, [p[0], p[1] + 0.15, p[2]], 'frag');
   }
 }
@@ -984,7 +996,7 @@ function stepNades(room, dt) {
     if (len < 1e-5) continue;
     const dir = step.map(v => v / len);
     // direct hits on players (throwing knife kills, semtex sticks)
-    if (kind === 'tknife' || kind === 'semtex' || kind === 'molotov') {
+    if (kind === 'tknife' || kind === 'semtex' || kind === 'molotov' || kind === 'snowball') {
       let victim = null;
       for (const p of room.ents.values()) {
         if (!p.alive || (p.id === n.owner && n.age < 0.3)) continue;
@@ -1002,7 +1014,8 @@ function stepNades(room, dt) {
           room.nades.splice(i, 1); continue;
         }
         if (kind === 'semtex') { n.stuck = true; n.stuckTo = victim.p.id; n.off = [victim.at[0] - victim.p.pos[0], victim.at[1] - victim.p.pos[1], victim.at[2] - victim.p.pos[2]]; continue; }
-        detonate(room, n, victim.at); room.nades.splice(i, 1); continue; // molotov
+        if (kind === 'snowball') n.hitId = victim.p.id;
+        detonate(room, n, victim.at); room.nades.splice(i, 1); continue; // molotov / snowball
       }
     }
     n.age = (n.age || 0) + dt;
@@ -1010,7 +1023,7 @@ function stepNades(room, dt) {
     if (hit) {
       const at = hit.point.map((v, k) => v + hit.normal[k] * 0.09);
       if (kind === 'tknife') { room.nades.splice(i, 1); continue; }
-      if (kind === 'molotov') { detonate(room, n, at); room.nades.splice(i, 1); continue; }
+      if (kind === 'molotov' || kind === 'snowball') { detonate(room, n, at); room.nades.splice(i, 1); continue; }
       n.pos = at;
       if (kind === 'semtex') { n.stuck = true; continue; }
       const dot = n.vel[0] * hit.normal[0] + n.vel[1] * hit.normal[1] + n.vel[2] * hit.normal[2];
