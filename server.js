@@ -159,6 +159,45 @@ const BANS_FILE = path.join(DATA, 'bans.json');
 const bans = readJson(BANS_FILE, {});
 const banEnd = v => (typeof v === 'number' ? v : (v && v.until) || 0);
 const saveBans = () => { const now = Date.now(); for (const k in bans) if (banEnd(bans[k]) <= now) delete bans[k]; try { fs.writeFileSync(BANS_FILE, JSON.stringify(bans)); } catch {} };
+// ---------- players folder: a live, readable players.txt of everyone seen + their banned status, and an
+// unban.txt you edit (type a name, save) to unban without using the in-game chat. Both live in the data folder.
+const PLAYERS_FILE = path.join(DATA, 'players.json'), PLAYERS_TXT = path.join(DATA, 'players.txt'), UNBAN_TXT = path.join(DATA, 'unban.txt');
+const players = readJson(PLAYERS_FILE, {}); // pid -> { name, ip, lastSeen }
+const UNBAN_HELP = '# Type a username here (one per line) and SAVE this file to unban them. Type ALL to clear every ban.\n';
+function writePlayers() {
+  try { fs.writeFileSync(PLAYERS_FILE, JSON.stringify(players)); } catch {}
+  const now = Date.now(), online = new Set();
+  try { for (const c of clients.values()) if (c.pid) online.add(c.pid); } catch {}
+  const rows = Object.entries(players).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0)).map(([pid, p]) => {
+    const until = Math.max(banEnd(bans['p:' + pid]), p.ip ? banEnd(bans['ip:' + p.ip]) : 0), banned = until > now;
+    return `${banned ? '[BANNED - ' + Math.ceil((until - now) / 60000) + ' min left]' : '[ ok ]'}\t${p.name || '?'}${online.has(pid) ? '\t(online now)' : ''}`;
+  });
+  const txt = `STRIKELINE PLAYERS - updated ${new Date().toLocaleString()}\nPlayers seen: ${rows.length}\n\nTo unban: open unban.txt in this folder, type the name, save.\n\n${rows.join('\n')}\n`;
+  try { fs.writeFileSync(PLAYERS_TXT, txt); } catch {}
+}
+function recordPlayer(c) {
+  if (!c.pid) return;
+  players[c.pid] = { name: c.name, ip: c.ip || players[c.pid]?.ip || '', lastSeen: Date.now() };
+  writePlayers();
+}
+try { if (!fs.existsSync(UNBAN_TXT)) fs.writeFileSync(UNBAN_TXT, UNBAN_HELP); } catch {}
+try {
+  let busy = false;
+  fs.watch(UNBAN_TXT, () => {
+    if (busy) return; busy = true;
+    setTimeout(() => {
+      busy = false;
+      let lines; try { lines = fs.readFileSync(UNBAN_TXT, 'utf8').split(/\r?\n/); } catch { return; }
+      const names = lines.map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      if (!names.length) return;
+      const done = [];
+      for (const n of names) { const got = unban(n); done.push(got.length ? 'unbanned ' + got.join(', ') : `no ban found for "${n}"`); }
+      writePlayers();
+      try { fs.writeFileSync(UNBAN_TXT, `# Done ${new Date().toLocaleString()}: ${done.join(' | ')}\n${UNBAN_HELP}`); } catch {}
+    }, 250);
+  });
+} catch {}
+setTimeout(() => { try { writePlayers(); } catch {} }, 0);
 const banUntil = c => Math.max(c.banUntil || 0, banEnd(bans['p:' + c.pid]), c.ip ? banEnd(bans['ip:' + c.ip]) : 0);
 // /unban: only the player sitting at the PC that runs the developer's server (not over the tunnel or the LAN)
 const plainName = s => String(s || '').replace(/^♛\s*/, '').trim().toLowerCase();
@@ -194,6 +233,7 @@ function banClient(c) {
   const room = c.room;
   console.log(`[ban] ${c.name} banned for 2 h (slur in chat)`);
   errLog(`chat ban: ${c.name} (2 h)`);
+  recordPlayer(c); // refresh players.txt so the ban shows there
   sendTo(c, { t: 'banned', until }); // first, so the client has saved the ban before 'left' can send it home
   if (room) { leaveRoom(c); roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} was banned for 2 hours for hate speech` }); }
 }
@@ -1316,6 +1356,7 @@ wss.on('connection', (ws, req) => {
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
+        recordPlayer(c); // keep players.txt up to date with everyone who connects
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
         if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c) });
         sendLobbies(c);
