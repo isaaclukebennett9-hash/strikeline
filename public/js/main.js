@@ -1007,12 +1007,14 @@ document.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === '
 document.addEventListener('mousemove', e => {
   // keep the trigger in sync with the real button state, so a lost mousedown/mouseup
   // (e.g. the window briefly dropping mouse capture) can't stop automatic fire mid-spray
-  if (locked && inGame && !chatOpen) {
-    const held = (e.buttons & 1) === 1;
-    if (held && !mouseL) mouseL = true;
-    else if (!held && mouseL && e.buttons !== undefined) { mouseL = false; triggerFresh = true; }
-    mouseR = (e.buttons & 2) === 2;
-    mouseM = (e.buttons & 4) === 4;
+  // With raw mouse input Chromium can report buttons = 0 on every move even while a button is held,
+  // so only let the move events release buttons once they've shown they report them properly.
+  if (locked && inGame && !chatOpen && e.buttons !== undefined) {
+    if (e.buttons) buttonsReliable = true;
+    if (e.buttons & 1) { if (!mouseL) mouseL = true; }
+    else if (mouseL && buttonsReliable) { mouseL = false; triggerFresh = true; }
+    if (e.buttons & 2) mouseR = true; else if (buttonsReliable) mouseR = false;
+    if (e.buttons & 4) mouseM = true; else if (buttonsReliable) mouseM = false;
   }
   if (!locked || !me.alive) return;
   const mx = e.movementX || 0, my = e.movementY || 0;
@@ -1030,7 +1032,7 @@ document.addEventListener('mousemove', e => {
   swayX = clamp(swayX + mx * 0.00015, -0.03, 0.03);
   swayY = clamp(swayY + my * 0.00015, -0.03, 0.03);
 });
-let mouseAvg = 0, mouseSpikes = 0, lockedAt = 0;
+let mouseAvg = 0, mouseSpikes = 0, lockedAt = 0, buttonsReliable = false;
 document.addEventListener('mousedown', e => {
   if (!inGame || !locked) return;
   if (e.button === 0) mouseL = true;
@@ -1050,7 +1052,7 @@ function lockPointer() {
 }
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
-  if (locked) { lockedAt = performance.now(); mouseAvg = 0; mouseSpikes = 0; }
+  if (locked) { lockedAt = performance.now(); mouseAvg = 0; mouseSpikes = 0; buttonsReliable = false; }
   if (locked) { if (inGame || wantLock) hideUI(); }
   else {
     for (const k in keys) keys[k] = false;
