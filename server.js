@@ -435,7 +435,7 @@ async function plPull() { // developer's server only
     if (changed) writePlayers();
   } catch {}
 }
-if (FB_OWNER) { setTimeout(plPull, 5000); setInterval(plPull, 60000); }
+if (FB_OWNER) { setTimeout(plPull, 5000); setInterval(plPull, 60000); setInterval(() => { try { writePlayers(); } catch {} }, 60000); } // heartbeat: keep players.txt's time fresh and ban countdowns live
 else { setTimeout(plPush, 8000); setInterval(plPush, 45000); }
 // Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
 const aliveCache = new Map(); // url -> { at, ok }
