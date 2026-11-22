@@ -1,1 +1,3 @@
 # Type a username here (one per line) and SAVE this file to unban them. Type ALL to clear every ban.
+
+ALL
