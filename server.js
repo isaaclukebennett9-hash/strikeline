@@ -202,7 +202,8 @@ setTimeout(() => { try { writePlayers(); } catch {} }, 0);
 const banUntil = c => Math.max(c.banUntil || 0, banEnd(bans['p:' + c.pid]), c.ip ? banEnd(bans['ip:' + c.ip]) : 0);
 // /unban: only the player sitting at the PC that runs the developer's server (not over the tunnel or the LAN)
 const plainName = s => String(s || '').replace(/^♛\s*/, '').trim().toLowerCase();
-function unban(byName) {
+function unban(byName, broadcast = true) {
+  if (broadcast) broadcastBan({ unban: String(byName) }); // tell every other server to unban them too
   const want = plainName(byName), all = want === 'all', names = new Set(), now = Date.now();
   const hit = (name) => all || (name && plainName(name).startsWith(want));
   for (const k of Object.keys(bans)) {
@@ -231,6 +232,7 @@ function banClient(c) {
   if (c.pid) { bans['p:' + c.pid] = { until, name: c.name }; delete bans['lift:' + c.pid]; }
   if (c.ip) bans['ip:' + c.ip] = { until, name: c.name };
   saveBans();
+  if (c.pid) broadcastBan({ ban: { i: c.pid, u: until, n: c.name } }); // ban them on every server too
   const room = c.room;
   console.log(`[ban] ${c.name} banned for 2 h (slur in chat)`);
   errLog(`chat ban: ${c.name} (2 h)`);
@@ -437,6 +439,31 @@ async function plPull() { // developer's server only
 }
 if (FB_OWNER) { setTimeout(plPull, 5000); setInterval(plPull, 60000); setInterval(() => { try { writePlayers(); } catch {} }, 60000); } // heartbeat: keep players.txt's time fresh and ban countdowns live
 else { setTimeout(plPush, 8000); setInterval(plPush, 45000); }
+
+// ---------- global bans: a ban or unban on ANY server travels to every server over the shared relay, so you
+// unban someone once (from anyone's folder or chat) and it clears everywhere, and a ban keeps them out everywhere.
+const BAN_RELAY = `${RELAY}-ban`, BAN_SRC = Math.random().toString(36).slice(2, 10);
+function broadcastBan(obj) { try { fetch(BAN_RELAY, { method: 'POST', body: JSON.stringify({ src: BAN_SRC, ...obj }), signal: AbortSignal.timeout(8000) }).catch(() => {}); } catch {} }
+function applyRemoteBan(b) {
+  const until = Math.min(Number(b.u) || 0, Date.now() + BAN_MS);
+  if (until <= Date.now()) return;
+  bans['p:' + b.i] = { until, name: String(b.n || '').slice(0, 16) }; delete bans['lift:' + b.i];
+  saveBans(); writePlayers();
+  for (const c of clients.values()) if (c.pid === b.i) { c.banUntil = until; sendTo(c, { t: 'banned', until }); if (c.room) leaveRoom(c); }
+}
+let banSince = '12h';
+async function banPull() {
+  try {
+    const txt = await (await fetch(`${BAN_RELAY}/json?poll=1&since=${banSince}`, { signal: AbortSignal.timeout(8000) })).text();
+    for (const m of relayLines(txt)) { // in time order, so the latest action for each player wins
+      banSince = m.id; let j; try { j = JSON.parse(m.message); } catch { continue; }
+      if (!j || j.src === BAN_SRC) continue;            // ignore our own broadcasts
+      if (typeof j.unban === 'string') unban(j.unban, false);
+      else if (j.ban && /^[a-z0-9]{8,32}$/.test(j.ban.i || '')) applyRemoteBan(j.ban);
+    }
+  } catch {}
+}
+setTimeout(banPull, 4000); setInterval(banPull, 20000); // every server, so unbans/bans reach everyone fast
 // Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
 const aliveCache = new Map(); // url -> { at, ok }
 async function gameAlive(u, maxAge = 0) {
