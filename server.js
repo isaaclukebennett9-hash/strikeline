@@ -179,6 +179,7 @@ function recordPlayer(c) {
   if (!c.pid) return;
   players[c.pid] = { name: c.name, ip: c.ip || players[c.pid]?.ip || '', lastSeen: Date.now() };
   writePlayers();
+  announcePlayerRelay(c); // tell the developer's server about this player, so players.txt shows everyone, not just people on this server
 }
 try { if (!fs.existsSync(UNBAN_TXT)) fs.writeFileSync(UNBAN_TXT, UNBAN_HELP); } catch {}
 try {
@@ -403,6 +404,39 @@ async function fbPull() { // developer's server only
 }
 if (FB_OWNER) { setTimeout(fbPull, 4000); setInterval(fbPull, 60000); }
 else { setTimeout(fbPush, 6000); setInterval(fbPush, 60000); setTimeout(fbPollAcks, 90000); setInterval(fbPollAcks, 150000); }
+
+// ---------- players relay: so players.txt on the developer's PC shows EVERYONE who opens the game, not just
+// people who joined a game it hosted. Each app announces its own player to a shared topic; the developer's
+// server polls it and adds them. (Their app announces as soon as the game loads, because the game connects to
+// its own local server straight away.) Same shared-relay idea as feedback, so no central server is needed.
+const PL_RELAY = `${RELAY}-pl`;
+const plDirty = new Map(); // pid -> { i, n, t } waiting to be announced
+function announcePlayerRelay(c) { if (!FB_OWNER && c.pid) plDirty.set(c.pid, { i: c.pid, n: c.name, t: Date.now() }); }
+async function plPush() {
+  if (FB_OWNER || !plDirty.size) return;
+  const batch = [...plDirty.values()].slice(0, 40);
+  try { const r = await fetch(PL_RELAY, { method: 'POST', body: JSON.stringify({ pl: batch }), signal: AbortSignal.timeout(8000) }); if (r.ok) plDirty.clear(); } catch {}
+}
+let plSince = '12h';
+async function plPull() { // developer's server only
+  if (!FB_OWNER) return;
+  try {
+    const txt = await (await fetch(`${PL_RELAY}/json?poll=1&since=${plSince}`, { signal: AbortSignal.timeout(8000) })).text();
+    let changed = false;
+    for (const m of relayLines(txt)) {
+      plSince = m.id; let j; try { j = JSON.parse(m.message); } catch { continue; }
+      if (!j || !Array.isArray(j.pl)) continue;
+      for (const p of j.pl) {
+        if (!/^[a-z0-9]{8,32}$/.test(p.i || '')) continue;
+        const name = String(p.n || '').slice(0, 16), t = Number(p.t) || Date.now(), cur = players[p.i];
+        if (!cur || t >= (cur.lastSeen || 0)) { players[p.i] = { name, ip: cur?.ip || '', lastSeen: t }; changed = true; }
+      }
+    }
+    if (changed) writePlayers();
+  } catch {}
+}
+if (FB_OWNER) { setTimeout(plPull, 5000); setInterval(plPull, 60000); }
+else { setTimeout(plPush, 8000); setInterval(plPush, 45000); }
 // Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
 const aliveCache = new Map(); // url -> { at, ok }
 async function gameAlive(u, maxAge = 0) {
