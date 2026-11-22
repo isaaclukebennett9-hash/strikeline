@@ -1,3 +1,2 @@
+# Done 22/11/2026, 16:50:58: no ban found for "aasd"
 # Type a username here (one per line) and SAVE this file to unban them. Type ALL to clear every ban.
-
-ALL
