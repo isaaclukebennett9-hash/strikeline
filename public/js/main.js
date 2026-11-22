@@ -1015,12 +1015,22 @@ document.addEventListener('mousemove', e => {
     mouseM = (e.buttons & 4) === 4;
   }
   if (!locked || !me.alive) return;
-  const s = 0.0022 * cfg.sens * (camera.fov / cfg.fov) * (performance.now() < stunUntil ? 0.35 : 1);
-  me.yaw -= e.movementX * s;
-  me.pitch = clamp(me.pitch - e.movementY * s * (cfg.invert ? -1 : 1), -1.55, 1.55);
-  swayX = clamp(swayX + e.movementX * 0.00015, -0.03, 0.03);
-  swayY = clamp(swayY + e.movementY * 0.00015, -0.03, 0.03);
+  const mx = e.movementX || 0, my = e.movementY || 0;
+  // Chromium on Windows sometimes reports one bogus, huge movement while the pointer is locked
+  // (right after locking, or randomly mid-turn), which made the camera snap/teleport.
+  // Drop events far bigger than the recent mouse speed.
+  const now = performance.now(), mag = Math.max(Math.abs(mx), Math.abs(my));
+  if (now - lockedAt < 120) return; // first moments after locking are unreliable
+  if (mag > 200 && mag > mouseAvg * 6 + 40) { mouseSpikes++; if (mouseSpikes < 3) return; }
+  else mouseSpikes = 0;
+  mouseAvg += (mag - mouseAvg) * 0.2;
+  const s = 0.0022 * cfg.sens * (camera.fov / cfg.fov) * (now < stunUntil ? 0.35 : 1);
+  me.yaw -= mx * s;
+  me.pitch = clamp(me.pitch - my * s * (cfg.invert ? -1 : 1), -1.55, 1.55);
+  swayX = clamp(swayX + mx * 0.00015, -0.03, 0.03);
+  swayY = clamp(swayY + my * 0.00015, -0.03, 0.03);
 });
+let mouseAvg = 0, mouseSpikes = 0, lockedAt = 0;
 document.addEventListener('mousedown', e => {
   if (!inGame || !locked) return;
   if (e.button === 0) mouseL = true;
@@ -1030,9 +1040,17 @@ document.addEventListener('mousedown', e => {
 document.addEventListener('mouseup', e => { if (e.button === 0) { mouseL = false; triggerFresh = true; } if (e.button === 2) mouseR = false; if (e.button === 1) mouseM = false; });
 document.addEventListener('wheel', e => { const n = me.weapons.length; if (locked && me.alive && n) switchSlot((me.slot + (e.deltaY > 0 ? 1 : n - 1)) % n); });
 document.addEventListener('contextmenu', e => { if (inGame) e.preventDefault(); });
-function lockPointer() { try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {} }
+function lockPointer() {
+  // raw mouse input (no Windows pointer acceleration) also avoids most of Chromium's jump bug
+  const el = renderer.domElement, plain = () => { try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {} };
+  try {
+    const p = el.requestPointerLock({ unadjustedMovement: true });
+    if (p && p.catch) p.catch(e => { if (!e || e.name !== 'SecurityError') plain(); });
+  } catch { plain(); }
+}
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
+  if (locked) { lockedAt = performance.now(); mouseAvg = 0; mouseSpikes = 0; }
   if (locked) { if (inGame || wantLock) hideUI(); }
   else {
     for (const k in keys) keys[k] = false;
