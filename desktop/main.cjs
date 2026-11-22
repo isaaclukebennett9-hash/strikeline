@@ -37,11 +37,15 @@ app.on('child-process-gone', (e, d) => { if (d.reason !== 'clean-exit') crashLog
 
 // On the developer's PC the app runs the game straight from the project folder (so every change is live)
 // and offers the newest installer to friends for auto-update. Everyone else uses the bundled copy.
+// The project path lives in this PC's own data folder (%APPDATA%\Strikeline\source.json, written by prebuild),
+// so the installer that gets shared doesn't carry it. Older installs kept it next to this file.
 function devConfig() {
-  try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'source.json'), 'utf8'));
-    if (cfg.source && fs.existsSync(path.join(cfg.source, 'server.js')) && fs.existsSync(path.join(cfg.source, 'node_modules', 'ws'))) return cfg;
-  } catch {}
+  for (const f of [path.join(app.getPath('userData'), 'source.json'), path.join(__dirname, 'source.json')]) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (cfg.source && fs.existsSync(path.join(cfg.source, 'server.js')) && fs.existsSync(path.join(cfg.source, 'node_modules', 'ws'))) return cfg;
+    } catch {}
+  }
   return null;
 }
 function cloudflaredPath() {

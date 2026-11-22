@@ -5,7 +5,11 @@ const path = require('path');
 const zlib = require('zlib');
 
 const root = path.join(__dirname, '..');
-fs.writeFileSync(path.join(__dirname, 'source.json'), JSON.stringify({ source: root, setupDir: path.join(require('os').homedir(), 'StrikelineBuild') }, null, 2));
+// the real path goes in this PC's app data folder only; the copy bundled into the installer stays empty
+// so the shared installer doesn't contain anything about this PC
+const devCfg = JSON.stringify({ source: root, setupDir: path.join(require('os').homedir(), 'StrikelineBuild') }, null, 2);
+try { const dir = path.join(process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming'), 'Strikeline'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'source.json'), devCfg); } catch (e) { console.warn('could not write app-data source.json:', e.message); }
+fs.writeFileSync(path.join(__dirname, 'source.json'), '{}\n');
 
 // --- icon: orange crosshair on a dark rounded square, 256x256 PNG
 const N = 256, px = Buffer.alloc(N * N * 4);

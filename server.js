@@ -471,6 +471,56 @@ function fireAllowed(e, def, now) {
   e.fireBudget -= 1; e.lastFire = now;
   return true;
 }
+// ---------------------------------------------------------------- anti-cheat
+// The game runs on each player's own PC, so the client can't be trusted. The server re-checks the things that
+// decide a fight: you can't move faster than the game allows or teleport (checkMove), can't fire faster than
+// your gun (fireAllowed), can't deal more damage than a shot can (the cap in the fire handler) and can't hit
+// someone you have no line of sight to (checkHit). Normal play — lag, slides, jump pads, catching up after a
+// stall — stays well inside these limits, so legit players are never snapped back; a cheat just does nothing,
+// and a blatant, repeat offender gets kicked.
+const MOVE_MAX_SPEED = 22;          // m/s. Legit top speed is ~16 (sprint + slide + speed boost), so this has headroom.
+const MOVE_BUDGET_CAP = 22 * 3;     // metres a player can bank while stalled, then spend catching up when packets resume.
+const MOVE_SINGLE_MAX = 5;          // most one update (one ~33 ms tick) may move. Legit is <1 m; the connection is TCP so
+                                    // a lag burst arrives as many small updates in order, never one giant jump — so any
+                                    // single jump past this is a teleport.
+function resetMoveBudget(e) { e.moveBudget = MOVE_BUDGET_CAP; e.moveBudgetT = performance.now(); }
+function checkMove(e, np, nowMs) {
+  // A horizontal distance budget refilled by real time caps sustained speed (bursty catch-up after lag is fine);
+  // the per-update cap stops a single teleport outright. Vertical is left to the 0..40 clamp (falling is fast).
+  const dx = np[0] - e.pos[0], dz = np[2] - e.pos[2], horiz = Math.hypot(dx, dz);
+  if (e.moveBudgetT === undefined) resetMoveBudget(e);
+  e.moveBudget = Math.min(MOVE_BUDGET_CAP, e.moveBudget + ((nowMs - e.moveBudgetT) / 1000) * MOVE_MAX_SPEED);
+  e.moveBudgetT = nowMs;
+  const allowed = Math.min(MOVE_SINGLE_MAX, e.moveBudget);
+  if (horiz <= allowed) { e.moveBudget -= horiz; if (e.cheat > 0) e.cheat = Math.max(0, e.cheat - 0.02); return np; } // legit move; bleed off stray flags
+  e.moveBudget = Math.max(0, e.moveBudget - allowed);
+  if (horiz > 6) flagCheat(e, horiz > 25 ? 3 : 1, 'movement'); // a real teleport, not a small lag overshoot
+  if (horiz < 1e-4) return np;
+  const s = allowed / horiz;                                    // drag them back to what the time and the tick allow
+  return [e.pos[0] + dx * s, np[1], e.pos[2] + dz * s];
+}
+// A claimed hit must have a clear line from the shooter's eye to some part of the target (chest / head / feet /
+// shoulders). This stops wall-hacks and shooting through walls. Point-blank is always allowed (shotguns hugging a
+// corner), and it checks several points so normal peeking fights and a bit of lag don't get a legit hit denied.
+function checkHit(room, shooter, victim) {
+  if (dist3(shooter.pos, victim.pos) < 3.5) return true;
+  const a = eye(shooter), vp = victim.pos, c = victim.c;
+  const pts = [chest(victim), [vp[0], vp[1] + (c ? PLAYER.crouchEye : PLAYER.eye), vp[2]], [vp[0], vp[1] + 0.25, vp[2]],
+    [vp[0] + 0.35, vp[1] + 0.9, vp[2]], [vp[0] - 0.35, vp[1] + 0.9, vp[2]]];
+  for (const p of pts) if (hasLOS(room, a, p, true)) return true;
+  return false;
+}
+function flagCheat(e, amount, reason) {
+  const c = e.client; if (!c || c.owner) return;               // never flag the player hosting at this PC
+  e.cheat = (e.cheat || 0) + amount;
+  if (!e.cheatLogged && e.cheat >= 3) { e.cheatLogged = true; errLog(`anti-cheat: ${dname(c)} flagged for ${reason}`); }
+  if (e.cheat >= 12) {                                          // sustained cheating: kick
+    e.cheat = -1e9;
+    try { sendTo(c, { t: 'err', m: 'Disconnected: the game detected impossible movement or hits.' }); } catch {}
+    errLog(`anti-cheat: ${dname(c)} kicked for ${reason}`);
+    setTimeout(() => { try { c.ws.close(); } catch {} }, 120);
+  }
+}
 function publicInfo(e) {
   return { id: e.id, name: e.name, dv: e.client?.dev ? 1 : 0, bot: e.bot, skin: e.skin, wskin: e.wskin, team: e.team, kills: e.kills, deaths: e.deaths, score: e.score, gg: e.gg, alive: e.alive, w: e.w, pk: e.perks };
 }
@@ -595,6 +645,7 @@ function spawn(room, p) {
   const s = chooseSpawn(room, p);
   p.pos = [s[0], s[1], s[2]];
   p.vel = [0, 0, 0];
+  resetMoveBudget(p); // respawning somewhere new is a legitimate position jump, so start the budget fresh
   if (p.pt != null) { p.pt = Math.max(p.pt + 1, Math.round(performance.now())); if (p.hist) p.hist.length = 0; } // respawn shows at once
   if (p.client?.perks) p.perks = p.client.perks;                                     // perk changes apply from the next life
   p.hp = 100; p.armor = 0; p.alive = true; p.streak = 0; p.nades = p.perks?.includes('bandolier') ? 3 : 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0; p.minigunUntil = 0;
@@ -1394,7 +1445,8 @@ wss.on('connection', (ws, req) => {
         if (!e || !isVec(m.p)) return;
         const half = room.map.size / 2 + 1;
         if (e.alive) {
-          const np = [Math.max(-half, Math.min(half, m.p[0])), Math.max(0, Math.min(40, m.p[1])), Math.max(-half, Math.min(half, m.p[2]))];
+          let np = [Math.max(-half, Math.min(half, m.p[0])), Math.max(0, Math.min(40, m.p[1])), Math.max(-half, Math.min(half, m.p[2]))];
+          if (!e.bot) np = checkMove(e, np, performance.now());   // anti-cheat: no speed hacks / teleporting
           e.vel = [(np[0] - e.pos[0]) * 30, 0, (np[2] - e.pos[2]) * 30];
           e.pos = np;
         }
@@ -1436,6 +1488,7 @@ wss.on('connection', (ws, req) => {
           for (const h of m.hits.slice(0, 12)) {
             const v = room.ents.get(h.id);
             if (!v || v === e || !v.alive || dist3(v.pos, e.pos) > maxRange) continue;
+            if (!def.flame && !checkHit(room, e, v)) continue; // anti-cheat: no damage through walls (just dropped, never a kick on its own — avoids false positives from lag)
             if (def.flame) burn(room, v, e, 'flamer', 2500, 12);
             else if (m.inc) burn(room, v, e, def.id, 1500, 8);
             applyDamage(room, v, e, zombie ? 120 : Math.min(cap, Math.max(0, +h.dmg || 0)), def.id, !!h.h);

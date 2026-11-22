@@ -1,7 +1,7 @@
 {
   "name": "strikeline",
   "productName": "Strikeline",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Strikeline - multiplayer arena FPS",
   "author": "Welsh",
   "type": "module",
@@ -31,6 +31,9 @@
       "shared/**",
       "public/**",
       "desktop/*.cjs",
+      "!desktop/release.cjs",
+      "!desktop/build.cjs",
+      "!desktop/prebuild.cjs",
       "desktop/*.html",
       "desktop/*.png",
       "desktop/source.json",
