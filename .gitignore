@@ -9,3 +9,6 @@ CLAUDE.md
 feedback-outbox.json
 feedback-ids.json
 bans.json
+players.json
+players.txt
+unban.txt
