@@ -63,8 +63,9 @@ for (let i = cfg.loadouts.length; i < LO_COUNT; i++) cfg.loadouts.push({ name: `
 cfg.activeLoadout = clamp(cfg.activeLoadout | 0, 0, LO_COUNT - 1);
 const saveCfg = () => { Object.assign(cfg.loadouts[cfg.activeLoadout], loSnap()); PR.store.set('strikeline', JSON.stringify(cfg)); };
 // camo for one gun (falls back to the default finish from the Skins screen) and its attachments' camo
-const gunSkin = wid => (cfg.wcamo && cfg.wcamo[wid] && PR.isUnlocked('ws:' + cfg.wcamo[wid]) ? cfg.wcamo[wid] : cfg.wskin);
-const attSkinFor = wid => { const a = cfg.acamo && cfg.acamo[wid]; return a && (a === 'black' || a === 'match' || PR.isUnlocked('ws:' + a)) ? a : 'black'; };
+const camoOk = (id, wid) => (PR.MASTERY_CAMOS.includes(id) ? PR.masteryOk(id, wid) : PR.isUnlocked('ws:' + id));
+const gunSkin = wid => (cfg.wcamo && cfg.wcamo[wid] && camoOk(cfg.wcamo[wid], wid) ? cfg.wcamo[wid] : cfg.wskin);
+const attSkinFor = wid => { const a = cfg.acamo && cfg.acamo[wid]; return a && (a === 'black' || a === 'match' || camoOk(a, wid)) ? a : 'black'; };
 let pvCamo = null, pvAttCamo = null, pvGun = null, pvAttOverride = null; // temporary preview (hovering a camo, buy pop-up)
 
 // ================================================================ renderer / scenes
@@ -718,12 +719,12 @@ function setRemoteGun(r, wid, ak = r.ak) {
   r.ak = ak;
   if (ak) { // akimbo: a mirrored copy of the gun in the soldier's left hand
     const m2 = new THREE.Group(); m2.scale.x = -1;
-    const g2 = buildWeapon(WEAPONS[wid], r.info.wskin); g2.position.copy(mount.position); g2.rotation.copy(mount.rotation);
+    const g2 = buildWeapon(WEAPONS[wid], r.wc || r.info.wskin); g2.position.copy(mount.position); g2.rotation.copy(mount.rotation);
     m2.add(g2); mount.parent.add(m2); r.gun2 = m2;
   }
   if (r.gunId === wid) return;
   const old = r.gun;
-  r.gun = buildWeapon(WEAPONS[wid], r.info.wskin);
+  r.gun = buildWeapon(WEAPONS[wid], r.wc || r.info.wskin);
   r.gun.userData.muzzle.add(r.flash); // moves the shared flash sprite off the old gun
   mount.add(r.gun);
   if (old) { mount.remove(old); disposeObject(old); }
@@ -1680,6 +1681,7 @@ function updateCamera(dt, now) {
     if (vm.flash2T > 0) { vm.flash2T -= dt; if (vm.flash2T <= 0) vm.flash2.visible = false; }
   }
   if (g.userData.skin.userData.pulse) g.userData.skin.emissiveIntensity = 1.2 + Math.sin(now * 0.004) * 0.6;
+  if (g.userData.skin.userData.drift) { const d = g.userData.skin.userData.drift; d.offset.x = (now * 0.000025) % 1; d.offset.y = (now * 0.000011) % 1; }
 }
 
 // ================================================================ remote update
@@ -1845,7 +1847,10 @@ function handle(m) {
       if (!m.fbOwner && PR.store.get(FB_OWNER_KEY) === '1') send({ t: 'fbowner' });
       // on the developer's server: hand over this PC's desktop crash log (app/game-page crashes) so they can be diagnosed
       if (m.fbOwner && window.desktop?.crashReport) window.desktop.crashReport().then(r => {
-        if (r && r.text.trim()) setTimeout(() => { reportErr(`crash.log from this player's app:\n${r.text}`); window.desktop.crashReportSent(r.end); }, 3000);
+        // only real problems: the log also notes harmless things (Discord connecting, a friend's game closing)
+        const real = r ? r.text.split('\n').filter(l => l.trim() && !/\] (discord: connected|friend's game unreachable)/.test(l)).join('\n') : '';
+        if (r && !real.trim()) window.desktop.crashReportSent(r.end);
+        else if (real.trim()) setTimeout(() => { reportErr(`crash.log from this player's app:\n${real}`); window.desktop.crashReportSent(r.end); }, 3000);
       }).catch(() => {});
       fbFlush();
       break;
@@ -2014,7 +2019,7 @@ function handle(m) {
     case 'snap': {
       if (!inGame) break;
       const st = netClock(m.k, now);
-      for (const [id, x, y, z, ry, rx, w, c, hp, alive, pt, jit, hist] of m.ps) {
+      for (const [id, x, y, z, ry, rx, w, c, hp, alive, pt, jit, hist, wc] of m.ps) {
         if (id === me.id) { if (me.alive) me.hp = hp; continue; }
         const r = remotes.get(id); if (!r) continue;
         if (r.alive || alive) {
@@ -2033,7 +2038,7 @@ function handle(m) {
           r.jit = typeof jit === 'number' ? jit : 0;
           add(srv ? (typeof pt === 'number' ? pt : m.k) : st, { x, y, z, ry, rx, c });
         }
-        r.alive = !!alive; setRemoteGun(r, w);
+        r.alive = !!alive; if (typeof wc === 'string' && wc !== r.wc) { r.wc = wc; r.gunId = null; } setRemoteGun(r, w);
       }
       const seen = new Set();
       for (const [id, x, y, z, dx, dy, dz] of m.r) {
@@ -2241,7 +2246,8 @@ function onKill(m) {
     const st = PR.profile.stats;
     st.kills++; if (m.h) st.headshots++; st.bestStreak = Math.max(st.bestStreak, m.st);
     const wlBefore = WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade' ? PR.weaponLevel(m.w) : 0;
-    PR.profile.wkills[m.w] = (PR.profile.wkills[m.w] || 0) + 1;
+    const mastered = PR.masteryKill(m.w, !!m.h); // weapon kills + headshots, and any mastery camo that earned
+    if (mastered.length) setTimeout(() => masteryUnlocked(mastered), 2600);
     if (wlBefore && PR.weaponLevel(m.w) > wlBefore) { // gun levelled up: say so, and name anything it unlocked
       const wl = PR.weaponLevel(m.w);
       const att = PR.slotsFor(m.w).flatMap(s => PR.optionsFor(m.w, s).filter(o => o.lvl === wl).map(o => o.name));
@@ -2254,6 +2260,16 @@ function onKill(m) {
     if (names[m.st]) { announce(names[m.st], `${m.st} kill streak`); SFX.announce(); Announcer.say({ 2: 'double', 3: 'triple', 5: 'spree', 7: 'rampage', 10: 'unstoppable', 15: 'godlike' }[m.st], 800); }
     else subAnnounce(`${m.h ? 'HEADSHOT — ' : ''}ELIMINATED ${vName.toUpperCase()}`);
   }
+}
+
+// mastery camo earned: big announcement + toast
+function masteryUnlocked(list) {
+  for (const [i, u] of list.entries()) setTimeout(() => {
+    const name = WEAPON_SKINS.find(s => s.id === u.camo)?.name || u.camo;
+    const what = u.wid ? `${name.toUpperCase()} — ${WEAPONS[u.wid].name.toUpperCase()}` : `${name.toUpperCase()} UNLOCKED`;
+    const sub = u.camo === 'mgold' ? 'Mastery camo unlocked: set it in the Gunsmith' : u.camo === 'mplat' ? (u.wid ? 'Platinum unlocked for this gun' : `Platinum unlocked on every Gilded gun`) : 'The Void camo can now go on any gun';
+    announce(what, sub); SFX.announce(); toast(`${what} · ${sub}`);
+  }, i * 3200);
 }
 
 // ================================================================ perks + killstreaks
@@ -2600,7 +2616,7 @@ function frame(now) {
     sendAcc += dt;
     if (inGame && me.alive && sendAcc > 1 / 30) {
       sendAcc = Math.min(sendAcc - 1 / 30, 1 / 30); // steady 30 a second (resetting to 0 gave an uneven ~20)
-      send({ t: 's', k: Math.round(performance.now()), p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0 });
+      send({ t: 's', k: Math.round(performance.now()), p: me.pos.map(n => +n.toFixed(2)), ry: +me.yaw.toFixed(3), rx: +me.pitch.toFixed(3), w: curW()?.def.id, c: me.crouch ? 1 : 0, cm: curW() ? gunSkin(curW().def.id) : undefined });
     }
     if (renderer.shadowMap.enabled && (++shadowFrame & 1)) renderer.shadowMap.needsUpdate = true;
     renderer.clear();
@@ -2893,22 +2909,25 @@ function buildArmory() {
 function renderGsCamo(id) {
   const cur = gunSkin(id), acur = attSkinFor(id);
   const chip = (s, on, data) => `<button data-${data}="${s.id}" class="${on ? 'on' : ''} ${s.locked ? 'locked' : ''}" title="${esc(s.name)}"><i style="background:${s.swatch}"></i></button>`;
-  const list = WEAPON_SKINS.filter(s => s.rarity !== 'dev' || PR.isUnlocked('ws:' + s.id)).map(s => ({ ...s, locked: !PR.isUnlocked('ws:' + s.id) }));
-  $('gsCamo').innerHTML = `<div class="gs-camolabel">CAMO <small>${esc(WEAPON_SKINS.find(s => s.id === cur)?.name || '')}</small></div><div class="camochips">${list.map(s => chip(s, s.id === cur, 'gc')).join('')}</div>` +
+  const list = WEAPON_SKINS.filter(s => s.rarity !== 'mastery' && (s.rarity !== 'dev' || PR.isUnlocked('ws:' + s.id))).map(s => ({ ...s, locked: !PR.isUnlocked('ws:' + s.id) }));
+  const mast = PR.MASTERY_CAMOS.map(m => ({ ...WEAPON_SKINS.find(s => s.id === m), locked: !PR.masteryOk(m, id) })), mastNow = mast.find(s => s.id === cur);
+  const mastHtml = PR.MASTERY_GUNS.includes(id) ? `<div class="gs-camolabel mastery">MASTERY <small>${PR.gildedCount()}/${PR.MASTERY.void} guns Gilded</small></div><div class="mastrow">${mast.map(s => `<button data-gc="${s.id}" class="mast ${s.id === cur ? 'on' : ''} ${s.locked ? 'locked' : ''}"><i style="background:${s.swatch}"></i><span><b>${esc(s.name)}</b><small>${esc(PR.masteryNeed(s.id, id))}</small></span></button>`).join('')}</div>` : '';
+  $('gsCamo').innerHTML = `<div class="gs-camolabel">CAMO <small>${esc(WEAPON_SKINS.find(s => s.id === cur)?.name || '')}</small></div><div class="camochips">${list.map(s => chip(s, s.id === cur, 'gc')).join('')}</div>` + mastHtml +
     `<div class="gs-camolabel">ATTACHMENT CAMO <small>${acur === 'black' ? 'Black' : acur === 'match' ? 'Match gun' : esc(WEAPON_SKINS.find(s => s.id === acur)?.name || '')}</small></div><div class="camochips">` +
     chip({ id: 'black', name: 'Black', swatch: '#15171a' }, acur === 'black', 'ac') + chip({ id: 'match', name: 'Match gun', swatch: 'linear-gradient(135deg, #666 50%, #ff7a1a 50%)' }, acur === 'match', 'ac') +
-    list.map(s => chip(s, s.id === acur, 'ac')).join('') + '</div>';
+    list.concat(mast.filter(s => !s.locked)).map(s => chip(s, s.id === acur, 'ac')).join('') + '</div>';
   const hover = (b, gun) => { b.onmouseenter = () => { if (gun) pvCamo = b.dataset.gc; else pvAttCamo = b.dataset.ac; rebuildPreview(); }; b.onmouseleave = () => { pvCamo = pvAttCamo = null; rebuildPreview(); }; };
   $('gsCamo').querySelectorAll('[data-gc]').forEach(b => { hover(b, true); b.onclick = () => {
     if (inGame) { toast('The Gunsmith is locked during a match'); return; }
     const s = WEAPON_SKINS.find(x => x.id === b.dataset.gc), set = () => { (cfg.wcamo ||= {})[id] = s.id; saveCfg(); pvCamo = null; renderGunsmith(); rebuildPreview(); };
+    if (s.rarity === 'mastery') { if (!PR.masteryOk(s.id, id)) { toast(`${s.name}: ${PR.masteryNeed(s.id, id)}`); return; } set(); SFX.uiBlip(); return; }
     if (!PR.isUnlocked('ws:' + s.id)) { if (PR.UNLOCKS['ws:' + s.id]?.dev) toast('Dev camo: enter the dev code on the Skins screen'); else buyPopup('ws:' + s.id, s.name, set, id); return; }
     set(); SFX.uiBlip();
   }; });
   $('gsCamo').querySelectorAll('[data-ac]').forEach(b => { hover(b, false); b.onclick = () => {
     if (inGame) { toast('The Gunsmith is locked during a match'); return; }
     const v = b.dataset.ac, s = WEAPON_SKINS.find(x => x.id === v), set = () => { (cfg.acamo ||= {})[id] = v; saveCfg(); pvAttCamo = null; renderGunsmith(); rebuildPreview(); };
-    if (s && !PR.isUnlocked('ws:' + v)) { if (!PR.UNLOCKS['ws:' + v]?.dev) buyPopup('ws:' + v, s.name, set, id); return; }
+    if (s && s.rarity !== 'mastery' && !PR.isUnlocked('ws:' + v)) { if (!PR.UNLOCKS['ws:' + v]?.dev) buyPopup('ws:' + v, s.name, set, id); return; }
     set(); SFX.uiBlip();
   }; });
 }
@@ -3147,7 +3166,7 @@ function buildSkins() {
     const open = PR.isUnlocked(key), u = PR.UNLOCKS[key];
     return `<button data-${dataAttr}="${s.id}" class="${selected ? 'on' : ''} ${open ? '' : 'locked'}" style="border-bottom-color:${RARITY_COLORS[s.rarity]}"><div class="sw" style="background:${sw}"></div><b>${s.name}</b><small style="color:${RARITY_COLORS[s.rarity]}">${s.rarity}</small>${open ? '' : `<span class="lk">${lockText(key)}</span>`}</button>`;
   };
-  $('wskins').innerHTML = WEAPON_SKINS.map(s => card(s, 'ws:' + s.id, 's', s.swatch, cfg.wskin === s.id)).join('');
+  $('wskins').innerHTML = WEAPON_SKINS.filter(s => s.rarity !== 'mastery').map(s => card(s, 'ws:' + s.id, 's', s.swatch, cfg.wskin === s.id)).join('');
   $('cskins').innerHTML = CHAR_SKINS.map(s => card(s, 'op:' + s.id, 'c', `linear-gradient(90deg, ${s.body} 60%, ${s.visor} 60%)`, cfg.cskin === s.id)).join('');
   const pickSkin = (key, label, apply) => {
     if (!PR.isUnlocked(key)) {
@@ -3400,7 +3419,7 @@ if (!PR.isUnlocked(cfg.lethal)) cfg.lethal = 'frag';
 if (!PR.isUnlocked(cfg.tactical)) cfg.tactical = 'smoke';
 if (PR.saveTampered) setTimeout(() => toast('Your save file was edited outside the game, so your progress was reset.'), 1500);
 if (PR.migrationRefund > 0) setTimeout(() => toast(`Progression update: weapons now unlock by level and attachments by weapon level. Refunded ◆${PR.migrationRefund} from old upgrades.`), 1500);
-if (!PR.isUnlocked('ws:' + cfg.wskin)) cfg.wskin = 'factory';
+if (!PR.isUnlocked('ws:' + cfg.wskin) || PR.MASTERY_CAMOS.includes(cfg.wskin)) cfg.wskin = 'factory';
 if (!PR.isUnlocked('op:' + cfg.cskin)) cfg.cskin = 'ranger';
 buildArmory(); buildSkins(); renderLoadoutSummary(); updateProfileUI();
 loadMap('town');

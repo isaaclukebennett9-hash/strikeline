@@ -137,6 +137,9 @@ const isDevCode = code => { const c = String(code || '').toUpperCase().replace(/
 const ename = e => (e.client?.dev ? '\u265B ' : '') + e.name;
 const dname = c => (c?.dev ? '\u265B ' : '') + (c?.name || '?'); // name for plain-text system messages
 const W_SKINS = ['factory', 'arctic', 'woodland', 'tiger', 'crimson', 'carbon', 'gold', 'neon', 'galaxy', 'inferno', 'desert', 'urban', 'jungle', 'hex', 'cobalt', 'dragon', 'aurora', 'gift'];
+// every camo a player may show (bots only use W_SKINS): + Christmas camos + mastery camos (earned per gun)
+const ANY_W_SKIN = new Set([...W_SKINS, ...DEV_W_SKINS, 'xcandy', 'xsweater', 'xwrap', 'xginger', 'xfrost', 'xkrampus', 'xnut', 'xlights', 'mgold', 'mplat', 'mvoid']);
+const okWSkin = s => typeof s === 'string' && ANY_W_SKIN.has(s) && !['mgold', 'mplat', 'mvoid'].includes(s);
 const DIFFICULTY = { easy: 0.22, normal: 0.36, hard: 0.55 };
 const DEFAULT_SETTINGS = { mode: 'ffa', map: 'town', bots: 4, difficulty: 'normal', scoreLimit: 30, timeLimit: 10, maxPlayers: 8 };
 const STREAK_XP = { 3: 100, 5: 200, 7: 300, 10: 500, 15: 750 };
@@ -1691,6 +1694,7 @@ function tickRoom(room, now) {
         p.pt != null ? Math.round(p.pt) : k, Math.round(p.kjit || 0)];
       if (p.hist && p.hist.length > 1) e.push(p.hist.slice(0, -1));
       if (p.hist) p.hist.length = 0;
+      if (p.wc) { if (e.length < 13) e.push(0); e.push(p.wc); } // [.., hist|0, camo of the gun in hand]
       ps.push(e);
     }
     const msg = { t: 'snap', k, ps, r: room.rockets.map(r => [r.id, r2(r.pos[0]), r2(r.pos[1]), r2(r.pos[2]), r2(r.dir[0]), r2(r.dir[1]), r2(r.dir[2])]),
@@ -1730,7 +1734,7 @@ wss.on('connection', (ws, req) => {
         if (c.pid && banEnd(bans['lift:' + c.pid]) > Date.now() && !(banEnd(bans['p:' + c.pid]) > Date.now())) sendTo(c, { t: 'unbanned' });
         else if (Number(m.ban) > Date.now()) { c.banUntil = Math.min(Number(m.ban), Date.now() + MAX_BAN); c.banReason = cleanText(m.banr, 120); }
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
-        if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
+        if (okWSkin(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
         recordPlayer(c); // keep players.txt up to date with everyone who connects
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
@@ -1853,7 +1857,7 @@ wss.on('connection', (ws, req) => {
         c.name = cleanName(m.name, 16, 'Player') || c.name;
         if (m.dev !== undefined) c.dev = isDevCode(m.dev);
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
-        if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
+        if (okWSkin(m.wskin)) c.wskin = m.wskin;
         if (m.level) c.level = clampInt(m.level, 1, 99, c.level);
         if (room) sendRoom(room);
         if (e) { e.name = c.name; e.skin = c.skin; e.wskin = c.wskin; roomBroadcast(room, { t: 'pj', p: publicInfo(e) }); }
@@ -1888,6 +1892,7 @@ wss.on('connection', (ws, req) => {
         } else e.pt = undefined;
         e.ry = +m.ry || 0; e.rx = +m.rx || 0; e.c = m.c ? 1 : 0;
         if (WEAPONS[m.w] && WEAPONS[m.w].slot !== 'grenade') e.w = m.w;
+        if (typeof m.cm === 'string' && ANY_W_SKIN.has(m.cm)) e.wc = m.cm; // this gun's camo (per-gun and mastery camos)
         break;
       }
       case 'fire': {

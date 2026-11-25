@@ -706,3 +706,17 @@ body.nosnow #menuSnow { display: none; }
 .announce span { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: .5px; overflow-wrap: anywhere; }
 .announce.out { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 @keyframes annIn { from { opacity: 0; transform: translateX(-50%) translateY(-18px) scale(.96); } }
+
+/* ---------------- mastery camos (Gunsmith) ---------------- */
+.gs-camolabel.mastery { color: #f7d77a; }
+.mastrow { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.mastrow button.mast { display: flex; align-items: center; gap: 10px; padding: 5px 8px 5px 5px; background: var(--panel); border: 1px solid var(--line); text-align: left; cursor: pointer; }
+.mastrow button.mast i { width: 34px; height: 34px; flex: none; border: 1px solid rgba(255,255,255,.15); }
+.mastrow button.mast span { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.mastrow button.mast b { font-size: 14px; letter-spacing: 1px; }
+.mastrow button.mast small { font-size: 12px; color: var(--muted); white-space: normal; }
+.mastrow button.mast { width: 100%; box-sizing: border-box; }
+.mastrow button.mast:hover { border-color: rgba(247,215,122,.6); }
+.mastrow button.mast.on { border-color: #f7d77a; background: rgba(247,215,122,.12); }
+.mastrow button.mast.locked i { filter: grayscale(.85) brightness(.45); }
+.mastrow button.mast.locked b::after { content: ' 🔒'; font-size: 11px; }

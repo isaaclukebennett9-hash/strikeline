@@ -7,7 +7,7 @@ import { WEAPONS } from '/shared/weapons.js';
 
 const KEY = 'strikeline_profile';
 const DEFAULT = () => ({
-  xp: 0, credits: 0, owned: [], att: {}, wkills: {},
+  xp: 0, credits: 0, owned: [], att: {}, wkills: {}, wheads: {},
   stats: { kills: 0, deaths: 0, wins: 0, matches: 0, headshots: 0, bestStreak: 0 },
   challenges: [], done: 0, v2: true,
 });
@@ -216,6 +216,46 @@ export function weaponLevelInfo(wid) {
   return { level: l, kills: k, next: l >= MAX_WLEVEL ? null : killsForWLevel(l + 1), cur: killsForWLevel(l) };
 }
 export const weaponLevel = wid => weaponLevelInfo(wid).level;
+
+// ---------------------------------------------------------------- mastery camos (earned per gun)
+//  Gilded   : 60 kills + 15 headshots with that gun.
+//  Platinum : that gun is Gilded, and 15 guns are Gilded in total.
+//  Void     : 30 guns Gilded, then it can go on any gun (animated).
+export const MASTERY = { kills: 60, heads: 15, plat: 15, void: 30 };
+export const MASTERY_CAMOS = ['mgold', 'mplat', 'mvoid'];
+export const MASTERY_GUNS = Object.values(WEAPONS).filter(w => w.slot === 'primary' || w.slot === 'secondary').map(w => w.id);
+export const hasGilded = wid => (profile.wkills[wid] || 0) >= MASTERY.kills && ((profile.wheads || {})[wid] || 0) >= MASTERY.heads;
+export const gildedCount = () => MASTERY_GUNS.filter(hasGilded).length;
+export function masteryOk(camo, wid) {
+  if (camo === 'mgold') return hasGilded(wid);
+  if (camo === 'mplat') return hasGilded(wid) && gildedCount() >= MASTERY.plat;
+  if (camo === 'mvoid') return gildedCount() >= MASTERY.void;
+  return false;
+}
+// what's left for this camo on this gun, for the Gunsmith
+export function masteryNeed(camo, wid) {
+  const k = profile.wkills[wid] || 0, h = (profile.wheads || {})[wid] || 0, n = gildedCount();
+  const gold = `${Math.min(k, MASTERY.kills)}/${MASTERY.kills} kills · ${Math.min(h, MASTERY.heads)}/${MASTERY.heads} headshots`;
+  if (camo === 'mgold') return hasGilded(wid) ? 'Unlocked' : gold;
+  if (camo === 'mplat') return masteryOk('mplat', wid) ? 'Unlocked' : `${hasGilded(wid) ? 'This gun is Gilded ✓' : 'Gild this gun first'} · ${Math.min(n, MASTERY.plat)}/${MASTERY.plat} guns Gilded`;
+  return masteryOk('mvoid', wid) ? 'Unlocked' : `${Math.min(n, MASTERY.void)}/${MASTERY.void} guns Gilded`;
+}
+// record a kill with a gun (weapon kills + headshots); returns the mastery camos it unlocked: [{ camo, wid }]
+export function masteryKill(wid, head) {
+  const mg = MASTERY_GUNS.includes(wid), before = mg ? { g: hasGilded(wid), n: gildedCount() } : null;
+  profile.wkills[wid] = (profile.wkills[wid] || 0) + 1;
+  if (!mg) return [];
+  if (head) (profile.wheads ||= {})[wid] = ((profile.wheads || {})[wid] || 0) + 1;
+  const got = [];
+  if (!before.g && hasGilded(wid)) {
+    got.push({ camo: 'mgold', wid });
+    const n = gildedCount();
+    if (n >= MASTERY.plat && before.n < MASTERY.plat) got.push({ camo: 'mplat', wid: null }); // every Gilded gun at once
+    else if (n >= MASTERY.plat) got.push({ camo: 'mplat', wid });
+    if (n >= MASTERY.void && before.n < MASTERY.void) got.push({ camo: 'mvoid', wid: null });
+  }
+  return got;
+}
 
 // ---------------------------------------------------------------- Gunsmith attachments
 export const SLOT_NAMES = { optic: 'Optic', muzzle: 'Muzzle', barrel: 'Barrel', under: 'Underbarrel', mag: 'Magazine', ammo: 'Ammo Type', stock: 'Stock', grip: 'Rear Grip', perk: 'Proficiency' };

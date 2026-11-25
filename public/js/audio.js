@@ -2,17 +2,41 @@
 // Gunshots are built in layers like a real recording: a sharp supersonic crack, the muzzle blast (distorted
 // noise), a low chest thump, the action cycling, and the report echoing off the surroundings (a generated
 // reverb + slapback delay). Distant shots lose their highs and are mostly echo.
-let ctx = null, master = null, noiseBuf = null, verb = null, slap = null, drive = null, deaf = null;
+let ctx = null, master = null, noiseBuf = null, verb = null, slap = null, drive = null, deaf = null, probe = null, probeBuf = null, watchdog = 0;
+// Voice limit: every gunshot is ~20 audio nodes, so a firefight with bots spraying SMGs could pile up hundreds at
+// once, overload the audio thread (crackling, sound cutting in and out) and cost frame rate. Each sound takes a
+// voice for as long as it rings; far-away and quiet sounds are skipped once the mix is busy, your own never are.
+let voices = [];
+function voice(dur, important) {
+  const now = ctx.currentTime;
+  if (voices.length > 20) voices = voices.filter(e => e > now);
+  if (voices.length >= (important ? 70 : 34)) return false;
+  voices.push(now + dur);
+  return true;
+}
+const fin = (v, d = 0) => (Number.isFinite(v) ? v : d);
 
 export function initAudio(volume = 0.6) {
-  if (ctx) { ctx.resume(); return; }
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx) { if (ctx.state !== 'running') ctx.resume().catch(() => {}); return; }
+  // 'balanced' gives the audio thread a slightly bigger buffer, so a busy moment doesn't make it drop out
+  try { ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'balanced' }); } catch { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+  voices = [];
   master = ctx.createGain();
   master.gain.value = volume;
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 5; comp.attack.value = 0.002; comp.release.value = 0.18;
   deaf = ctx.createBiquadFilter(); deaf.type = 'lowpass'; deaf.frequency.value = 22000; deaf.Q.value = 0.5; // muffles everything while stunned
   master.connect(deaf); deaf.connect(comp); comp.connect(ctx.destination); comp_ = comp;
+  probe = ctx.createAnalyser(); probe.fftSize = 256; probeBuf = new Float32Array(256); comp.connect(probe);
+  ctx.onstatechange = () => { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && document.visibilityState === 'visible') ctx.resume().catch(() => {}); };
+  // Watchdog: Windows can suspend the audio device (headset plugged in, another app grabbing it), and one bad sample
+  // (NaN) reaching the compressor silences it for good. Either way: get it running again / rebuild the sound chain.
+  if (!watchdog) watchdog = setInterval(() => {
+    if (!ctx) return;
+    if (ctx.state !== 'running' && ctx.state !== 'closed' && document.visibilityState === 'visible') { ctx.resume().catch(() => {}); return; }
+    try { probe.getFloatTimeDomainData(probeBuf); } catch { return; }
+    for (let i = 0; i < probeBuf.length; i++) if (!Number.isFinite(probeBuf[i])) { rebuild(); return; }
+  }, 1000);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -37,7 +61,12 @@ export function initAudio(volume = 0.6) {
   drive = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; drive[i] = Math.tanh(x * 3.2) / Math.tanh(3.2); }
 }
-export function setVolume(v) { if (master) master.gain.value = v; }
+function rebuild() {
+  const v = master ? master.gain.value : 0.6, old = ctx;
+  ctx = null; try { old.close(); } catch {}
+  initAudio(v);
+}
+export function setVolume(v) { if (master) master.gain.value = fin(v, 0.6); }
 // stun grenade: the world goes muffled with a ringing in the ears, then slowly comes back
 export function deafen(sec = 3, amount = 1) {
   if (!ctx) return; const t = ctx.currentTime, f = deaf.frequency;
@@ -59,6 +88,7 @@ export function charge(dur = 0.5) {
 
 // output bus: dry level, stereo pan, how much goes into the echo/reverb
 function out(vol, pan, wet = 0) {
+  vol = fin(vol); pan = fin(pan);
   const g = ctx.createGain(); g.gain.value = vol;
   let tail = g;
   if (pan) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(p); tail = p; }
@@ -100,6 +130,8 @@ function clank(dest, t, freq, peak = 1, ring = 0.05) {
 // snd: { f: filter freq (brightness), d: duration (bigger = heavier gun), b: body thump freq, v: volume }
 export function shot(snd, vol = 1, pan = 0, distant = false) {
   if (!ctx) return;
+  vol = fin(vol); if (vol <= 0.001) return;
+  if (!voice(distant ? 0.6 : 0.25 + (snd.d || 0.2) * 3, !distant && vol >= 0.4 && !pan)) return;
   if (snd.laser) return laser(snd, vol, pan);
   if (snd.foam) return foam(snd, vol, pan);
   const t = ctx.currentTime;
@@ -191,10 +223,10 @@ export function killConfirm() {
   tone(o, t + 0.07, 0.12, 140, 70, 'sine', 0.7); noiseBurst(o, t + 0.07, 0.1, 600, 'lowpass', 1, 0.5);
 }
 export function hurt() { if (!ctx) return; const t = ctx.currentTime; const o = out(0.55); noiseBurst(o, t, 0.15, 400, 'lowpass', 1, 1); tone(o, t, 0.12, 140, 70, 'sine', 0.9); noiseBurst(o, t, 0.03, 2000, 'bandpass', 2, 0.4); }
-export function step(vol = 0.15, snow = false) { if (!ctx) return; const t = ctx.currentTime; const o = out(vol); noiseBurst(o, t, 0.06, snow ? 1400 : 650, 'lowpass', 1, 1); noiseBurst(o, t + 0.01, 0.03, snow ? 3000 : 2200, 'bandpass', 2, 0.35); tone(o, t, 0.04, 110, 70, 'sine', 0.35); }
+export function step(vol = 0.15, snow = false) { if (!ctx || !voice(0.08, vol >= 0.12)) return; const t = ctx.currentTime; const o = out(vol); noiseBurst(o, t, 0.06, snow ? 1400 : 650, 'lowpass', 1, 1); noiseBurst(o, t + 0.01, 0.03, snow ? 3000 : 2200, 'bandpass', 2, 0.35); tone(o, t, 0.04, 110, 70, 'sine', 0.35); }
 export function land() { if (!ctx) return; const t = ctx.currentTime; const o = out(0.3); noiseBurst(o, t, 0.12, 500, 'lowpass', 1, 1); tone(o, t, 0.1, 120, 60, 'sine', 0.5); clank(o, t + 0.02, 1800, 0.15); }
 export function boom(vol = 1, pan = 0) {
-  if (!ctx) return;
+  if (!ctx || !voice(2.6, vol > 0.5)) return;
   const t = ctx.currentTime, o = out(1.2 * vol, pan, 0.7);
   const blast = shaped(o, 3);
   noiseBurst(o, t, 0.01, 2000, 'highpass', 0.5, 1);
@@ -214,7 +246,7 @@ export function jet() {
   const g = ctx.createGain(); g.gain.setValueAtTime(0.001, t); g.gain.exponentialRampToValueAtTime(1, t + 1.1); g.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
   src.connect(f); f.connect(g); g.connect(o); src.start(t); src.stop(t + 2.6);
 }
-export function flame(vol = 1, pan = 0) { if (!ctx) return; const t = ctx.currentTime; const o = out(0.32 * vol, pan); noiseBurst(o, t, 0.14, 420, 'lowpass', 0.5, 1); noiseBurst(o, t, 0.1, 1800, 'bandpass', 0.6, 0.35); }
+export function flame(vol = 1, pan = 0) { if (!ctx || !voice(0.2, !pan)) return; const t = ctx.currentTime; const o = out(0.32 * vol, pan); noiseBurst(o, t, 0.14, 420, 'lowpass', 0.5, 1); noiseBurst(o, t, 0.1, 1800, 'bandpass', 0.6, 0.35); }
 export function flashbang() { if (!ctx) return; const t = ctx.currentTime; const o = out(0.6, 0, 0.6); const b = shaped(o, 3); noiseBurst(b, t, 0.3, 3000, 'highpass', 0.7, 1); tone(o, t + 0.05, 2.8, 3900, 3700, 'sine', 0.18); }
 export function uiBlip() { if (!ctx) return; const t = ctx.currentTime; tone(out(0.2), t, 0.06, 1200, 1600, 'sine', 0.6); }
 export function announce() { if (!ctx) return; const t = ctx.currentTime, o = out(0.35); tone(o, t, 0.15, 520, 520, 'sawtooth', 0.25); tone(o, t + 0.12, 0.15, 780, 780, 'sawtooth', 0.25); tone(o, t + 0.24, 0.35, 1040, 1040, 'sawtooth', 0.25); }

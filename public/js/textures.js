@@ -699,10 +699,14 @@ export const WEAPON_SKINS = [
   { id: 'xkrampus', name: 'Krampus', rarity: 'festive', swatch: 'linear-gradient(135deg, #120708 40%, #8c0f16 40% 50%, #120708 50%)' },
   { id: 'xnut', name: 'Nutcracker', rarity: 'festive', swatch: 'linear-gradient(180deg, #b0121c 40%, #e8c15a 40% 52%, #b0121c 52%)' },
   { id: 'xlights', name: 'Fairy Lights', rarity: 'festive', swatch: 'radial-gradient(circle at 25% 30%, #ff3b3b 10%, transparent 12%), radial-gradient(circle at 70% 40%, #3bff6a 10%, transparent 12%), radial-gradient(circle at 45% 75%, #ffd23b 10%, transparent 12%), #0c1a12' },
+  // Mastery camos: earned per gun (see progress.js), never bought
+  { id: 'mgold', name: 'Gilded', rarity: 'mastery', swatch: 'linear-gradient(135deg, #8a5a14, #f7d77a 35%, #c8901f 55%, #fff1b8 70%, #9a6516)' },
+  { id: 'mplat', name: 'Platinum', rarity: 'mastery', swatch: 'linear-gradient(135deg, #8d98a6, #f4f7fb 30%, #b9c3cf 50%, #ffffff 65%, #7f8a98)' },
+  { id: 'mvoid', name: 'Void', rarity: 'mastery', swatch: 'radial-gradient(circle at 30% 35%, #c86bff 0 6%, transparent 8%), radial-gradient(circle at 70% 65%, #3ae8ff 0 5%, transparent 7%), linear-gradient(135deg, #07040d, #1d0b33 50%, #050308)' },
   { id: 'dev', name: 'Dev Circuit', rarity: 'dev', swatch: 'repeating-linear-gradient(90deg, #07140e 0 6px, #39ff9c 6px 8px)' },
   { id: 'glitch', name: 'Glitch', rarity: 'dev', swatch: 'linear-gradient(90deg, #0a0a0f 30%, #ff2a3a 30% 45%, #0a0a0f 45% 60%, #22e5ff 60% 75%, #0a0a0f 75%)' },
 ];
-export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e', festive: '#ff4d5e', dev: '#39ff9c' };
+export const RARITY_COLORS = { common: '#9aa4b1', rare: '#4b8bff', epic: '#b45cff', legendary: '#ffb02e', festive: '#ff4d5e', mastery: '#f7d77a', dev: '#39ff9c' };
 
 // ---------------------------------------------------------------- Christmas camos
 const snowflake = (x, cx, cy, r, w = 1.5) => {
@@ -869,6 +873,65 @@ export function weaponSkinMaterial(id) {
       m.userData.pulse = true; break;
     }
     case 'gold': m = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.18, metalness: 1.0 }); break;
+    case 'mgold': { // Gilded: polished gold with hand-engraved scrollwork (a matching bump map cuts the engraving in)
+      const [c, x] = mkCanvas(256), [b, bx] = mkCanvas(256), rnd = mulberry32(31);
+      const g = x.createLinearGradient(0, 0, 256, 256); g.addColorStop(0, '#d9a63a'); g.addColorStop(0.45, '#f6d16e'); g.addColorStop(0.7, '#e2b24a'); g.addColorStop(1, '#c48d2a');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256); bx.fillStyle = '#808080'; bx.fillRect(0, 0, 256, 256);
+      const scroll = (ctx, col, w) => { // leafy S-curls on a 64 px grid, tiling seamlessly
+        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+        for (let gy = 0; gy < 4; gy++) for (let gx = 0; gx < 4; gx++) {
+          const cx = gx * 64 + 32, cy = gy * 64 + 32, f = (gx + gy) % 2 ? 1 : -1;
+          ctx.beginPath(); ctx.arc(cx - 12 * f, cy, 12, 0, 5, f < 0); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx + 12 * f, cy, 12, Math.PI, Math.PI + 5 * f, f < 0); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - 32, cy); ctx.quadraticCurveTo(cx - 16, cy - 20 * f, cx, cy); ctx.quadraticCurveTo(cx + 16, cy + 20 * f, cx + 32, cy); ctx.stroke();
+          for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(cx + s * 22, cy - s * 10 * f, 5, 2, s * 0.8 * f, 0, 7); ctx.stroke(); }
+        }
+      };
+      scroll(x, 'rgba(110,64,10,0.55)', 2.2); scroll(bx, '#303030', 2.4);
+      x.translate(1, 1); scroll(x, 'rgba(255,240,190,0.45)', 1); x.setTransform(1, 0, 0, 1, 0, 0);
+      for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(255,248,215,${rnd() * 0.18})`; x.fillRect(rnd() * 256, rnd() * 256, 1, 1); }
+      const t = toTex(c); t.repeat.set(2, 2); const bt = toTex(b, false); bt.repeat.set(2, 2);
+      // not fully metallic: a pure metal only shows reflections, which go near-black in the darker maps
+      m = new THREE.MeshStandardMaterial({ map: t, bumpMap: bt, bumpScale: 0.012, color: '#ffffff', roughness: 0.24, metalness: 0.62, envMapIntensity: 1.8, emissive: new THREE.Color('#3a2404'), emissiveIntensity: 0.35 }); break;
+    }
+    case 'mplat': { // Platinum: bright white metal, diamond-cut facets that catch the light at different angles
+      const [c, x] = mkCanvas(256), rnd = mulberry32(53);
+      x.fillStyle = '#d8dee6'; x.fillRect(0, 0, 256, 256);
+      const s = 32;
+      for (let gy = 0; gy < 8; gy++) for (let gx = 0; gx < 8; gx++) {
+        const x0 = gx * s, y0 = gy * s, cx = x0 + s / 2, cy = y0 + s / 2;
+        const tri = (pts, l) => { x.fillStyle = `hsl(212, 14%, ${l}%)`; x.beginPath(); x.moveTo(...pts[0]); x.lineTo(...pts[1]); x.lineTo(...pts[2]); x.closePath(); x.fill(); };
+        const base = 74 + rnd() * 10;
+        tri([[x0, y0], [x0 + s, y0], [cx, cy]], base + 14); tri([[x0 + s, y0], [x0 + s, y0 + s], [cx, cy]], base - 6);
+        tri([[x0 + s, y0 + s], [x0, y0 + s], [cx, cy]], base - 14); tri([[x0, y0 + s], [x0, y0], [cx, cy]], base + 4);
+        x.strokeStyle = 'rgba(255,255,255,0.7)'; x.lineWidth = 1; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x0 + s, y0 + s); x.moveTo(x0 + s, y0); x.lineTo(x0, y0 + s); x.stroke();
+      }
+      x.strokeStyle = 'rgba(120,132,148,0.6)'; x.lineWidth = 1; for (let i = 0; i <= 256; i += s) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.moveTo(0, i); x.lineTo(256, i); x.stroke(); }
+      const t = toTex(c); t.repeat.set(1.5, 1.5);
+      m = new THREE.MeshStandardMaterial({ map: t, color: '#ffffff', roughness: 0.2, metalness: 0.55, envMapIntensity: 1.8, emissive: new THREE.Color('#1c2129'), emissiveIntensity: 0.4 }); break;
+    }
+    case 'mvoid': { // Void: glossy black stone split by glowing violet / cyan fractures that slowly drift and pulse
+      const [c, x] = mkCanvas(256), [e, ex] = mkCanvas(256), rnd = mulberry32(97);
+      const g = x.createLinearGradient(0, 0, 256, 256); g.addColorStop(0, '#07040d'); g.addColorStop(0.5, '#160a26'); g.addColorStop(1, '#050308');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256); ex.fillStyle = '#000'; ex.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 160; i++) { x.fillStyle = `rgba(190,150,255,${rnd() * 0.35})`; x.fillRect(rnd() * 256, rnd() * 256, 1, 1); }
+      const crack = (sx, sy, len, ang, w, col, depth) => { // branching random walk, drawn 3x3 so it tiles
+        let px = sx, py = sy;
+        for (let k = 0; k < len; k++) {
+          ang += (rnd() - 0.5) * 0.9; const nx = px + Math.cos(ang) * 7, ny = py + Math.sin(ang) * 7;
+          for (const ctx of [x, ex]) for (let ox = -256; ox <= 256; ox += 256) for (let oy = -256; oy <= 256; oy += 256) {
+            ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(px + ox, py + oy); ctx.lineTo(nx + ox, ny + oy); ctx.stroke();
+          }
+          px = nx; py = ny;
+          if (depth < 2 && rnd() < 0.12) crack(px, py, len * 0.45 | 0, ang + (rnd() < 0.5 ? 1 : -1) * (0.6 + rnd() * 0.6), w * 0.6, col, depth + 1);
+        }
+      };
+      for (let i = 0; i < 7; i++) crack(rnd() * 256, rnd() * 256, 18 + rnd() * 16, rnd() * 6.28, 2.6, i % 3 === 2 ? '#3ae8ff' : '#b04dff', 0);
+      ex.globalCompositeOperation = 'lighter'; ex.filter = 'blur(3px)'; ex.drawImage(e, 0, 0); ex.filter = 'none';
+      const et = toTex(e);
+      m = new THREE.MeshStandardMaterial({ map: toTex(c), emissiveMap: et, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.4, roughness: 0.14, metalness: 0.65 });
+      m.userData.pulse = true; m.userData.drift = et; break;
+    }
     case 'dragon': { // red overlapping scales with dark edges and a gold sheen
       const [c, x] = mkCanvas(256); x.fillStyle = '#5a0c12'; x.fillRect(0, 0, 256, 256);
       for (let r = 0; r < 14; r++) for (let k = -1; k < 11; k++) {
