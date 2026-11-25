@@ -1777,7 +1777,7 @@ const myPid = (() => {
   if (!/^[a-z0-9]{8,32}$/.test(p || '')) { p = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => (b % 36).toString(36)).join(''); PR.store.set(PID_KEY, p); }
   return p;
 })();
-let banUntil = Number(PR.store.get(BAN_KEY)) || 0, banTimer = 0;
+let banUntil = Number(PR.store.get(BAN_KEY)) || 0, banTimer = 0, banReason = PR.store.get('strikeline_ban_r') || '';
 function showBan() {
   let el = $('banBanner');
   if (!el) {
@@ -1791,18 +1791,27 @@ function showBan() {
     const left = banUntil - Date.now();
     if (left <= 0) { el.remove(); clearInterval(banTimer); banTimer = 0; return; }
     const mins = Math.ceil(left / 60000);
-    el.textContent = `BANNED for using a slur in chat — you can play again in ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}`;
+    const why = banReason ? `BANNED (${banReason})` : 'BANNED for using a slur in chat';
+    el.textContent = left > 50 * 365 * 864e5 ? `${why} — this ban is permanent`
+      : `${why} — you can play again in ${mins >= 1440 ? `${Math.floor(mins / 1440)} d ${Math.floor(mins % 1440 / 60)} h` : mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}`;
   };
   tick();
   clearInterval(banTimer); banTimer = setInterval(tick, 15000);
 }
 if (banUntil > Date.now()) setTimeout(showBan, 500);
+// a message or announcement from the server owner (Strikeline Admin app): a banner at the top for a few seconds
+function showAnnounce(from, text) {
+  const el = document.createElement('div'); el.className = 'announce';
+  el.innerHTML = `<b>${esc(String(from || 'ANNOUNCEMENT'))}</b><span>${esc(String(text || ''))}</span>`;
+  document.body.appendChild(el); SFX.uiBlip?.();
+  setTimeout(() => el.classList.add('out'), 7500); setTimeout(() => el.remove(), 8200);
+}
 function setNet(ok, text) { const n = $('netstatus'); n.className = ok ? 'ok' : 'bad'; n.querySelector('span').textContent = text; }
 function connect() {
   if (location.protocol === 'file:') { setNet(false, 'Open via http://localhost:3080'); return; }
   setNet(false, 'Connecting…');
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  ws.onopen = () => send({ t: 'hello', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level, pid: myPid, ban: banUntil > Date.now() ? banUntil : 0 });
+  ws.onopen = () => send({ t: 'hello', dev: PR.devCode(), name: cfg.name, skin: cfg.cskin, wskin: cfg.wskin, level: PR.levelInfo().level, pid: myPid, ban: banUntil > Date.now() ? banUntil : 0, banr: banReason });
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); };
   ws.onclose = () => {
     ws = null;
@@ -1847,13 +1856,15 @@ function handle(m) {
     case 'lobbies': lobbies = [...m.list, ...(m.remote || []).map(l => ({ ...l, remote: true }))]; online = m.online; setNet(true, `Online · ${online} player${online === 1 ? '' : 's'}`); renderLobbyList(); break;
     case 'err': toast(m.m); $('loading').classList.add('hidden'); break;
     case 'toast': toast(m.m); break;
+    case 'announce': showAnnounce(m.from, m.m); break;
     case 'banned':
-      if (Number(m.until) > banUntil) { banUntil = Number(m.until); PR.store.set(BAN_KEY, String(banUntil)); }
-      showBan(); toast('You have been banned for 2 hours for using a slur in chat.');
+      if (Number(m.until) > banUntil || m.r) { banUntil = Math.max(banUntil, Number(m.until)); PR.store.set(BAN_KEY, String(banUntil)); }
+      if (typeof m.r === 'string') { banReason = m.r; PR.store.set('strikeline_ban_r', banReason); }
+      showBan(); toast(banReason ? `You have been banned (${banReason}).` : 'You have been banned for 2 hours for using a slur in chat.');
       break;
     case 'unbanned':
       if (banUntil > Date.now()) toast("You've been unbanned.");
-      banUntil = 0; PR.store.set(BAN_KEY, '0');
+      banUntil = 0; PR.store.set(BAN_KEY, '0'); banReason = ''; PR.store.set('strikeline_ban_r', '');
       clearInterval(banTimer); banTimer = 0; $('banBanner')?.remove();
       break;
     case 'pong': { const rtt = performance.now() - m.c; perfStats.ping = perfStats.ping ? perfStats.ping * 0.7 + rtt * 0.3 : rtt; break; }

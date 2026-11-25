@@ -1,7 +1,7 @@
 {
   "name": "strikeline",
   "productName": "Strikeline",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Strikeline - multiplayer arena FPS",
   "author": "Welsh",
   "type": "module",
@@ -10,7 +10,9 @@
     "start": "node server.js",
     "app": "electron .",
     "dist": "node desktop/prebuild.cjs && node desktop/build.cjs",
-    "release": "node desktop/release.cjs"
+    "release": "node desktop/release.cjs",
+    "admin": "electron desktop/admin.cjs",
+    "admin:shortcut": "node desktop/admin-shortcut.cjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -34,6 +36,7 @@
       "!desktop/release.cjs",
       "!desktop/build.cjs",
       "!desktop/prebuild.cjs",
+      "!desktop/admin*",
       "desktop/*.html",
       "desktop/*.png",
       "desktop/source.json",

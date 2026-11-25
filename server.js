@@ -95,6 +95,7 @@ function setupFile() {
 }
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
+  if (url.startsWith('/admin/')) { adminHttp(req, res, url); return; }
   if (url === '/info') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ port: PORT, lan: lanAddresses() }));
@@ -154,6 +155,7 @@ const cleanName = (n, len, fallback) => { const t = cleanText(n, len); if (!t) r
 // ---------- chat bans: a slur in chat bans the player for 2 h. Kept by player id (the app's saved id, so it
 // follows them between servers) and, for players coming in over the tunnel, their internet address.
 const BANS_FILE = path.join(DATA, 'bans.json');
+const MAX_BAN = 100 * 365 * 24 * 3600 * 1000; // a "permanent" ban from the admin app
 // entries: 'p:<player id>' / 'ip:<address>' → { until, name } (older files: just the time).
 // 'lift:<player id>' → time: an unbanned player whose app may still carry the ban; it's ignored and cleared on connect.
 const bans = readJson(BANS_FILE, {});
@@ -225,7 +227,10 @@ function unban(byName, broadcast = true) {
   return [...names];
 }
 const isBanned = c => banUntil(c) > Date.now();
-function banMsg(c) { const mins = Math.max(1, Math.ceil((banUntil(c) - Date.now()) / 60000)); return `You're banned for using a slur in chat. Time left: ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`}.`; }
+function banMsg(c) {
+  const r = (c.pid && bans['p:' + c.pid]?.r) || (c.ip && bans['ip:' + c.ip]?.r) || c.banReason || '', left = banUntil(c) - Date.now();
+  return `You're banned ${r ? `(${r})` : 'for using a slur in chat'}. ${left > MAX_BAN / 2 ? 'This ban is permanent.' : `Time left: ${fmtLeft(left)}.`}`;
+}
 function banClient(c) {
   const until = Date.now() + BAN_MS;
   c.banUntil = until;
@@ -459,12 +464,266 @@ async function banPull() {
     for (const m of relayLines(txt)) { // in time order, so the latest action for each player wins
       banSince = m.id; let j; try { j = JSON.parse(m.message); } catch { continue; }
       if (!j || j.src === BAN_SRC) continue;            // ignore our own broadcasts
+      if (j.adm) { applyAdmin(j); continue; }           // signed command from the owner's admin app
       if (typeof j.unban === 'string') unban(j.unban, false);
       else if (j.ban && /^[a-z0-9]{8,32}$/.test(j.ban.i || '')) applyRemoteBan(j.ban);
     }
   } catch {}
 }
 setTimeout(banPull, 4000); setInterval(banPull, 20000); // every server, so unbans/bans reach everyone fast
+
+// ---------- server admin (the Strikeline Admin app: desktop/admin.cjs) ------------------------------------
+// Local control: an HTTP API at /admin/* that only answers this PC (never the tunnel or the LAN), and only with
+// the token from admin.json in the data folder, which this server writes when it starts. Global commands (ban,
+// unban, kick, mute, message, announce) also go to every other server over the ban relay, signed with the
+// owner's private key (%APPDATA%\Strikeline\admin-key.pem, never in git). Every server checks the signature
+// against the public key below, so nobody else can send them.
+const ADMIN_PUB = crypto.createPublicKey({ key: Buffer.from('MCowBQYDK2VwAyEATsm2wbjaJvIThmC0KqhPfW5wPGUg/TmR15I451Ffq18=', 'base64'), format: 'der', type: 'spki' });
+const ADMIN_KEY = (() => { try { return crypto.createPrivateKey(fs.readFileSync(process.env.STRIKELINE_ADMIN_KEY || path.join(process.env.APPDATA || path.join(os.homedir(), '.config'), 'Strikeline', 'admin-key.pem'))); } catch { return null; } })();
+const ADMIN_TOKEN = crypto.randomBytes(18).toString('hex');
+const STARTED = Date.now();
+const MUTES_FILE = path.join(DATA, 'mutes.json');
+const mutes = readJson(MUTES_FILE, {}); // pid -> { until, name }
+const saveMutes = () => { const now = Date.now(); for (const k in mutes) if (!(mutes[k] && mutes[k].until > now)) delete mutes[k]; try { fs.writeFileSync(MUTES_FILE, JSON.stringify(mutes)); } catch {} };
+const kicks = new Map(); // pid -> when they may join a lobby on this server again
+const chatLog = [];      // the last 400 chat lines on this server
+function logChat(c, room, text, shown, flagged) {
+  chatLog.push({ at: Date.now(), room: room?.code || '', rn: room?.name || '', name: c.name, pid: c.pid || '', cid: c.id, text, shown, flagged: flagged ? 1 : 0 });
+  if (chatLog.length > 400) chatLog.splice(0, chatLog.length - 400);
+}
+const adminLog = [];
+function aLog(msg) { adminLog.push({ at: Date.now(), msg }); if (adminLog.length > 300) adminLog.shift(); console.log(`[admin] ${msg}`); }
+const mutedUntil = c => (c.pid && mutes[c.pid]?.until) || 0;
+const fmtLeft = ms => { if (ms > MAX_BAN / 2) return 'permanently'; const m = Math.max(1, Math.ceil(ms / 60000)); return m >= 1440 ? `${Math.floor(m / 1440)} d ${Math.floor(m % 1440 / 60)} h` : m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
+const byPid = pid => (pid ? [...clients.values()].filter(c => c.pid === pid) : []);
+
+function adminSigned(cmd) { // send a signed command to every other server (they poll the relay every 20 s)
+  if (!ADMIN_KEY) return false;
+  const adm = { ...cmd, id: crypto.randomBytes(6).toString('hex'), at: Date.now() };
+  const sig = crypto.sign(null, Buffer.from(JSON.stringify(adm)), ADMIN_KEY).toString('base64');
+  broadcastBan({ adm, sig });
+  return true;
+}
+function doBan(pid, name, until, reason) {
+  const now = Date.now();
+  until = Math.min(until, now + MAX_BAN);
+  if (!pid || until <= now) return 0;
+  name = name || players[pid]?.name || '';
+  const r = String(reason || '').slice(0, 120), ip = players[pid]?.ip;
+  bans['p:' + pid] = { until, name, r }; delete bans['lift:' + pid];
+  if (ip) bans['ip:' + ip] = { until, name, r };
+  saveBans();
+  const list = byPid(pid);
+  for (const c of list) {
+    c.banUntil = until; c.banReason = r;
+    if (c.ip) bans['ip:' + c.ip] = { until, name, r };
+    sendTo(c, { t: 'banned', until, r });
+    const room = c.room;
+    if (room) { leaveRoom(c); roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} was banned by the server owner` }); }
+  }
+  saveBans(); writePlayers();
+  return list.length;
+}
+function unbanPid(pid) {
+  const now = Date.now(), ip = players[pid]?.ip, old = banEnd(bans['p:' + pid]);
+  const had = old > now || (ip && banEnd(bans['ip:' + ip]) > now) || byPid(pid).some(c => c.banUntil > now);
+  if (had) bans['lift:' + pid] = Math.max(old, now + BAN_MS); // their app may still carry the ban: lift it when they connect
+  delete bans['p:' + pid]; if (ip) delete bans['ip:' + ip];
+  for (const c of byPid(pid)) { c.banUntil = 0; c.banReason = ''; if (c.ip) delete bans['ip:' + c.ip]; sendTo(c, { t: 'unbanned' }); }
+  saveBans(); writePlayers();
+  return had;
+}
+function doKick(pid, cid, reason) {
+  const list = cid ? [clients.get(cid)].filter(Boolean) : byPid(pid);
+  for (const c of list) {
+    if (c.pid) kicks.set(c.pid, Date.now() + 60000);
+    const room = c.room;
+    if (room) { leaveRoom(c); roomBroadcast(room, { t: 'chat', n: '', m: `${dname(c)} was kicked by the server owner` }); }
+    sendTo(c, { t: 'err', m: `You were kicked by the server owner${reason ? `: ${reason}` : ''}. You can join again in a minute.` });
+  }
+  return list.length;
+}
+function doMute(pid, name, until) {
+  if (!pid) return 0;
+  const on = until > Date.now();
+  if (on) mutes[pid] = { until: Math.min(until, Date.now() + MAX_BAN), name: name || players[pid]?.name || '' }; else delete mutes[pid];
+  saveMutes();
+  const list = byPid(pid);
+  for (const c of list) sendTo(c, { t: 'toast', m: on ? `You've been muted ${fmtLeft(until - Date.now()) === 'permanently' ? 'permanently' : 'for ' + fmtLeft(until - Date.now())} by the server owner.` : "You've been unmuted." });
+  return list.length;
+}
+function doMsg(pid, cid, text) {
+  const list = cid ? [clients.get(cid)].filter(Boolean) : byPid(pid);
+  for (const c of list) { sendTo(c, { t: 'announce', m: text, from: 'MESSAGE FROM THE SERVER OWNER' }); if (c.room) sendTo(c, { t: 'chat', n: '', m: `[Server owner → you] ${text}` }); }
+  return list.length;
+}
+function doAnnounce(text) {
+  for (const c of clients.values()) { sendTo(c, { t: 'announce', m: text, from: 'ANNOUNCEMENT' }); if (c.room) sendTo(c, { t: 'chat', n: '', m: `[ANNOUNCEMENT] ${text}` }); }
+  return clients.size;
+}
+// a signed command from the relay (sent by the owner's admin app through some server)
+function applyAdmin(j) {
+  const a = j.adm;
+  try { if (!a || typeof j.sig !== 'string' || !crypto.verify(null, Buffer.from(JSON.stringify(a)), ADMIN_PUB, Buffer.from(j.sig, 'base64'))) return; } catch { return; }
+  const pid = /^[a-z0-9]{8,32}$/.test(a.pid || '') ? a.pid : '';
+  const fresh = Math.abs(Date.now() - (Number(a.at) || 0)) < 3 * 60000; // kicks and messages only right after they're sent, not replayed later
+  const name = cleanText(a.name, 16), text = String(a.text || '').replace(/[\r\n]+/g, ' ').slice(0, 300), reason = String(a.reason || '').slice(0, 120);
+  switch (a.c) {
+    case 'ban': if (pid) doBan(pid, name, Number(a.until) || 0, reason); break;
+    case 'unban': if (pid) unbanPid(pid); break;
+    case 'mute': if (pid) doMute(pid, name, Number(a.until) || 0); break;
+    case 'kick': if (pid && fresh) doKick(pid, 0, reason); break;
+    case 'msg': if (pid && fresh && text) doMsg(pid, 0, text); break;
+    case 'announce': if (fresh && text) doAnnounce(text); break;
+  }
+}
+
+function adminState() {
+  const now = Date.now(), onlinePids = new Set();
+  const banOf = (pid, ip, c) => {
+    const a = pid ? bans['p:' + pid] : null, b = ip ? bans['ip:' + ip] : null;
+    const until = Math.max(banEnd(a), banEnd(b), c?.banUntil || 0);
+    return until > now ? { until, r: (a && a.r) || (b && b.r) || c?.banReason || '' } : null;
+  };
+  const online = [...clients.values()].map(c => {
+    if (c.pid) onlinePids.add(c.pid);
+    const e = c.room && c.room.state !== 'lobby' ? c.room.ents.get(c.id) : null;
+    return { cid: c.id, pid: c.pid || '', name: c.name, dev: c.dev ? 1 : 0, level: c.level, owner: c.owner ? 1 : 0, ip: c.owner ? 'this PC' : c.ip || 'local',
+      room: c.room?.code || '', roomName: c.room?.name || '', host: c.room && c.room.hostId === c.id ? 1 : 0,
+      alive: e ? (e.alive ? 1 : 0) : null, hp: e ? Math.max(0, Math.round(e.hp)) : null, k: e ? e.kills : null, d: e ? e.deaths : null,
+      ban: banOf(c.pid, c.ip, c), mute: mutedUntil(c) > now ? mutedUntil(c) : 0, since: c.since || now };
+  });
+  const known = Object.entries(players).map(([pid, p]) => ({ pid, name: p.name || '?', lastSeen: p.lastSeen || 0, online: onlinePids.has(pid) ? 1 : 0, ip: p.ip ? 1 : 0,
+    ban: banOf(pid, p.ip), mute: mutes[pid]?.until > now ? mutes[pid].until : 0 })).sort((a, b) => b.online - a.online || b.lastSeen - a.lastSeen);
+  const banList = Object.entries(bans).filter(([k, v]) => (k.startsWith('p:') || k.startsWith('ip:')) && banEnd(v) > now)
+    .map(([k, v]) => ({ key: k, kind: k.startsWith('p:') ? 'player' : 'address', pid: k.startsWith('p:') ? k.slice(2) : '', name: (typeof v === 'object' && v.name) || players[k.slice(2)]?.name || '?', until: banEnd(v), r: (typeof v === 'object' && v.r) || '' }));
+  remoteLobbies().catch(() => {}); // keep friends' lobbies fresh for the next refresh
+  const roomList = [...rooms.values()].map(r => ({
+    id: r.id, code: r.code, name: r.name, private: r.private ? 1 : 0, state: r.state, host: clients.get(r.hostId)?.name || '?', hostCid: r.hostId,
+    settings: r.settings, mapName: MAPS[r.state === 'lobby' ? r.settings.map : r.mapId]?.name || r.settings.map, modeName: MODES[r.settings.mode]?.name || r.settings.mode,
+    timeLeft: r.state === 'playing' ? Math.round(r.timeLeft) : null, teamScore: r.teamScore || [0, 0], teams: teamsOn(r) ? 1 : 0,
+    members: [...r.members].map(id => clients.get(id)).filter(Boolean).map(c => ({ cid: c.id, pid: c.pid || '', name: c.name, dev: c.dev ? 1 : 0, ready: r.ready.has(c.id) ? 1 : 0, host: r.hostId === c.id ? 1 : 0 })),
+    ents: r.state !== 'lobby' && r.ents ? [...r.ents.values()].map(e => ({ id: e.id, name: e.name, bot: e.bot ? 1 : 0, team: e.team, k: e.kills, d: e.deaths, s: e.score, alive: e.alive ? 1 : 0, hp: Math.max(0, Math.round(e.hp)) })) : [],
+  }));
+  return {
+    server: { v: APP_VERSION, port: PORT, uptime: now - STARTED, publicUrl, owner: FB_OWNER ? 1 : 0, signer: ADMIN_KEY ? 1 : 0, data: DATA, online: clients.size, rooms: rooms.size },
+    online, players: known, bans: banList, rooms: roomList, chat: chatLog.slice(-250), log: adminLog.slice(-120),
+    remote: (relayCache.list || []).filter(l => !l.private).map(l => ({ code: l.code, name: l.name, host: l.host, mode: l.mode, map: l.map, mapName: MAPS[l.map]?.name || l.map, players: l.players, max: l.max, state: l.state })),
+    maps: MAP_ORDER.map(id => ({ id, name: MAPS[id].name })), modes: Object.entries(MODES).filter(([id]) => id !== 'range').map(([id, m]) => ({ id, name: m.name })), difficulties: Object.keys(DIFFICULTY),
+  };
+}
+function adminRoomSet(room, s) {
+  const before = room.settings, playing = room.state !== 'lobby';
+  const next = sanitizeSettings({ ...before, ...s }, before);
+  if (playing && (next.mode !== before.mode || next.map !== before.map)) throw new Error('Map and mode can only change between matches: restart the match with them ("Apply + restart", or restart <code> <mode> <map> in the console).');
+  room.settings = next;
+  if (typeof s.name === 'string' && s.name.trim()) room.name = cleanName(s.name, 28, '') || room.name;
+  if (typeof s.private === 'boolean') room.private = s.private;
+  if (!playing) room.ready.clear();
+  if (playing && next.bots !== before.bots) syncBots(room);
+  if (playing && next.timeLimit !== before.timeLimit && room.settings.mode !== 'range') room.timeLeft = Math.max(10, room.timeLeft + (next.timeLimit - before.timeLimit) * 60);
+  sendRoom(room);
+}
+function adminCmd(m) {
+  const cmd = String(m.cmd || ''), now = Date.now();
+  const c = m.cid ? clients.get(Number(m.cid)) || null : null;
+  const pid = /^[a-z0-9]{8,32}$/.test(m.pid || '') ? m.pid : (c?.pid || '');
+  const name = cleanText(m.name || c?.name || players[pid]?.name || '', 16) || 'player';
+  const room = m.room ? [...rooms.values()].find(r => r.code === String(m.room).toUpperCase().trim() || r.id === m.room) || null : null;
+  const text = String(m.text || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 300);
+  const reason = String(m.reason || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
+  const mins = Math.max(0, Number(m.mins) || 0);
+  const needWho = () => { if (!pid && !c) throw new Error('Pick a player first.'); };
+  const needRoom = () => { if (!room) throw new Error('That lobby no longer exists.'); return room; };
+  const needEnt = () => { if (!c || !c.room || c.room.state !== 'playing') throw new Error(`${name} isn't in a match right now.`); const e = c.room.ents.get(c.id); if (!e) throw new Error(`${name} isn't in a match right now.`); return e; };
+  const done = (msg, global = false) => { aLog(msg); return { ok: true, msg, global }; };
+  const everywhere = g => (g ? ' (on every server)' : ADMIN_KEY ? '' : ' (this server only: no admin key on this PC)');
+  switch (cmd) {
+    case 'ban': {
+      needWho(); if (!pid) throw new Error(`${name} has no saved player id, so a ban can't follow them. Kick them instead.`);
+      const until = mins > 0 ? now + mins * 60000 : now + MAX_BAN, len = mins > 0 ? `for ${fmtLeft(mins * 60000)}` : 'permanently';
+      doBan(pid, name, until, reason || 'by the server owner');
+      const g = adminSigned({ c: 'ban', pid, name, until, reason: reason || 'by the server owner' });
+      return done(`Banned ${name} ${len}${reason ? ` (${reason})` : ''}${everywhere(g)}`, g);
+    }
+    case 'unban': {
+      needWho();
+      const had = pid ? unbanPid(pid) : false;
+      const names = unban(name);        // by name too: also reaches servers that haven't updated yet
+      const g = pid ? adminSigned({ c: 'unban', pid }) : false;
+      return done(had || names.length ? `Unbanned ${name}${everywhere(g)}` : `${name} wasn't banned here; sent the unban to every server anyway`, g);
+    }
+    case 'unbanall': { const names = unban('all'); for (const k of Object.keys(bans)) if (k.startsWith('p:') || k.startsWith('ip:')) delete bans[k]; saveBans(); writePlayers(); return done(`Cleared every ban${names.length ? ` (${names.join(', ')})` : ''}`, true); }
+    case 'kick': {
+      needWho();
+      const n = doKick(pid, c?.id || 0, reason);
+      const g = pid ? adminSigned({ c: 'kick', pid, name, reason }) : false;
+      return done(`Kicked ${name}${reason ? ` (${reason})` : ''}${n ? '' : ' — not on this server; sent to the others'}${everywhere(g)}`, g);
+    }
+    case 'mute': case 'unmute': {
+      needWho(); if (!pid) throw new Error(`${name} has no saved player id.`);
+      const until = cmd === 'unmute' ? 0 : mins > 0 ? now + mins * 60000 : now + MAX_BAN;
+      doMute(pid, name, until);
+      const g = adminSigned({ c: 'mute', pid, name, until });
+      return done(cmd === 'unmute' ? `Unmuted ${name}${everywhere(g)}` : `Muted ${name} ${mins > 0 ? `for ${fmtLeft(mins * 60000)}` : 'permanently'}${everywhere(g)}`, g);
+    }
+    case 'msg': {
+      needWho(); if (!text) throw new Error('Type a message.');
+      const n = doMsg(pid, c?.id || 0, text);
+      const g = pid && !c ? adminSigned({ c: 'msg', pid, text }) : false; // on this server: delivered already
+      return done(`Message to ${name}: "${text}"${n ? '' : g ? ' (sent to the other servers)' : ' — not online'}`, g);
+    }
+    case 'announce': {
+      if (!text) throw new Error('Type a message.');
+      doAnnounce(text);
+      const g = adminSigned({ c: 'announce', text });
+      return done(`Announced: "${text}"${everywhere(g)}`, g);
+    }
+    case 'slay': { const e = needEnt(); if (!e.alive) throw new Error(`${name} is already dead.`); kill(c.room, e, null, 'admin', false); return done(`Slayed ${name}`); }
+    case 'host': { if (!c || !c.room) throw new Error(`${name} isn't in a lobby.`); c.room.hostId = c.id; roomBroadcast(c.room, { t: 'chat', n: '', m: `${dname(c)} is now the host` }); sendRoom(c.room); return done(`Made ${name} host of ${c.room.name}`); }
+    case 'forget': { if (!pid || !players[pid]) throw new Error('Unknown player.'); delete players[pid]; writePlayers(); return done(`Removed ${name} from the player list`); }
+    case 'say': { const r = needRoom(); if (!text) throw new Error('Type a message.'); roomBroadcast(r, { t: 'chat', n: '', m: `[SERVER] ${text}` }); return done(`Said in ${r.name}: "${text}"`); }
+    case 'start': { const r = needRoom(); if (r.state !== 'lobby') throw new Error('That match is already running.'); startMatch(r); return done(`Started the match in ${r.name}`); }
+    case 'end': { const r = needRoom(); if (r.state !== 'playing') throw new Error("That lobby isn't in a match."); endMatch(r); return done(`Ended the match in ${r.name}`); }
+    case 'lobby': { const r = needRoom(); if (r.state === 'lobby') throw new Error('Already in the lobby.'); backToLobby(r); return done(`Sent ${r.name} back to the lobby`); }
+    case 'restart': {
+      const r = needRoom();
+      if (r.state !== 'lobby') backToLobby(r);
+      if (m.settings) adminRoomSet(r, m.settings);
+      startMatch(r);
+      return done(`Restarted ${r.name}: ${MODES[r.settings.mode].name} on ${MAPS[r.mapId]?.name || r.mapId}`);
+    }
+    case 'set': { const r = needRoom(); adminRoomSet(r, m.settings || {}); return done(`Changed the settings of ${r.name}`); }
+    case 'close': {
+      const r = needRoom(), nm = r.name;
+      for (const id of [...r.members]) { const cl = clients.get(id); if (!cl) continue; leaveRoom(cl); sendTo(cl, { t: 'err', m: 'The server owner closed that lobby.' }); }
+      rooms.delete(r.id); scheduleLobbies();
+      return done(`Closed ${nm}`);
+    }
+    case 'clearlog': { try { fs.writeFileSync(path.join(DATA, 'errors.log'), ''); } catch {} return done('Cleared errors.log'); }
+    default: throw new Error(`Unknown command "${cmd}"`);
+  }
+}
+function adminHttp(req, res, url) {
+  const json = (code, o) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(String(req.socket?.remoteAddress || ''))
+    && !req.headers['cf-ray'] && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'];
+  const tok = String(req.headers['x-admin-token'] || '');
+  if (!local || tok.length !== ADMIN_TOKEN.length || !crypto.timingSafeEqual(Buffer.from(tok), Buffer.from(ADMIN_TOKEN))) return json(403, { error: 'forbidden' });
+  if (url === '/admin/state') return json(200, adminState());
+  if (url === '/admin/log') {
+    const f = (req.url || '').includes('f=feedback') ? 'feedback.txt' : 'errors.log';
+    let text = ''; try { const p = path.join(DATA, f), size = fs.statSync(p).size, fd = fs.openSync(p, 'r'), n = Math.min(size, 200000), b = Buffer.alloc(n); fs.readSync(fd, b, 0, n, size - n); fs.closeSync(fd); text = b.toString('utf8'); } catch {}
+    return json(200, { file: f, text });
+  }
+  if (url === '/admin/cmd' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 65536) req.destroy(); });
+    req.on('end', () => { try { json(200, adminCmd(JSON.parse(body || '{}'))); } catch (err) { json(200, { ok: false, msg: err.message }); } });
+    return;
+  }
+  json(404, { error: 'not found' });
+}
 // Is a friend's game still answering at that address? (dead quick tunnels give Cloudflare error 1033 / HTTP 530)
 const aliveCache = new Map(); // url -> { at, ok }
 async function gameAlive(u, maxAge = 0) {
@@ -523,6 +782,7 @@ function createRoom(c, m) {
 function joinRoom(c, room) {
   if (c.room === room) return;
   if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); return; }
+  if (c.pid && kicks.get(c.pid) > Date.now()) { sendTo(c, { t: 'err', m: 'You were kicked by the server owner. You can join again in a minute.' }); return; }
   if (room.members.size >= room.settings.maxPlayers) { sendTo(c, { t: 'err', m: 'That lobby is full.' }); return; }
   if (c.room) leaveRoom(c, true);
   room.members.add(c.id);
@@ -1452,7 +1712,7 @@ wss.on('connection', (ws, req) => {
   // the player at this PC on the developer's own server (not over the Cloudflare tunnel or the LAN): may use /unban
   const local = /^(::1|127\.\d+\.\d+\.\d+|::ffff:127\.\d+\.\d+\.\d+)$/.test(String(req?.socket?.remoteAddress || ''));
   const owner = FB_OWNER && local && !ip && !req?.headers?.['cf-ray'] && !req?.headers?.['x-forwarded-for'];
-  const c = { id: nextId++, ws, ip, owner, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null };
+  const c = { id: nextId++, ws, ip, owner, name: 'Player', skin: 'ranger', wskin: 'factory', level: 1, room: null, since: Date.now() };
   clients.set(c.id, c);
   ws.on('message', raw => {
     let m;
@@ -1468,13 +1728,13 @@ wss.on('connection', (ws, req) => {
         // a ban from another server travels with the player's app — unless they've been unbanned here
         // (the lift stays until the old ban would have run out: an older app that ignores 'unbanned' keeps sending its copy)
         if (c.pid && banEnd(bans['lift:' + c.pid]) > Date.now() && !(banEnd(bans['p:' + c.pid]) > Date.now())) sendTo(c, { t: 'unbanned' });
-        else if (Number(m.ban) > Date.now()) c.banUntil = Math.min(Number(m.ban), Date.now() + BAN_MS);
+        else if (Number(m.ban) > Date.now()) { c.banUntil = Math.min(Number(m.ban), Date.now() + MAX_BAN); c.banReason = cleanText(m.banr, 120); }
         if (CHAR_SKINS.includes(m.skin) || DEV_CHAR_SKINS.includes(m.skin)) c.skin = m.skin;
         if (W_SKINS.includes(m.wskin) || DEV_W_SKINS.includes(m.wskin)) c.wskin = m.wskin;
         c.level = clampInt(m.level, 1, 99, 1);
         recordPlayer(c); // keep players.txt up to date with everyone who connects
         sendTo(c, { t: 'hi', id: c.id, fbOwner: FB_OWNER });
-        if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c) });
+        if (isBanned(c)) sendTo(c, { t: 'banned', until: banUntil(c), r: (c.pid && bans['p:' + c.pid]?.r) || (c.ip && bans['ip:' + c.ip]?.r) || c.banReason || '' });
         sendLobbies(c);
         scheduleLobbies();
         break;
@@ -1582,7 +1842,9 @@ wss.on('connection', (ws, req) => {
         }
         if (!text || !room) break;
         if (isBanned(c)) { sendTo(c, { t: 'err', m: banMsg(c) }); break; }
+        if (mutedUntil(c) > Date.now()) { sendTo(c, { t: 'toast', m: `You're muted by the server owner${mutedUntil(c) - Date.now() > MAX_BAN / 2 ? '' : ` (${fmtLeft(mutedUntil(c) - Date.now())} left)`}.` }); logChat(c, room, text, '', 0); break; }
         const f = filterChat(text);
+        logChat(c, room, text, f.ban ? '' : f.text, f.ban);
         if (f.ban) { banClient(c); break; }
         roomBroadcast(room, { t: 'chat', n: c.name, dv: c.dev ? 1 : 0, m: f.text });
         break;
@@ -1731,4 +1993,6 @@ server.listen(PORT, '0.0.0.0', () => {
   for (const ip of lanAddresses()) console.log(`  Friend (LAN):   http://${ip}:${PORT}`);
   console.log('  Keep this window open while playing.');
   console.log('');
+  // the Strikeline Admin app finds this server (and its token) here. Only the developer's server writes it.
+  if (FB_OWNER) { try { fs.writeFileSync(path.join(DATA, 'admin.json'), JSON.stringify({ port: PORT, token: ADMIN_TOKEN, pid: process.pid, v: APP_VERSION, at: Date.now() })); } catch {} }
 });

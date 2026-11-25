@@ -697,3 +697,12 @@ body.nosnow #menuSnow { display: none; }
 .bd-help { margin-top: 14px; font-size: 13px; line-height: 1.45; color: #8a93a6; }
 .bd-help b { color: #c9d1de; }
 .bd-count { margin-top: 8px; font-weight: 700; font-size: 13px; color: #c9d1de; }
+
+/* ---------------- announcements from the server owner ---------------- */
+.announce { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 99997; min-width: 340px; max-width: 70vw; padding: 12px 22px 13px; text-align: center; pointer-events: none;
+  background: linear-gradient(180deg, rgba(30, 22, 10, 0.95), rgba(16, 12, 6, 0.95)); border: 1px solid var(--accent); border-top: 3px solid var(--accent); box-shadow: 0 8px 30px rgba(0,0,0,.55), 0 0 24px rgba(255,122,26,.18);
+  animation: annIn .35s cubic-bezier(.2,1.4,.4,1); transition: opacity .6s, transform .6s; }
+.announce b { display: block; font-family: Orbitron, sans-serif; font-size: 12px; letter-spacing: 3px; color: var(--accent-2); margin-bottom: 4px; }
+.announce span { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: .5px; overflow-wrap: anywhere; }
+.announce.out { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+@keyframes annIn { from { opacity: 0; transform: translateX(-50%) translateY(-18px) scale(.96); } }
