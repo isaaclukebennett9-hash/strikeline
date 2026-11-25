@@ -31,6 +31,7 @@
     <div id="mapname"></div>
   </div>
   <div id="killfeed"></div>
+  <div id="rangehud" class="hidden"></div>
   <canvas id="minimap" width="200" height="200"></canvas>
   <div id="health"><div class="label">HEALTH</div><div class="bar"><div id="hpfill"></div></div><div id="hpnum">100</div></div>
   <div id="armornum" class="hidden"></div>
@@ -82,6 +83,8 @@
       <button class="xmas-tag" id="xmasTag">🎄 THE CHRISTMAS UPDATE <small>what's new ›</small></button>
       <div class="menu-buttons">
         <button class="mbtn primary" data-go="scr-browser"><b>PLAY</b><small>Find a lobby or host your own</small><i>›</i></button>
+        <button class="mbtn" id="btnRange"><b>SHOOTING RANGE</b><small>Practise with your loadout on target dummies</small><i>⌖</i></button>
+        <button class="mbtn" id="btnBuilder"><b>MAP BUILDER</b><small>Build your own map, then play it with friends</small><i>▦</i></button>
         <button class="mbtn soon" id="btnCampaign"><b>CAMPAIGN <span class="soon-tag">COMING SOON</span></b><small>Story missions — in development</small><i>🔒</i></button>
         <button class="mbtn" data-panel="loadout"><b>ARMORY</b><small>Weapons, unlocks &amp; upgrades</small><i>›</i></button>
         <button class="mbtn" data-panel="challenges"><b>CHALLENGES</b><small id="chHint">Complete for credits &amp; XP</small><i>›</i></button>
@@ -257,6 +260,7 @@
       <label>VOLUME</label><div class="row"><input type="range" id="vol" min="0" max="1" step="0.05"><span id="volval"></span></div>
       <label>GRAPHICS STYLE</label><div id="gstyle" class="chips"><button data-st="realistic">Realistic</button><button data-st="classic">Classic (blocky)</button></div><div id="gstylenote" class="gfxnote"></div>
       <label class="check"><input type="checkbox" id="goreOn"> Blood &amp; gore</label>
+      <label class="check"><input type="checkbox" id="safeFlashOn"> Epilepsy-safe flashes (flashbangs and stuns fade to dark instead of a bright white flash, no screen shake)</label>
       <label>CHRISTMAS</label>
       <label class="check"><input type="checkbox" id="snowOn"> Falling snow</label>
       <label class="check"><input type="checkbox" id="snowGroundOn"> Snow on the ground &amp; roofs (with lights and trees)</label>
@@ -267,6 +271,9 @@
       <label class="check"><input type="checkbox" id="shutup"> Make the announcer shut the fuck up</label>
       <label class="check"><input type="checkbox" id="announcerOn"> Announcer voice</label>
       <label>HIP-FIRE CROSSHAIR</label><div id="xhStyle" class="chips"></div><div id="xhColor" class="chips" style="margin-top:6px"></div>
+      <label>CONTROLS <small class="gfxnote" style="display:inline">click an action, then press a key (Esc cancels)</small></label>
+      <div id="binds" class="binds"></div>
+      <button class="btn ghost" id="bindsReset" style="margin-top:8px">RESET CONTROLS</button>
     </div>
   </section>
 
@@ -302,6 +309,49 @@
   </div>
 </div>
 
+<!-- MAP BUILDER -->
+<section id="scr-builder">
+  <div id="bdView"></div>
+  <div class="bd-top">
+    <button class="btn ghost" id="bdBack">‹ BACK</button>
+    <input id="bdName" maxlength="24" placeholder="Map name" spellcheck="false" autocomplete="off">
+    <select id="bdSize" title="Map size"></select>
+    <select id="bdTheme" title="Sky, lighting and ground"></select>
+    <span class="bd-sep"></span>
+    <button class="btn ghost" id="bdUndo" title="Ctrl+Z">UNDO</button>
+    <button class="btn ghost" id="bdRedo" title="Ctrl+Y">REDO</button>
+    <button class="btn ghost" id="bdClear">CLEAR</button>
+    <span class="bd-sep"></span>
+    <button class="btn ghost" id="bdNew">NEW</button>
+    <select id="bdLoad"></select>
+    <button class="btn ghost" id="bdSave">SAVE</button>
+    <button class="btn ghost" id="bdDelete">DELETE</button>
+    <div class="spacer"></div>
+    <label class="check bd-pub" title="Show the lobby in everyone's server browser"><input type="checkbox" id="bdPublic"> Public</label>
+    <button class="btn primary" id="bdPlay" title="Host a lobby on this map">PLAY ›</button>
+  </div>
+  <div class="bd-side">
+    <h4>TOOL</h4>
+    <div id="bdTools" class="bd-grid3"><button data-tool="place">Build (1)</button><button data-tool="paint">Paint (2)</button><button data-tool="delete">Delete (3)</button></div>
+    <h4>SHAPE</h4>
+    <div id="bdShapes" class="bd-grid2"></div>
+    <h4>SIZE <small id="bdDims"></small></h4>
+    <div class="bd-dims">
+      <label>W<input id="bd_w" type="number" min="0.1" max="120" step="0.5"></label>
+      <label>D<input id="bd_d" type="number" min="0.1" max="120" step="0.5"></label>
+      <label>H<input id="bd_h" type="number" min="0.1" max="30" step="0.5"></label>
+    </div>
+    <button class="btn ghost wide" id="bdRot">ROTATE (R)</button>
+    <h4>MATERIAL <small id="bdMatName"></small></h4>
+    <div id="bdMats" class="bd-mats"></div>
+    <div class="bd-help">
+      <b>Left-click</b> build / paint / delete · <b>Alt + click</b> copy a block<br>
+      <b>Right-drag</b> turn · <b>Middle-drag</b> or <b>WASD</b> move · <b>Q / E</b> turn · <b>Wheel</b> zoom<br>
+      Click the top or side of a block to build onto it. Spawns, pickups and bot paths are made for you.
+    </div>
+    <div class="bd-count" id="bdCount"></div>
+  </div>
+</section>
 <div id="toast"></div>
 <div id="loading" class="hidden"><div class="spinner"></div><div id="loadingText">Connecting…</div></div>
 

@@ -140,7 +140,7 @@ const WEAPON_LEVELS = {
   thumper: 20, scarh: 21, dbarrel: 22, m249: 23, ak12: 24, kar98: 25, skorpion: 26, tcsg: 27,
   asval: 28, fal: 30, pkm: 32, r4c: 34, dartshotgun: 36, flamer: 38, dartsniper: 40, spas12: 17, benelli: 31,
   m1911: 5, mp40: 6, sten: 9, luger: 10, stg44: 12, trench: 14, garand: 16, bar: 20, enfield: 24, mg42: 29, mp18: 33, lewis: 37,
-  foampistol: 2, ballblaster: 8, breakfoam: 13, foamlmg: 19, megabolt: 26, arcpistol: 15, photon: 21, lance: 35,
+  foampistol: 2, ballblaster: 8, breakfoam: 13, foamlmg: 19, megabolt: 26, arcpistol: 15, photon: 21, lance: 35, pulsesmg: 11, glint: 18, beamlmg: 27, arccannon: 39,
 };
 export const UNLOCKS = {
   ...Object.fromEntries(Object.entries(WEAPON_LEVELS).map(([k, l]) => [k, { level: l }])),
@@ -268,9 +268,12 @@ export const ATTACHMENTS = {
     { id: 'quick', name: 'Quickdraw', lvl: 10, pros: ['+25% aim speed', 'Faster weapon swap'], cons: ['+10% recoil'], m: { ads: -0.25, recoil: 0.1, swap: true } },
     { id: 'steady', name: 'Steady Aim', lvl: 15, pros: ['-25% hip-fire spread', '-20% moving spread'], m: { spread: -0.25, moveSpread: -0.2 } },
     { id: 'sleight', name: 'Sleight of Hand', lvl: 20, pros: ['-30% reload time'], m: { reload: -0.3 } },
+    { id: 'akimbo', name: 'Akimbo', lvl: 12, secondary: true, pros: ['A second gun in your other hand', 'Shots alternate: +60% fire rate', 'Double magazine and ammo'], cons: ['No aiming down sights', '+25% spread', '+35% reload time'], m: { akimbo: true } },
   ],
 };
 const NO_UNDER = new Set(['northstar', 'krampus', 'candycane', 'sten', 'mp18', 'mp40', 'lewis', 'trench', 'garand', 'enfield', 'mg42', 'bar', 'tommy', 'bizon', 'aug', 'ksg', 'kar98', 'pkm', 'tri', 'kestrel', 'longbow', 'breacher', 'spas12', 'hammer', 'dbarrel', 'sawedoff', 'magnum', 'viper', 'hawk', 'stinger']);
+// bullpups: the stock IS the receiver, so no stock swaps
+const NO_STOCK = new Set(['aug', 'famas', 'ksg']);
 // Which Gunsmith slots a weapon has
 export function slotsFor(wid) {
   const d = WEAPONS[wid];
@@ -279,11 +282,11 @@ export function slotsFor(wid) {
   if (d.anim === 'break') return ['ammo', 'grip', 'perk'];
   if (d.cls === 'pistol') return ['muzzle', 'mag', 'ammo', 'grip', 'perk'];
   const s = ['optic', 'muzzle', 'barrel', 'under', 'mag', 'ammo', 'stock', 'grip', 'perk'];
-  return s.filter(k => !(k === 'under' && NO_UNDER.has(wid)) && !(k === 'muzzle' && d.suppressed));
+  return s.filter(k => !(k === 'under' && NO_UNDER.has(wid)) && !(k === 'muzzle' && d.suppressed) && !(k === 'stock' && NO_STOCK.has(wid)));
 }
 export function optionsFor(wid, slot) {
   const d = WEAPONS[wid];
-  return (ATTACHMENTS[slot] || []).filter(a => !a.classes || a.classes.includes(d.cls));
+  return (ATTACHMENTS[slot] || []).filter(a => (!a.classes || a.classes.includes(d.cls)) && (!a.secondary || d.slot === 'secondary'));
 }
 export const getAtt = wid => profile.att[wid] || {};
 // buying an attachment early (before reaching the weapon level, even before the gun unlocks)
@@ -337,6 +340,10 @@ export function attachedDef(wid, att = getAtt(wid)) {
   d.reload = base.reload * k(sum.reload); if (base.shellTime) d.shellTime = base.shellTime * k(sum.reload);
   const r = k(sum.range); d.falloff = [base.falloff[0] * r, base.falloff[1] * r, base.falloff[2]]; d.range = base.range * Math.max(0.6, 1 + sum.range * 0.5);
   d.dmg = base.dmg * (1 + sum.dmg); d.dmgClose = sum.dmgClose; d.bloomMul = k(sum.bloom); d.crouchRecoil = k(sum.crouchRecoil);
+  if (d.akimbo) { // two guns: alternate shots, twice the rounds, no sights
+    if (base.slot !== 'secondary') delete d.akimbo;
+    else { d.mag *= 2; d.reserve *= 2; d.rpm = base.rpm * 1.6; d.spread *= 1.25; d.moveSpread *= 1.15; d.reload *= 1.35; if (d.shellTime) d.shellTime *= 1.35; }
+  }
   return d;
 }
 export const upgradedDef = (wid) => attachedDef(wid); // old name

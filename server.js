@@ -7,7 +7,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
-import { buildMap, MAPS, MAP_ORDER } from './shared/maps.js';
+import { buildMap, MAPS, MAP_ORDER, registerCustomMap } from './shared/maps.js';
 import { WEAPONS, BOT_WEAPONS, THROWABLE_KINDS, LETHALS, TACTICALS, falloffMult } from './shared/weapons.js';
 import { moveBody, raycastBoxes, PLAYER } from './shared/physics.js';
 import { MODES, GUNGAME_LADDER, ROULETTE_POOL, ROULETTE_TIME, ZONE_RADIUS, ZONE_MOVE, targetScore, PICKUP_RESPAWN, POWER_TIME } from './shared/modes.js';
@@ -246,7 +246,7 @@ const wrapAngle = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.
 function sanitizeSettings(s, base) {
   return {
     mode: MODES[s.mode] ? s.mode : base.mode,
-    map: MAP_ORDER.includes(s.map) || s.map === 'random' ? s.map : base.map,
+    map: MAP_ORDER.includes(s.map) || s.map === 'random' || MAPS[s.map]?.special ? s.map : base.map,
     bots: clampInt(s.bots ?? base.bots, 0, 14, base.bots),
     difficulty: DIFFICULTY[s.difficulty] ? s.difficulty : base.difficulty,
     scoreLimit: clampInt(s.scoreLimit ?? base.scoreLimit, 5, 100, base.scoreLimit),
@@ -275,13 +275,14 @@ function roomInfo(room) {
   return {
     id: room.id, code: room.code, name: room.name, hostId: room.hostId, private: room.private, state: room.state,
     settings: room.settings, mapId: room.mapId || null,
+    custom: MAPS[room.settings.map]?.custom || (room.mapId && MAPS[room.mapId]?.custom) || undefined,
     members: [...room.members].map(id => { const c = clients.get(id); return { id, name: c.name, dev: c.dev ? 1 : 0, skin: c.skin, wskin: c.wskin, level: c.level, ready: room.ready.has(id) }; }),
   };
 }
 function sendRoom(room) { roomBroadcast(room, { t: 'room', room: roomInfo(room) }); scheduleLobbies(); }
 function lobbyList() {
   return [...rooms.values()].filter(r => !r.private).map(r => ({
-    id: r.id, name: r.name, host: clients.get(r.hostId)?.name || '?', hdev: clients.get(r.hostId)?.dev ? 1 : 0, map: r.state === 'lobby' ? r.settings.map : r.mapId, mode: r.settings.mode,
+    id: r.id, name: r.name, host: clients.get(r.hostId)?.name || '?', hdev: clients.get(r.hostId)?.dev ? 1 : 0, map: r.state === 'lobby' ? r.settings.map : r.mapId, mapName: MAPS[r.state === 'lobby' ? r.settings.map : r.mapId]?.name, mode: r.settings.mode,
     players: r.members.size, max: r.settings.maxPlayers, state: r.state, bots: r.settings.bots,
   }));
 }
@@ -512,9 +513,12 @@ function createRoom(c, m) {
     ents: new Map(), map: null, mapId: null, nav: null, rockets: [], nades: [], fireZones: [], smokes: [], nextProjId: 1, timeLeft: 0, endTimer: 0, tick: 0,
     teamScore: [0, 0], zones: [], zone: null, firstBlood: false, hpAcc: 0, tags: [], strikes: [],
   };
+  if (m.custom) { const id = registerCustomMap(m.custom); if (id) room.settings.map = id; }
+  if (m.range) Object.assign(room.settings, { mode: 'range', map: 'range', bots: 0, maxPlayers: 8 });
   rooms.set(room.id, room);
   console.log(`[lobby] ${c.name} created "${room.name}" (code ${room.code})`);
   joinRoom(c, room);
+  if (m.range && room.state === 'lobby') startMatch(room);
 }
 function joinRoom(c, room) {
   if (c.room === room) return;
@@ -563,8 +567,8 @@ function makeEnt(f) {
 // Fire-rate check that tolerates network bunching: shots arriving in a clump are fine as long as the
 // average rate stays within the weapon's fire rate (+25%). The old "min gap between packets" rule
 // silently dropped real shots from players on bumpy connections.
-function fireAllowed(e, def, now) {
-  const rate = (def.rpm / 60) * 1.25, cap = 6;
+function fireAllowed(e, def, now, mult = 1) {
+  const rate = (def.rpm / 60) * 1.25 * mult, cap = 6;
   if (e.fireBudgetT === undefined) { e.fireBudget = cap; e.fireBudgetT = now; }
   e.fireBudget = Math.min(cap, e.fireBudget + ((now - e.fireBudgetT) / 1000) * rate);
   e.fireBudgetT = now;
@@ -665,7 +669,7 @@ function startMatch(room) {
   room.map = buildMap(room.mapId);
   room.nav = buildNav(room.map);
   room.state = 'playing';
-  room.timeLeft = s.timeLimit * 60;
+  room.timeLeft = s.mode === 'range' ? 12 * 3600 : s.timeLimit * 60;
   room.rockets = []; room.nades = []; room.tags = []; room.strikes = []; room.fireZones = []; room.smokes = [];
   room.teamScore = [0, 0];
   room.firstBlood = false;
@@ -723,7 +727,7 @@ function backToLobby(room) {
 
 // ------------------------------------------------------------------ scoring
 function giveXP(room, e, amt, reason) {
-  if (!e) return;
+  if (!e || room.settings.mode === 'range') return;
   e.score += amt;
   if (e.client) sendTo(e.client, { t: 'xp', a: amt, r: reason });
 }
@@ -743,14 +747,15 @@ function chooseSpawn(room, p) {
   return pick(scored.slice(0, 3)).s;
 }
 function spawn(room, p) {
-  const s = chooseSpawn(room, p);
+  const spot = p.dummy != null ? room.map.dummies[p.dummy] : null;
+  const s = spot ? [spot.x, 0, spot.z] : chooseSpawn(room, p);
   p.pos = [s[0], s[1], s[2]];
   p.vel = [0, 0, 0];
   resetMoveBudget(p); // respawning somewhere new is a legitimate position jump, so start the budget fresh
   if (p.pt != null) { p.pt = Math.max(p.pt + 1, Math.round(performance.now())); if (p.hist) p.hist.length = 0; } // respawn shows at once
   if (p.client?.perks) p.perks = p.client.perks;                                     // perk changes apply from the next life
   p.hp = 100; p.armor = 0; p.alive = true; p.streak = 0; p.nades = p.perks?.includes('bandolier') ? 3 : 2; p.tacs = 2; p.burnUntil = 0; p.ddUntil = 0; p.spdUntil = 0; p.minigunUntil = 0;
-  p.protectUntil = Date.now() + 2000;
+  p.protectUntil = spot ? 0 : Date.now() + 2000;
   p.damagers.clear();
   if (room.settings.mode === 'gungame') p.w = GUNGAME_LADDER[Math.min(p.gg, GUNGAME_LADDER.length - 1)];
   if (room.settings.mode === 'roulette' && room.rw) p.w = room.rw;
@@ -764,7 +769,7 @@ function spawn(room, p) {
     const score = (hit ? hit.t : 40) * (1 - 0.3 * Math.min(i, 12 - i) / 6);
     if (score > bestScore) { bestScore = score; bestRy = ry; }
   }
-  p.ry = bestRy;
+  p.ry = spot ? (spot.x < -35 ? -Math.PI / 2 : Math.PI) : room.settings.mode === 'range' ? 0 : bestRy;   // range: face down the lanes
   if (p.bot) Object.assign(p.ai, { target: null, path: null, mag: WEAPONS[p.w].mag, reloadUntil: 0, seenAt: 0, stuckT: 0, lastPos: [...p.pos], lastKnown: null });
   roomBroadcast(room, { t: 'spawn', id: p.id, p: p.pos, ry: p.ry, w: ['gungame', 'infected', 'roulette'].includes(room.settings.mode) ? p.w : undefined });
 }
@@ -794,7 +799,7 @@ function kill(room, victim, attacker, weaponId, head) {
   const self = !attacker || attacker === victim;
   const victimStreak = victim.streak;
   victim.alive = false; victim.hp = 0; victim.deaths++; victim.streak = 0;
-  victim.respawnAt = now + (mode === 'infected' && victim.team === 1 ? 1500 : 3500);
+  victim.respawnAt = now + (victim.dummy != null ? 1200 : mode === 'infected' && victim.team === 1 ? 1500 : 3500);
   if (!self) { attacker.kills++; attacker.streak++; }
   else victim.kills = Math.max(0, victim.kills - 1);
   roomBroadcast(room, { t: 'kill', k: attacker ? attacker.id : 0, v: victim.id, w: weaponId, h: head ? 1 : 0, st: !self ? attacker.streak : 0 });
@@ -857,6 +862,7 @@ function kill(room, victim, attacker, weaponId, head) {
 
 // ------------------------------------------------------------------ bots
 function syncBots(room, silent) {
+  if (room.settings.mode === 'range') { syncDummies(room, silent); return; }
   const bots = [...room.ents.values()].filter(p => p.bot);
   while (bots.length < room.settings.bots) {
     const used = new Set(bots.map(b => b.name));
@@ -875,6 +881,24 @@ function syncBots(room, silent) {
     room.ents.delete(b.id);
     roomBroadcast(room, { t: 'pl', id: b.id });
   }
+}
+// Shooting range: one target dummy per spot on the map; they never shoot, the moving ones strafe on a rail
+function syncDummies(room, silent) {
+  const spots = room.map?.dummies || [], have = new Set();
+  for (const b of room.ents.values()) if (b.bot) { if (b.dummy == null || !spots[b.dummy]) { room.ents.delete(b.id); roomBroadcast(room, { t: 'pl', id: b.id }); } else have.add(b.dummy); }
+  spots.forEach((sp, i) => {
+    if (have.has(i)) return;
+    const b = makeEnt({ bot: true, dummy: i, name: `[TARGET] ${sp.label}`, skin: pick(CHAR_SKINS), wskin: 'factory', w: 'knife', respawnAt: Date.now() + 300 });
+    b.ai = { strafe: 1, strafeT: 0, burst: 0, pauseUntil: 0, nextShot: 0, mag: 0, reloadUntil: 0, seenAt: 0, stuckT: 0, lastPos: [0, 0, 0], path: null, nadeCd: 0 };
+    room.ents.set(b.id, b);
+    if (!silent) roomBroadcast(room, { t: 'pj', p: publicInfo(b) });
+  });
+}
+function dummyThink(room, b, now) {
+  const sp = room.map.dummies[b.dummy]; if (!sp) return;
+  const slow = b.ai.slowUntil > now ? 0.4 : 1;
+  if (sp.move) { b.ai.ph = (b.ai.ph || 0) + TICK * sp.speed * slow; const x = sp.x + Math.sin(b.ai.ph) * sp.move; b.vel = [(x - b.pos[0]) / TICK, 0, 0]; b.pos = [x, 0, sp.z]; }
+  else b.vel = [0, 0, 0];
 }
 function balanceBots(room) {
   if (room.settings.mode === 'infected') { updateInfectedScore(room); return; }
@@ -963,6 +987,7 @@ function botThrowNade(room, b, t) {
 }
 
 function botThink(room, b, dt, now, losCheck) {
+  if (b.dummy != null) { dummyThink(room, b, now); return; }
   const ai = b.ai, def = WEAPONS[b.w], me = eye(b), skill = DIFFICULTY[room.settings.difficulty];
   if (ai.blindUntil > now) { ai.target = null; losCheck = false; }   // flashbanged
   if (losCheck) {
@@ -1057,17 +1082,37 @@ function botThink(room, b, dt, now, losCheck) {
 }
 
 // ------------------------------------------------------------------ projectiles
+// Explosions: full damage in the inner 30% of the radius, then a smooth falloff to the edge. Cover counts by how much
+// of you it hides (head, chest and feet are checked): fully behind a wall takes 25%, partly covered takes 60%.
 function explode(room, ownerId, at, weaponId) {
   const def = weaponId === 'mortar' ? MORTAR : WEAPONS[weaponId], owner = room.ents.get(ownerId);
   roomBroadcast(room, { t: 'boom', p: at.map(r2) });
+  const src = [at[0], at[1] + 0.2, at[2]], inner = def.splash * 0.3;
   for (const p of room.ents.values()) {
     if (!p.alive) continue;
-    const c = chest(p), d = dist3(c, at);
+    const c = chest(p), d = Math.min(dist3(c, at), dist3([p.pos[0], p.pos[1] + 0.3, p.pos[2]], at));
     if (d > def.splash) continue;
-    let dmg = def.dmg * (1 - d / def.splash) + 15;
-    if (!hasLOS(room, [at[0], at[1] + 0.2, at[2]], c)) dmg *= 0.35;
+    const f = d <= inner ? 1 : 1 - Math.pow((d - inner) / (def.splash - inner), 0.85);
+    let dmg = def.dmg * f + 15 * (1 - d / def.splash);
+    const seen = [c, eye(p), [p.pos[0], p.pos[1] + 0.25, p.pos[2]]].filter(q => hasLOS(room, src, q)).length;
+    if (seen === 0) dmg *= 0.25; else if (seen === 1) dmg *= 0.6;
     if (p === owner) dmg *= 0.85; // your own rockets/grenades can kill you at close range
     applyDamage(room, p, owner || null, dmg, weaponId, false);
+  }
+}
+// Arc cannon: the bolt's impact point arcs lightning into every enemy close to it (not the one it hit directly)
+function arcBlast(room, e, at, def, direct) {
+  const from = eye(e);
+  if (dist3(from, at) > def.range * 1.6 + 4) return;
+  const back = dist3(from, at) || 1, pull = [at[0] + (from[0] - at[0]) / back * 0.5, at[1] + (from[1] - at[1]) / back * 0.5, at[2] + (from[2] - at[2]) / back * 0.5];
+  if (!hasLOS(room, from, pull, true)) return;                                  // no zapping through walls
+  for (const v of room.ents.values()) {
+    if (!v.alive || v === e || direct.has(v.id) || !enemies(room, e, v)) continue;
+    const d = dist3(chest(v), at);
+    if (d > def.splash || !hasLOS(room, pull, chest(v), true)) continue;
+    applyDamage(room, v, e, def.splashDmg * (1 - 0.6 * d / def.splash), def.id, false);
+    if (v.client) sendTo(v.client, { t: 'zapped' });
+    else if (v.ai) v.ai.slowUntil = Date.now() + 1100;
   }
 }
 function stepRockets(room, dt) {
@@ -1132,17 +1177,27 @@ function detonate(room, n, at) {
     default: explode(room, n.owner, [p[0], p[1] + 0.15, p[2]], 'frag');
   }
 }
+// A thrown knife that hit something stays there for 30 s; its owner walks over (or reaches up to) it to get it back.
+function dropKnife(n, at, how) { n.pos = at; n.stuck = how; n.pickup = true; n.vel = [0, 0, 0]; n.fuse = 30; }
 function stepNades(room, dt) {
   for (let i = room.nades.length - 1; i >= 0; i--) {
     const n = room.nades[i], kind = n.kind || 'frag';
     n.fuse -= dt;
+    if (n.pickup) {
+      const o = room.ents.get(n.owner);
+      if (o && o.alive && Math.min(dist3(eye(o), n.pos), dist3([o.pos[0], o.pos[1] + 0.3, o.pos[2]], n.pos)) < 1.7 && o.nades < 3) {
+        o.nades++; if (o.client) sendTo(o.client, { t: 'knife' }); room.nades.splice(i, 1); continue;
+      }
+      if (n.fuse <= 0) room.nades.splice(i, 1);
+      continue;
+    }
     if (n.stuckTo) { // semtex stuck on a player follows them
       const t = room.ents.get(n.stuckTo);
       if (t && t.alive) n.pos = [t.pos[0] + n.off[0], t.pos[1] + n.off[1], t.pos[2] + n.off[2]];
     }
     if (n.fuse <= 0) { detonate(room, n, n.pos); room.nades.splice(i, 1); continue; }
     if (n.stuck) continue;
-    n.vel[1] -= (kind === 'tknife' ? 6 : 18) * dt;
+    n.vel[1] -= (kind === 'tknife' ? 4 : 18) * dt;
     const step = [n.vel[0] * dt, n.vel[1] * dt, n.vel[2] * dt];
     const len = Math.hypot(...step);
     if (len < 1e-5) continue;
@@ -1156,14 +1211,14 @@ function stepNades(room, dt) {
         const vx = c[0] - n.pos[0], vy = c[1] - n.pos[1], vz = c[2] - n.pos[2];
         const tt = Math.max(0, Math.min(len, vx * dir[0] + vy * dir[1] + vz * dir[2]));
         const off = Math.hypot(c[0] - (n.pos[0] + dir[0] * tt), c[1] - (n.pos[1] + dir[1] * tt), c[2] - (n.pos[2] + dir[2] * tt));
-        if (off < 0.55 && p.id !== n.owner) { victim = { p, at: [n.pos[0] + dir[0] * tt, n.pos[1] + dir[1] * tt, n.pos[2] + dir[2] * tt] }; break; }
+        if (off < (kind === 'tknife' ? 0.75 : 0.55) && p.id !== n.owner) { victim = { p, at: [n.pos[0] + dir[0] * tt, n.pos[1] + dir[1] * tt, n.pos[2] + dir[2] * tt] }; break; }
       }
       if (victim) {
         const owner = room.ents.get(n.owner);
         if (kind === 'tknife') {
           const head = victim.at[1] > victim.p.pos[1] + (victim.p.c ? 1.0 : 1.45);
           applyDamage(room, victim.p, owner || null, WEAPONS.tknife.dmg, 'tknife', head);
-          room.nades.splice(i, 1); continue;
+          dropKnife(n, [victim.p.pos[0], victim.p.pos[1] + 0.06, victim.p.pos[2]], 2); continue;  // falls at their feet: pick it up
         }
         if (kind === 'semtex') { n.stuck = true; n.stuckTo = victim.p.id; n.off = [victim.at[0] - victim.p.pos[0], victim.at[1] - victim.p.pos[1], victim.at[2] - victim.p.pos[2]]; continue; }
         if (kind === 'snowball') n.hitId = victim.p.id;
@@ -1174,7 +1229,7 @@ function stepNades(room, dt) {
     const hit = raycastBoxes(n.pos, dir, len + 0.08, room.map.query(n.pos[0] - 1, n.pos[2] - 1, n.pos[0] + 1, n.pos[2] + 1));
     if (hit) {
       const at = hit.point.map((v, k) => v + hit.normal[k] * 0.09);
-      if (kind === 'tknife') { room.nades.splice(i, 1); continue; }
+      if (kind === 'tknife') { dropKnife(n, hit.point.map((v, k) => v - dir[k] * 0.05), hit.normal[1] > 0.6 ? 2 : 1); continue; }  // sticks where it lands
       if (kind === 'molotov' || kind === 'snowball') { detonate(room, n, at); room.nades.splice(i, 1); continue; }
       n.pos = at;
       if (kind === 'semtex') { n.stuck = true; continue; }
@@ -1379,7 +1434,7 @@ function tickRoom(room, now) {
       ps.push(e);
     }
     const msg = { t: 'snap', k, ps, r: room.rockets.map(r => [r.id, r2(r.pos[0]), r2(r.pos[1]), r2(r.pos[2]), r2(r.dir[0]), r2(r.dir[1]), r2(r.dir[2])]),
-      g: room.nades.map(n => [n.id, r2(n.pos[0]), r2(n.pos[1]), r2(n.pos[2]), Math.max(0, THROWABLE_KINDS.indexOf(n.kind || 'frag'))]), time: Math.ceil(room.timeLeft), ts: room.teamScore };
+      g: room.nades.map(n => [n.id, r2(n.pos[0]), r2(n.pos[1]), r2(n.pos[2]), Math.max(0, THROWABLE_KINDS.indexOf(n.kind || 'frag')), n.pickup ? n.stuck : 0]), time: Math.ceil(room.timeLeft), ts: room.teamScore };
     if (room.smokes.length) msg.sm = room.smokes.map(s => [s.id, r2(s.x), r2(s.y), r2(s.z), s.r]);
     if (room.fireZones.length) msg.fz = room.fireZones.map(f => [f.id, r2(f.x), r2(f.y), r2(f.z), f.r]);
     if (room.zone) msg.z = [room.zone.x, room.zone.z, ZONE_RADIUS, room.zone.state, room.zone.ttm];
@@ -1580,10 +1635,11 @@ wss.on('connection', (ws, req) => {
         if (zombie && def.id !== 'knife') return;
         const now = Date.now();
         if (def.slot === 'streak' && !(e.minigunUntil > now)) return; // the minigun only while its killstreak lasts
-        if (!fireAllowed(e, def, now)) return;
+        const ak = m.ak && def.slot === 'secondary' ? 1 : 0;                  // akimbo pistols alternate two guns
+        if (!fireAllowed(e, def, now, ak ? 1.7 : 1)) return;
         e.w = m.w;
         const ends = Array.isArray(m.e) ? m.e.filter(x => isVec(x)).slice(0, 12).map(x => x.map(r2)) : [];
-        roomBroadcast(room, { t: 'fx', id: e.id, w: def.id, e: ends, s: m.s ? 1 : 0 }, c.id);
+        roomBroadcast(room, { t: 'fx', id: e.id, w: def.id, e: ends, s: m.s ? 1 : 0, ak }, c.id);
         if (Array.isArray(m.hits)) {
           // allow for attachments: up to +25% damage (hollow points) and +60% range (long barrel / FMJ)
           const cap = def.dmg * def.head * def.pellets * 1.25 * (e.perks.includes('stopping') ? 1.15 : 1), maxRange = def.range * 1.6 + 4;
@@ -1596,6 +1652,7 @@ wss.on('connection', (ws, req) => {
             applyDamage(room, v, e, zombie ? 120 : Math.min(cap, Math.max(0, +h.dmg || 0)), def.id, !!h.h);
           }
         }
+        if (def.arc && ends[0]) arcBlast(room, e, ends[0], def, new Set((Array.isArray(m.hits) ? m.hits : []).map(h => h && h.id)));
         break;
       }
       case 'rocket': {
@@ -1619,7 +1676,7 @@ wss.on('connection', (ws, req) => {
         if (now - e.lastNade < 500) return;
         e.lastNade = now;
         if (tactical) e.tacs--; else e.nades--;
-        const maxSp = kind === 'tknife' ? 32 : 20;
+        const maxSp = kind === 'tknife' ? 40 : 20;
         const sp = Math.hypot(...m.v), k = sp > maxSp ? maxSp / sp : 1;
         const o = dist3(m.o, eye(e)) < 2 ? m.o : eye(e);
         room.nades.push({ id: room.nextProjId++, owner: e.id, pos: [...o], vel: m.v.map(v => v * k), fuse: kind === 'tknife' ? 3 : (WEAPONS[kind].fuse || 2.4), kind, age: 0 });

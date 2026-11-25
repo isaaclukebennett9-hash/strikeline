@@ -19,9 +19,12 @@ function letters(word) {
 // Slurs → ban. Tested against each word (letters only, repeats kept) — whole-word patterns are anchored so
 // words like "raccoon", "spice", "nigeria" or "running gear" don't trip them.
 const SLURS = [
-  /(^|[^s])n+i+g{2,}/,                  // n-word in any form (nigger, nigga, niggaz, n1gg@…), not "snigger"
+  /(^|[^s])n+i+g{2,}(?!l+(e|i|y))/,                  // n-word in any form (nigger, nigga, niggaz, n1gg@…), not "snigger"
   /^n+i+g+(a+|a+h+|a+z+|a+s+|u+h+)$/,   // single-g spellings (niga, nigah) — not Niger the country
   /^n+e+g+r+o+e*s*$/,
+  /^n+g{2,}(a+|e+r+|u+h+|a+z+|a+s+|a+h+)s*$/,     // vowel-dropped spellings (ngga, nggr, nggers)
+  /^n+i+g+s+$/,
+  /^n+i+g+l+e+t+s*$/,
   /f+a+g{2,}/,                          // faggot, fagging…
   /^f+a+g+(s+|o+t+s*|i+t+s*|e+t+s*|g+y+)?$/,
   /^d+y+k+e+s*$/,
@@ -47,6 +50,7 @@ const SWEARS = [
   /p+u+s+s+y+/, /^a+s{2,}(e+s+|h+o+l+e+s*|h+a+t+s*)?$/, /a+s{2,}h+o+l+e+/, /^a+r+s+e+(s+|h+o+l+e+s*)?$/,
   /^b+a+s+t+a+r+d+s*$/, /w+a+n+k+/, /b+o+l+l+o+c+k+s*/, /^r+e+t+a+r+d+(s+|e+d+)?$/, /^t+o+s+s+e+r+s*$/,
   /^b+e+l+l+e+n+d+s*$/, /^d+o+u+c+h+e+(s+|b+a+g+s*)?$/, /^p+i+s+s+(e+d+|i+n+g+)?$/, /^k+y+s+$/,
+  /^s+t+f+u+$/, /^g+t+f+o+$/, /^w+t+f+$/, /^f+f+s+$/, /^m+f+s*$/, /^m+o+t+h+e+r+f+/, /^b+s+$/, /^k+m+s+$/,
 ];
 
 const isSlur = (w) => w.length >= 3 && SLURS.some(r => r.test(w));

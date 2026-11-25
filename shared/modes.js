@@ -8,6 +8,7 @@ export const MODES = {
   infected: { name: 'Infected', short: 'INF', teams: true, desc: 'One player starts infected. Every survivor they knife joins the horde. Survive until the timer ends!' },
   roulette: { name: 'Gun Roulette', short: 'ROUL', teams: false, desc: 'Everyone gets the same random gun, and it changes every 45 seconds. First to the kill limit wins.' },
   hardpoint: { name: 'Hardpoint', short: 'HP', teams: true, desc: 'Stand in the zone to score for your team. The zone moves every 60 seconds.' },
+  range: { name: 'Shooting Range', short: 'RANGE', teams: false, desc: 'Practice on target dummies. Endless ammo, loadout changes apply straight away, no XP.' },
 };
 export const MODE_ORDER = ['ffa', 'dm', 'tdm', 'kc', 'gungame', 'roulette', 'hardpoint', 'infected'];
 export const TEAM_NAMES = ['ALPHA', 'BRAVO'];
@@ -26,7 +27,7 @@ export const ZONE_RADIUS = 4.5;
 export const ZONE_MOVE = 60;
 
 export function targetScore(mode, scoreLimit) {
-  if (mode === 'dm' || mode === 'infected') return 0; // no limit, timer only
+  if (mode === 'dm' || mode === 'infected' || mode === 'range') return 0; // no limit, timer only
   if (mode === 'gungame') return GUNGAME_LADDER.length;
   if (mode === 'hardpoint') return scoreLimit * HARDPOINT_MULT;
   return scoreLimit;

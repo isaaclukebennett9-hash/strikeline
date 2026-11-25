@@ -64,6 +64,14 @@ const M = {
   glowCyan: new THREE.MeshStandardMaterial({ color: '#7ff6ff', emissive: new THREE.Color('#22e5ff'), emissiveIntensity: 2.4, roughness: 0.3 }),
   glowPurple: new THREE.MeshStandardMaterial({ color: '#e0a8ff', emissive: new THREE.Color('#b34dff'), emissiveIntensity: 2.4, roughness: 0.3 }),
   glowRed: new THREE.MeshStandardMaterial({ color: '#ff8a8a', emissive: new THREE.Color('#ff2a2a'), emissiveIntensity: 2.4, roughness: 0.3 }),
+  glowGreen: new THREE.MeshStandardMaterial({ color: '#9bffc0', emissive: new THREE.Color('#2bff7a'), emissiveIntensity: 2.4, roughness: 0.3 }),
+  glowAmber: new THREE.MeshStandardMaterial({ color: '#ffd28a', emissive: new THREE.Color('#ff9a1a'), emissiveIntensity: 2.4, roughness: 0.3 }),
+  glowBlue: new THREE.MeshStandardMaterial({ color: '#bfe9ff', emissive: new THREE.Color('#5cc8ff'), emissiveIntensity: 2.6, roughness: 0.25 }),
+  copper: new THREE.MeshStandardMaterial({ color: '#c46a3a', roughness: 0.32, metalness: 1.0 }),
+  tab: new THREE.MeshStandardMaterial({ color: '#8a1a14', roughness: 0.6 }),
+  tape: new THREE.MeshStandardMaterial({ color: '#1a1b1d', roughness: 0.98 }),
+  stipple: new THREE.MeshStandardMaterial({ map: null, color: '#26282b', roughness: 1 }),
+  bead: new THREE.MeshStandardMaterial({ color: '#ffe08a', emissive: new THREE.Color('#ffb52a'), emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.6 }),
   // real-world furniture / factory finishes so guns don't all look the same grey
   fde: new THREE.MeshStandardMaterial({ color: '#b39a6e', roughness: 0.62, metalness: 0.15 }),
   coyote: new THREE.MeshStandardMaterial({ color: '#7c6646', roughness: 0.66, metalness: 0.1 }),
@@ -189,8 +197,11 @@ function ironSights(g, cy, zRear, zFront, dot = M.dotGreen, style = 'notch') {
     box(g, 0.026, 0.006, 0.012, M.dark, 0, cy - 0.019, zRear); box(g, 0.003, 0.004, 0.006, M.dark, 0, cy - 0.015, zRear);
     fiber(M.red || M.orange, 0.0038);
   } else if (style === 'bead') {                    // brass bead on the rib, shallow rear groove
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.0038, 10, 8), M.brass || M.steel); b.position.set(0, cy - 0.003, zFront); g.add(b);
-    box(g, 0.012, 0.003, 0.01, M.dark, 0, cy - 0.0085, zRear);
+    // raised front ramp with a big bright bead on top + a real rear V-notch, so the bead is easy to pick up
+    box(g, 0.0055, 0.02, 0.016, M.dark, 0, cy - 0.016, zFront + 0.002);                       // front ramp
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.0062, 12, 10), M.bead); b.position.set(0, cy - 0.003, zFront); g.add(b);
+    for (const s of [-1, 1]) { box(g, 0.008, 0.009, 0.008, M.dark, s * 0.0078, cy - 0.006, zRear); box(g, 0.004, 0.004, 0.008, M.dark, s * 0.0036, cy - 0.0095, zRear, 0, 0, s * 0.7); }
+    box(g, 0.028, 0.006, 0.014, M.dark, 0, cy - 0.0125, zRear);                               // rear notch plate
   } else if (style === 'toy') {
     torus(g, 0.012, 0.004, M.toyOrange, 0, cy, zRear);
     box(g, 0.03, 0.012, 0.014, M.toyYellow, 0, cy - 0.017, zRear);
@@ -212,6 +223,8 @@ function ironSights(g, cy, zRear, zFront, dot = M.dotGreen, style = 'notch') {
 // `z` = front edge where it meets the frame, `rake` = how far the bottom sits behind the top.
 function grip(g, z, topY, mat = M.grip, rake = 0.035, h = 0.1, t = 0.033, back = 0.068) {
   const b = topY - h, f = y => z + rake * (topY - y) / h;
+  if (GUN_REF && !GUN_REF.grip) GUN_REF.grip = { z, topY, rake, h, t, back };
+  const n0 = g.children.length;
   prof(g, [
     [z - 0.004, topY + 0.012], [f(topY - 0.014), topY - 0.014],
     [f(topY - 0.03) - 0.004, topY - 0.03], [f(topY - 0.046), topY - 0.046],          // finger grooves
@@ -222,9 +235,11 @@ function grip(g, z, topY, mat = M.grip, rake = 0.035, h = 0.1, t = 0.033, back =
     [z + back, topY + 0.004], [z + back, topY + 0.012],                               // beavertail
   ], t, mat, 0, 0.005);
   prof(g, [[f(b) - 0.007, b + 0.004], [f(b) + 0.051, b + 0.004], [f(b) + 0.051, b - 0.006], [f(b) - 0.007, b - 0.006]], t + 0.003, M.black, 0, 0.002);   // base cap
+  for (let i = n0; i < g.children.length; i++) g.children[i].userData.grip = true;  // never cut by a stock attachment
 }
 // Trigger guard loop (one piece with a hole) + curved trigger blade, trigger at `zt`.
 function guard(g, zt, topY, mat = M.dark) {
+  if (GUN_REF && GUN_REF.zt === null) GUN_REF.zt = zt;
   const z0 = zt - 0.034, z1 = zt + 0.044, y0 = topY - 0.038, y1 = topY + 0.006;
   prof(g, [[z0, y1], [z0, y0 + 0.012], ['q', z0, y0, z0 + 0.014, y0], [z1, y0], [z1, y1]], 0.009, mat, 0, 0.0025,
     [[[z0 + 0.007, topY - 0.001], [z1 - 0.005, topY - 0.001], [z1 - 0.005, y0 + 0.006], [z0 + 0.016, y0 + 0.006], ['q', z0 + 0.007, y0 + 0.006, z0 + 0.007, y0 + 0.016]]]);
@@ -312,8 +327,8 @@ export function buildGun(model, skinId = 'factory', att = {}) {
   const S = (skinId === 'factory' && (fest ? weaponSkinMaterial(fest[1]) : FACTORY[model])) || weaponSkinMaterial(skinId);
   const g = new THREE.Group();
   ROUND = true;
-  try { const out = buildGunInner(fest ? fest[0] : model, S, att, g); if (fest) festiveDecor(model, out); return out; }
-  finally { ROUND = false; M.dark = M_DARK; M.grip = M_GRIP; }
+  try { const out = buildGunInner(fest ? fest[0] : model, S, att, g); if (fest) festiveDecor(model, out, att.stock === 'nostock' || att.stock === 'light'); return out; }
+  finally { ROUND = false; M.dark = M_DARK; M.grip = M_GRIP; GUN_REF = null; }
 }
 const XM = {
   gold: new THREE.MeshStandardMaterial({ color: '#e8c15a', roughness: 0.22, metalness: 1 }),
@@ -345,13 +360,13 @@ function bow(g, x, y, z, s = 1) {
   const knot = new THREE.Mesh(new THREE.SphereGeometry(0.006 * s, 8, 6), r); knot.position.set(x, y, z); g.add(knot);
   for (const k of [-1, 1]) { const tail = new THREE.Mesh(new THREE.BoxGeometry(0.004 * s, 0.024 * s, 0.006 * s), r); tail.position.set(x + k * 0.006 * s, y - 0.014 * s, z); tail.rotation.z = k * 0.35; g.add(tail); }
 }
-function festiveDecor(model, g) {
+function festiveDecor(model, g, noStock = false) {
   const mz = g.userData.muzzle.position, my = mz.y, add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; g.add(m); return m; };
   switch (model) {
     case 'nutcracker': { // gold bands down the barrel, a gold star on the muzzle, holly on the stock, a little bearskin-hat plume
       for (let i = 0; i < 3; i++) add(new THREE.TorusGeometry(0.019, 0.0035, 6, 18), XM.gold, 0, my, mz.z + 0.08 + i * 0.05);
       add(starGeo(0.018, 0.006), XM.gold, 0, my + 0.04, mz.z + 0.04);
-      holly(g, 0.03, 0.02, 0.2, 1.1, 1); holly(g, -0.03, 0.02, 0.2, 1.1, -1);
+      if (!noStock) { holly(g, 0.03, 0.02, 0.2, 1.1, 1); holly(g, -0.03, 0.02, 0.2, 1.1, -1); }
       for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.004, 0.018, 0.05), XM.gold, s * 0.03, 0.03, -0.08); // gold braid on the receiver
       break;
     }
@@ -368,19 +383,20 @@ function festiveDecor(model, g) {
       break;
     }
     case 'krampus': { // curled horns on the stock, a rusty chain hanging under the barrel, birch switch tied on
-      for (const s of [-1, 1]) {
+      for (const s of noStock ? [] : [-1, 1]) {
         const c = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 8, 16, Math.PI * 1.3), XM.horn); c.position.set(s * 0.035, 0.07, 0.27); c.rotation.set(0, s * Math.PI / 2, -0.4); c.castShadow = true; g.add(c);
         add(new THREE.ConeGeometry(0.01, 0.03, 8), XM.horn, s * 0.035, 0.105, 0.24, -0.6);
       }
-      for (let i = 0; i < 7; i++) { const t = i / 6, z = -0.2 - t * 0.36, y = -0.015 - Math.sin(t * Math.PI) * 0.045; add(new THREE.TorusGeometry(0.009, 0.0025, 5, 10), XM.chain, 0, y, z, 0, i % 2 ? Math.PI / 2 : 0, 0); }
+      const chainLen = Math.min(0.36, -0.2 - mz.z - 0.04);
+      for (let i = 0; i < 7; i++) { const t = i / 6, z = -0.2 - t * chainLen, y = -0.015 - Math.sin(t * Math.PI) * 0.045; add(new THREE.TorusGeometry(0.009, 0.0025, 5, 10), XM.chain, 0, y, z, 0, i % 2 ? Math.PI / 2 : 0, 0); }
       for (let i = 0; i < 4; i++) add(new THREE.CylinderGeometry(0.002, 0.0015, 0.18, 4), XM.horn, 0.035 + i * 0.003, 0.03, -0.25 - i * 0.004, Math.PI / 2 + (i - 1.5) * 0.05, 0, 0);
       add(new THREE.TorusGeometry(0.008, 0.003, 5, 10), XM.red, 0.037, 0.03, -0.22, 0, Math.PI / 2, 0);
       break;
     }
     case 'northstar': { // glowing star on the muzzle brake, icicles hanging off the barrel, frosted scope rings
       add(starGeo(0.03, 0.008), XM.star, 0, my + 0.05, mz.z + 0.07);
-      for (let i = 0; i < 6; i++) add(new THREE.ConeGeometry(0.004 + (i % 3) * 0.0015, 0.025 + (i % 3) * 0.012, 6), XM.ice, 0, 0.018 - (i % 3) * 0.006, -0.35 - i * 0.07, Math.PI);
-      holly(g, 0.03, 0.01, 0.3, 1.2, 1);
+      for (let i = 0; i < 6; i++) if (-0.35 - i * 0.07 > mz.z + 0.06) add(new THREE.ConeGeometry(0.004 + (i % 3) * 0.0015, 0.025 + (i % 3) * 0.012, 6), XM.ice, 0, 0.018 - (i % 3) * 0.006, -0.35 - i * 0.07, Math.PI);
+      if (!noStock) holly(g, 0.03, 0.01, 0.3, 1.2, 1);
       break;
     }
     case 'candycane': { // a hooked candy-cane grip cap and a bow on the slide
@@ -390,7 +406,146 @@ function festiveDecor(model, g) {
     }
   }
 }
+// ---------------------------------------------------------------- visible stock / barrel / mag / grip attachments
+// Works on any gun model: the gun is built normally, then its static parts are reshaped in gun space.
+//  • stocks are cut off just behind the pistol grip (vertices clamped to a plane, so every piece gets a flat,
+//    closed end), then: No Stock = a rubber end cap, Lightweight = an open skeleton stock, Heavy = the original
+//    stock with a thick recoil pad and a cheek riser
+//  • Short Barrel squeezes everything ahead of the receiver toward it (barrel, handguard, front sight, tube mag)
+// GUN_REF holds where the trigger and grip were placed while the model was built.
+let GUN_REF = null;
+function bakeStatic(g) {
+  // put each static mesh's transform into its geometry so vertices are in gun space
+  const out = [];
+  for (const m of g.children) {
+    if (!m.isMesh || m.userData.grip) continue;
+    m.updateMatrix();
+    const geo = m.geometry.clone().applyMatrix4(m.matrix);
+    m.geometry = geo; m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
+    out.push(m);
+  }
+  return out;
+}
+function shortenBarrel(g, cut, k) {
+  const map = z => (z < cut ? cut + (z - cut) * k : z);
+  for (const m of bakeStatic(g)) {
+    const p = m.geometry.attributes.position;
+    let any = false;
+    for (let i = 0; i < p.count; i++) { const z = p.getZ(i); if (z < cut) { p.setZ(i, map(z)); any = true; } }
+    if (any) { p.needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingBox(); m.geometry.computeBoundingSphere(); }
+  }
+  return map;
+}
+// cut every static piece at z = zc; returns the outline of what was cut (to fit an end cap / new stock)
+function cutStock(g, zc) {
+  const cs = { x: 0, y0: Infinity, y1: -Infinity, n: 0 };
+  for (const m of bakeStatic(g)) {
+    const p = m.geometry.attributes.position;
+    let behind = 0, changed = false;
+    for (let i = 0; i < p.count; i++) if (p.getZ(i) > zc) behind++;
+    if (!behind) continue;
+    if (behind === p.count) { g.remove(m); m.geometry.dispose(); continue; }   // wholly behind the cut: gone
+    for (let i = 0; i < p.count; i++) {
+      if (p.getZ(i) <= zc) continue;
+      p.setZ(i, zc); changed = true;
+      const x = Math.abs(p.getX(i)), y = p.getY(i);
+      if (x < 0.08) { cs.x = Math.max(cs.x, x); cs.y0 = Math.min(cs.y0, y); cs.y1 = Math.max(cs.y1, y); cs.n++; }
+    }
+    if (changed) { p.needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingBox(); m.geometry.computeBoundingSphere(); }
+  }
+  if (!cs.n) { cs.x = 0.02; cs.y0 = -0.02; cs.y1 = 0.04; }
+  return cs;
+}
+// outline of the stock near its butt (for Heavy Stock add-ons)
+function stockEnd(g, zc) {
+  let zMax = -Infinity;
+  for (const m of g.children) {
+    if (!m.isMesh || m.userData.grip) continue;
+    m.updateMatrix();
+    const p = m.geometry.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrix); if (v.z > zMax && Math.abs(v.x) < 0.08) zMax = v.z; }
+  }
+  if (zMax < zc + 0.08) return null;                                               // no real stock to dress up
+  const r = { zMax, x: 0, y0: Infinity, y1: -Infinity, top: -Infinity };
+  for (const m of g.children) {
+    if (!m.isMesh || m.userData.grip) continue;
+    const p = m.geometry.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m.matrix);
+      if (Math.abs(v.x) > 0.08) continue;
+      if (v.z > zMax - 0.03) { r.x = Math.max(r.x, Math.abs(v.x)); r.y0 = Math.min(r.y0, v.y); r.y1 = Math.max(r.y1, v.y); }
+      if (v.z > zMax - 0.16 && v.z < zMax - 0.05) r.top = Math.max(r.top, v.y);
+    }
+  }
+  return r;
+}
+function stockAttachment(g, kind, zc) {
+  if (kind === 'heavy') {
+    const e = stockEnd(g, zc); if (!e) return;
+    const w = Math.max(0.036, e.x * 2), h = Math.max(0.06, e.y1 - e.y0);
+    box(g, w + 0.01, h + 0.008, 0.026, M.grip, 0, (e.y0 + e.y1) / 2, e.zMax + 0.012);             // thick recoil pad
+    for (let i = 0; i < 5; i++) box(g, w + 0.012, 0.003, 0.028, M.black, 0, e.y0 + 0.008 + i * (h - 0.012) / 4, e.zMax + 0.012);
+    if (e.top > -Infinity) {                                                                  // adjustable cheek riser
+      box(g, Math.min(w, 0.034), 0.016, 0.085, M.grip, 0, e.top + 0.008, e.zMax - 0.1);
+      for (const dz of [-0.13, -0.07]) box(g, 0.006, 0.012, 0.006, M.steel, 0, e.top + 0.002, e.zMax + dz);
+    }
+    return;
+  }
+  const cs = cutStock(g, zc);
+  const hw = Math.max(0.014, cs.x), yTop = cs.y1, yBot = Math.max(cs.y0, yTop - 0.11);
+  if (kind === 'nostock') {
+    box(g, hw * 2 + 0.006, Math.max(0.03, yTop - yBot) + 0.004, 0.012, M.dark, 0, (yTop + yBot) / 2, zc + 0.005);   // end plate
+    box(g, hw * 2 + 0.008, Math.min(0.04, yTop - yBot), 0.012, M.grip, 0, (yTop + yBot) / 2, zc + 0.016);         // rubber cap
+    sling(g, yBot + 0.006, zc + 0.004);
+  } else if (kind === 'light') {
+    // open skeleton stock: buffer tube, a single strut and a slim butt plate
+    const ty = yTop - 0.022;
+    box(g, hw * 2 + 0.004, Math.min(0.05, yTop - yBot), 0.014, M.dark, 0, ty - 0.01, zc + 0.006);   // adapter plate
+    cyl(g, 0.012, 0.2, M.dark, 0, ty, zc + 0.1, 14);                                                  // buffer tube
+    for (let i = 0; i < 6; i++) box(g, 0.026, 0.004, 0.006, M.black, 0, ty - 0.012, zc + 0.04 + i * 0.026);   // adjustment notches
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.22), M.dark);                   // lower strut
+    strut.position.set(0, ty - 0.055, zc + 0.11); strut.rotation.x = -Math.atan2(0.045, 0.2); strut.castShadow = true; g.add(strut);
+    box(g, 0.03, 0.1, 0.014, M.dark, 0, ty - 0.04, zc + 0.205);                                       // butt plate
+    box(g, 0.034, 0.104, 0.012, M.grip, 0, ty - 0.04, zc + 0.217);
+  }
+}
+function magAttachment(g, magObj, kind) {
+  if (!magObj) return;
+  // mag outline in its own space
+  const bb = new THREE.Box3(); magObj.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(magObj.matrixWorld).invert();
+  magObj.traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld))); } });
+  if (bb.isEmpty()) return;
+  const c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+  if (kind === 'big') {
+    // twin-drum high-capacity mag: a drum either side of the feed tower
+    magObj.scale.y *= 1.05;
+    const r = Math.min(0.06, Math.max(0.035, sz.z * 0.75)), y = bb.min.y + r * 0.9;
+    for (const s of [-1, 1]) {
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.03, 24), M.dark); d.rotation.z = Math.PI / 2; d.position.set(s * (sz.x / 2 + 0.015), y, c.z); d.castShadow = true; magObj.add(d);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, 0.034, 18), M.black); cap.rotation.z = Math.PI / 2; cap.position.copy(d.position); magObj.add(cap);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.004, r * 1.2, 0.01), M.smokeMag || M.glass); win.position.set(s * (sz.x / 2 + 0.031), y, c.z); magObj.add(win);
+    }
+  } else if (kind === 'fast') {
+    // mag coupler: a second mag clamped alongside + a pull loop on the base
+    const twin = new THREE.Group();
+    for (const ch of [...magObj.children]) twin.add(ch.clone());
+    twin.position.set(sz.x + 0.008, -0.022, 0.004); magObj.add(twin);
+    box(magObj, sz.x * 2 + 0.014, 0.014, Math.min(0.03, sz.z * 0.5), M.black, sz.x / 2 + 0.004, bb.min.y + sz.y * 0.45, c.z);   // clamp
+    box(magObj, 0.01, 0.022, 0.008, M.tab, 0, bb.min.y - 0.01, c.z);                  // pull loop
+  }
+}
+function gripAttachment(g, kind) {
+  const gr = GUN_REF?.grip; if (!gr) return;
+  const ang = Math.atan2(gr.rake, gr.h);
+  for (let i = 0; i < 4; i++) {
+    const y = gr.topY - 0.022 - i * 0.022, z = gr.z + gr.rake * (gr.topY - y) / gr.h + 0.03;
+    if (kind === 'tape') box(g, gr.t + 0.004, 0.014, 0.058, M.tape, 0, y, z, -ang);        // wraps of grip tape
+    else for (const s of [-1, 1]) box(g, 0.003, 0.016, 0.044, M.stipple, s * (gr.t / 2 + 0.001), y, z, -ang);   // stippled side panels
+  }
+}
 function buildGunInner(model, S, att, g) {
+  GUN_REF = { zt: null, grip: null };
   let muzzleZ = -0.5, muzzleY = 0.04, sightY = 0.1, adsZ = -0.3, left = [-0.02, -0.02, -0.3];
   let spot = null, under = null, irons = null, magObj = null;
   const keep = new Set(), parts = {};
@@ -1202,8 +1357,9 @@ function buildGunInner(model, S, att, g) {
         cyl(g, 0.014, 0.5, M.dark, 0, 0.035, -0.5); for (let i = 0; i < 6; i++) box(g, 0.03, 0.004, 0.03, M.black, 0, 0.035, -0.35 - i * 0.06);
         cyl(g, 0.017, 0.06, M.black, 0, 0.035, -0.78); cyl(g, 0.009, 0.3, M.dark, 0, 0.008, -0.4);
         prof(g, [[0.1, 0.058], [0.375, 0.05], [0.375, -0.062], [0.34, -0.062], [0.12, -0.03], [0.1, -0.012]], 0.034, M.wood, 0, 0.006, [[[0.15, 0.038], [0.335, 0.034], [0.335, -0.042], [0.16, -0.018]]]);   // skeleton wooden stock
-        box(g, 0.026, 0.008, 0.03, M.dark, 0, 0.081, 0.02); box(g, 0.01, 0.045, 0.012, M.dark, 0, 0.06, -0.7);
-        irons = { cy: 0.095, zr: 0.02, zf: -0.7 };
+        box(g, 0.03, 0.026, 0.034, M.dark, 0, 0.09, 0.03); box(g, 0.036, 0.006, 0.04, M.black, 0, 0.078, 0.03);   // raised rear sight block
+        box(g, 0.012, 0.072, 0.014, M.dark, 0, 0.072, -0.7); box(g, 0.026, 0.012, 0.03, M.dark, 0, 0.04, -0.7);   // tall front sight tower on its barrel clamp
+        irons = { cy: 0.124, zr: 0.03, zf: -0.7 };
         optic(0.125, -0.02, 0.09, -0.12, 0.06); spot.side = true;
       } else {
         cyl(g, 0.015, 0.4, M.dark, 0, 0.03, -0.48); box(g, 0.07, 0.055, 0.18, M.dark, 0, 0.01, -0.3);
@@ -1585,16 +1741,128 @@ function buildGunInner(model, S, att, g) {
       break;
     }
     case 'arcpistol': {
-      // Arc Pistol: compact frame, red discharge coil over the barrel, glowing cell in the grip
-      prof(g, [[0.04, 0.016], [0.04, 0.058], [-0.13, 0.06], ['q', -0.15, 0.06, -0.15, 0.04], [-0.15, 0.016]], 0.04, S, 0, 0.006);   // upper
-      for (let i = 0; i < 4; i++) torus(g, 0.016, 0.004, M.glowRed, 0, 0.037, -0.07 - i * 0.02, 14);   // discharge coil
-      cyl(g, 0.012, 0.03, M.steel, 0, 0.037, -0.16, 12); cyl(g, 0.007, 0.004, M.glowRed, 0, 0.037, -0.176, 10);
-      prof(g, [[0.04, 0.02], [0.04, 0.0], [-0.12, -0.004], [-0.14, 0.02]], 0.036, M.polyBlack, 0, 0.004);
+      // Arc Pistol: compact slide at the back, then an open cage where the red discharge coil wraps the barrel,
+      // emitter housing at the front, glowing cell window in the grip
+      prof(g, [[0.04, 0.016], [0.04, 0.06], [-0.055, 0.06], ['q', -0.064, 0.06, -0.064, 0.05], [-0.064, 0.016]], 0.04, S, 0, 0.006);   // slide
+      for (let i = 0; i < 5; i++) box(g, 0.0415, 0.03, 0.003, M.black, 0, 0.038, 0.006 + i * 0.0065);   // rear serrations
+      cyl(g, 0.008, 0.12, M.steel, 0, 0.037, -0.12, 12);                              // barrel core inside the coil
+      for (let i = 0; i < 5; i++) torus(g, 0.0155, 0.0042, M.glowRed, 0, 0.037, -0.077 - i * 0.019, 14);   // exposed discharge coil
+      for (const s of [-1, 1]) box(g, 0.004, 0.01, 0.12, M.dark, s * 0.021, 0.052, -0.122);   // cage rails over the coil
+      box(g, 0.046, 0.005, 0.014, M.dark, 0, 0.058, -0.122);                          // cage bridge
+      cyl(g, 0.017, 0.034, M.dark, 0, 0.037, -0.192, 14);                             // emitter housing
+      for (let i = 0; i < 3; i++) cyl(g, 0.0175, 0.003, M.black, 0, 0.037, -0.18 - i * 0.01, 14);
+      cyl(g, 0.009, 0.004, M.glowRed, 0, 0.037, -0.21, 12);                           // lens
+      prof(g, [[0.04, 0.02], [0.04, 0.0], [-0.12, -0.004], ['q', -0.17, -0.004, -0.18, 0.02]], 0.036, M.polyBlack, 0, 0.004);   // frame
       grip(g, 0.022, 0.0, M.grip, 0.04, 0.1, 0.034, 0.06);
       box(g, 0.036, 0.05, 0.012, M.glowRed, 0, -0.05, 0.05, 0.35);                  // cell window in the grip
       guard(g, 0.0, 0.0);
-      irons = { cy: 0.072, zr: 0.03, zf: -0.13 };
-      muzzleZ = -0.18; muzzleY = 0.037; left = [0.0, -0.05, 0.02];
+      irons = { cy: 0.072, zr: 0.03, zf: -0.185 };
+      muzzleZ = -0.212; muzzleY = 0.037; left = [0.0, -0.05, 0.02];
+      break;
+    }
+    case 'pulsesmg': {
+      // Pulse SMG: compact angular shell, green pulse emitter with cooling fins, side-lit power cell, wire stock
+      prof(g, [[0.12, -0.02], [0.12, 0.05], ['q', 0.12, 0.07, 0.1, 0.07], [-0.2, 0.07], ['q', -0.24, 0.07, -0.24, 0.045], [-0.24, -0.005], [-0.06, -0.03], [0.02, -0.03]], 0.054, S, 0, 0.009);   // shell
+      prof(g, [[0.09, 0.0], [0.09, 0.05], [-0.19, 0.053], [-0.19, 0.0]], 0.058, M.polyBlack, 0, 0.004);   // side panels
+      for (let i = 0; i < 5; i++) box(g, 0.06, 0.005, 0.022, M.glowGreen, 0, 0.026, -0.15 + i * 0.045);   // vents glowing through
+      seams(g, 0.029, [0.005, 0.047], -0.18, 0.08);
+      rivets(g, 0.029, 0.04, [-0.2, 0.06]);
+      cyl(g, 0.019, 0.15, M.dark, 0, 0.035, -0.31, 16);                              // emitter
+      for (let i = 0; i < 4; i++) torus(g, 0.025, 0.005, M.glowGreen, 0, 0.035, -0.265 - i * 0.03, 18);   // pulse coils
+      for (let i = 0; i < 6; i++) box(g, 0.044, 0.016, 0.004, M.dark, 0, 0.06, -0.255 - i * 0.02);   // cooling fins
+      box(g, 0.01, 0.006, 0.12, M.dark, 0, 0.068, -0.305);                           // fin spine
+      cyl(g, 0.024, 0.03, M.steel, 0, 0.035, -0.395, 16); cyl(g, 0.011, 0.004, M.glowGreen, 0, 0.035, -0.411, 12);   // lens housing
+      box(g, 0.048, 0.03, 0.14, M.polyBlack, 0, -0.008, -0.27); ribs(g, 0.048, 0.03, -0.008, -0.33, -0.21, 0.02);   // handguard
+      box(g, 0.012, 0.028, 0.014, M.dark, 0, 0.074, -0.2);                           // front sight tower
+      { const mp = magObj = part('mag', 0, -0.03, -0.035);                            // power cell
+        pbox(mp, 0.036, 0.11, 0.05, M.dark, 0, -0.085, -0.035); pbox(mp, 0.038, 0.07, 0.022, M.glowGreen, 0, -0.085, -0.035); pbox(mp, 0.04, 0.012, 0.054, M.steel, 0, -0.142, -0.035); }
+      grip(g, 0.075, -0.02, M.grip, 0.03, 0.1, 0.034, 0.062); guard(g, 0.045, -0.02);
+      skeletonStock(g, 0.045, -0.05, 0.12, 0.33, M.dark, 0.018);
+      irons = { cy: 0.096, zr: 0.06, zf: -0.2 };
+      muzzleZ = -0.414; muzzleY = 0.035; left = [-0.01, -0.035, -0.27];
+      break;
+    }
+    case 'beamlmg': {
+      // Helios Beam LMG: heavy receiver, long finned focusing barrel with amber coils, a big power drum underneath,
+      // padded stock and a folded bipod
+      prof(g, [[0.14, -0.03], [0.14, 0.085], ['q', 0.13, 0.1, 0.11, 0.1], [-0.27, 0.1], ['q', -0.3, 0.1, -0.3, 0.075], [-0.3, -0.03]], 0.074, S, 0, 0.012);   // receiver shell
+      prof(g, [[0.11, -0.005], [0.11, 0.08], [-0.27, 0.083], [-0.27, -0.005]], 0.078, M.polyBlack, 0, 0.004);   // side panels
+      for (let i = 0; i < 6; i++) box(g, 0.08, 0.008, 0.026, M.glowAmber, 0, 0.04, -0.23 + i * 0.05);   // heat vents
+      seams(g, 0.039, [0.01, 0.07], -0.26, 0.1); rivets(g, 0.039, 0.085, [-0.26, -0.1, 0.08]);
+      ejectPort(g, 0.039, 0.05, -0.03, 0.07, 0.022);
+      cyl(g, 0.03, 0.42, M.dark, 0, 0.04, -0.51, 18);                                // focusing barrel
+      for (let i = 0; i < 9; i++) cyl(g, 0.038, 0.012, M.dark, 0, 0.04, -0.34 - i * 0.04, 18);   // heat-sink rings
+      for (let i = 0; i < 4; i++) torus(g, 0.033, 0.0055, M.glowAmber, 0, 0.04, -0.36 - i * 0.08, 20);   // amber coils between the rings
+      cyl(g, 0.036, 0.05, M.steel, 0, 0.04, -0.745, 18); cyl(g, 0.016, 0.004, M.glowAmber, 0, 0.04, -0.772, 14);   // emitter head
+      box(g, 0.066, 0.04, 0.2, M.polyBlack, 0, -0.005, -0.4); ribs(g, 0.066, 0.04, -0.005, -0.49, -0.31, 0.025);   // handguard
+      box(g, 0.012, 0.034, 0.014, M.dark, 0, 0.08, -0.36);                           // front sight tower
+      { const mp = magObj = part('mag', 0, -0.03, -0.09);                             // power drum
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.07, 26), M.dark); drum.rotation.z = Math.PI / 2; drum.position.set(0, -0.06, 0); drum.castShadow = true; mp.add(drum);
+        for (const sx of [-1, 1]) {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.006, 6, 24), M.glowAmber); ring.rotation.y = Math.PI / 2; ring.position.set(sx * 0.036, -0.06, 0); mp.add(ring);
+          const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.006, 14), M.steel); cap.rotation.z = Math.PI / 2; cap.position.set(sx * 0.038, -0.06, 0); mp.add(cap);
+        }
+        pbox(mp, 0.05, 0.03, 0.06, M.dark, 0, -0.035, -0.09); }
+      guard(g, 0.07, -0.03); grip(g, 0.1, -0.03, M.grip, 0.035, 0.11, 0.038, 0.07);
+      solidStock(g, 0.14, 0.42, 0.085, 0.06, -0.03, -0.08, S, 0.05);
+      for (const s of [-1, 1]) box(g, 0.01, 0.01, 0.24, M.steel, s * 0.022, -0.03, -0.5);   // folded bipod
+      sling(g, -0.03, 0.3);
+      irons = { cy: 0.126, zr: 0.06, zf: -0.36 };
+      muzzleZ = -0.776; muzzleY = 0.04; left = [-0.02, -0.03, -0.4];
+      break;
+    }
+    case 'arccannon': {
+      // Tempest Arc Cannon: a shoulder-fired tesla coil. Copper coil stack round the core, glowing capacitor tubes
+      // down both sides, two prongs at the front with a charge sphere between them, front grip, padded stock.
+      prof(g, [[0.16, -0.04], [0.16, 0.09], ['q', 0.15, 0.11, 0.12, 0.11], [-0.22, 0.11], ['q', -0.26, 0.11, -0.26, 0.08], [-0.26, -0.04]], 0.084, S, 0, 0.014);   // body
+      prof(g, [[0.13, -0.01], [0.13, 0.09], [-0.23, 0.093], [-0.23, -0.01]], 0.088, M.polyBlack, 0, 0.004);   // armour panels
+      seams(g, 0.044, [0.0, 0.08], -0.22, 0.12); rivets(g, 0.044, 0.1, [-0.22, -0.05, 0.12]);
+      for (const sx of [-1, 1]) {                                                    // capacitor tubes
+        cyl(g, 0.017, 0.26, M.glowBlue, sx * 0.05, 0.045, -0.08, 14);
+        for (const z of [-0.21, 0.05]) cyl(g, 0.021, 0.022, M.dark, sx * 0.05, 0.045, z, 14);
+        for (let i = 0; i < 3; i++) cyl(g, 0.0185, 0.006, M.black, sx * 0.05, 0.045, -0.15 + i * 0.07, 14);
+      }
+      cyl(g, 0.022, 0.24, M.dark, 0, 0.04, -0.37, 16);                               // core
+      const coil = M.glowBlue.clone(); coil.userData = { charge: true };             // glows brighter while charging
+      for (let i = 0; i < 9; i++) torus(g, 0.036, 0.0065, i % 2 ? M.copper : coil, 0, 0.04, -0.28 - i * 0.022, 22);   // coil stack
+      for (const z of [-0.265, -0.48]) cyl(g, 0.046, 0.016, M.dark, 0, 0.04, z, 18);   // coil end plates
+      for (const sx of [-1, 1]) {                                                    // prongs
+        box(g, 0.012, 0.014, 0.16, M.dark, sx * 0.032, 0.04, -0.56, 0, -sx * 0.12, 0);
+        const tip = new THREE.Mesh(new THREE.SphereGeometry(0.009, 10, 8), coil); tip.position.set(sx * 0.024, 0.04, -0.635); g.add(tip);
+      }
+      { const orb = new THREE.Mesh(new THREE.SphereGeometry(0.017, 14, 10), coil); orb.position.set(0, 0.04, -0.6); g.add(orb); }
+      box(g, 0.012, 0.03, 0.014, M.dark, 0, 0.12, 0.06);                             // rear sight tower
+      { const mp = magObj = part('mag', 0, -0.04, 0.02);                              // power cell
+        pbox(mp, 0.05, 0.08, 0.08, M.dark, 0, -0.075, 0.0); pbox(mp, 0.052, 0.04, 0.05, M.glowBlue, 0, -0.07, 0.0); pbox(mp, 0.054, 0.012, 0.084, M.steel, 0, -0.118, 0.0); }
+      guard(g, 0.09, -0.04); grip(g, 0.12, -0.04, M.grip, 0.035, 0.11, 0.038, 0.07);
+      box(g, 0.034, 0.02, 0.05, M.dark, 0, -0.03, -0.33);
+      prof(g, [[-0.315, -0.04], [-0.345, -0.04], [-0.35, -0.12], ['q', -0.35, -0.13, -0.338, -0.13], [-0.318, -0.128]], 0.032, M.grip, 0, 0.004);   // front grip
+      solidStock(g, 0.16, 0.42, 0.095, 0.07, -0.04, -0.085, M.polyBlack, 0.056);
+      sling(g, -0.04, 0.3);
+      irons = { cy: 0.146, zr: 0.06, zf: -0.22 };
+      muzzleZ = -0.62; muzzleY = 0.04; left = [-0.005, -0.09, -0.335]; adsZ = -0.26;
+      g.userData.chargeMat = coil;
+      break;
+    }
+    case 'glint': {
+      // Glint Laser: slim long-range laser pointer rifle. Thin slotted barrel, red emitter, battery bars on the side,
+      // a little rangefinder on the side and a thumbhole stock
+      prof(g, [[0.12, -0.015], [0.12, 0.045], ['q', 0.11, 0.056, 0.09, 0.056], [-0.18, 0.056], ['q', -0.21, 0.056, -0.21, 0.035], [-0.21, -0.015]], 0.046, S, 0, 0.008);   // body
+      prof(g, [[0.09, 0.002], [0.09, 0.044], [-0.18, 0.046], [-0.18, 0.002]], 0.05, M.polyBlack, 0, 0.003);
+      for (let i = 0; i < 5; i++) box(g, 0.052, 0.008, 0.014, M.glowRed, 0, 0.022, -0.12 + i * 0.022);   // battery level bars
+      seams(g, 0.025, [0.006, 0.04], -0.18, 0.08);
+      cyl(g, 0.016, 0.38, M.dark, 0, 0.032, -0.4, 14);                               // barrel shroud
+      for (let i = 0; i < 8; i++) for (const s of [-1, 1]) box(g, 0.003, 0.008, 0.026, M.black, s * 0.0165, 0.032, -0.26 - i * 0.036);   // slots
+      cyl(g, 0.02, 0.04, M.steel, 0, 0.032, -0.6, 14); cyl(g, 0.008, 0.004, M.glowRed, 0, 0.032, -0.622, 12);   // emitter
+      box(g, 0.026, 0.02, 0.05, M.dark, 0.03, 0.04, -0.12); cyl(g, 0.008, 0.006, M.lens, 0.03, 0.04, -0.148, 10);   // side rangefinder
+      box(g, 0.01, 0.024, 0.014, M.dark, 0, 0.052, -0.5);                            // front sight tower
+      { const mp = magObj = part('mag', 0, -0.015, -0.03);                            // battery
+        pbox(mp, 0.03, 0.07, 0.05, M.dark, 0, -0.05, -0.03); pbox(mp, 0.032, 0.04, 0.02, M.glowRed, 0, -0.05, -0.03); }
+      guard(g, 0.05, -0.015); grip(g, 0.08, -0.015, M.grip, 0.03, 0.1, 0.032, 0.06);
+      prof(g, [[0.12, 0.045], [0.38, 0.03], [0.38, -0.08], [0.34, -0.08], [0.16, -0.02], [0.12, -0.015]], 0.04, S, 0, 0.008, [[[0.17, 0.02], [0.3, 0.012], [0.3, -0.035], [0.2, -0.01]]]);   // thumbhole stock
+      buttPad(g, 0.036, 0.1, -0.025, 0.385);
+      irons = { cy: 0.08, zr: 0.06, zf: -0.5 };
+      muzzleZ = -0.624; muzzleY = 0.032; left = [-0.01, 0.0, -0.3];
       break;
     }
 
@@ -1901,7 +2169,7 @@ function buildGunInner(model, S, att, g) {
       // M97 trench gun: humpback receiver with exposed hammer, ventilated heat shield over the barrel,
       // tube magazine, ribbed wooden pump, bayonet lug
       prof(g, [[0.07, 0.0], [0.07, 0.05], [0.04, 0.072], [-0.14, 0.072], [-0.15, 0.0]], 0.044, S, 0, 0.005);   // receiver
-      box(g, 0.012, 0.02, 0.014, S, 0, 0.068, 0.07, -0.5);                           // hammer
+      box(g, 0.011, 0.016, 0.014, S, 0, 0.066, 0.075, -1.1);                         // hammer (laid back, below the sight line)
       cyl(g, 0.013, 0.46, M.dark, 0, 0.05, -0.38);                                   // barrel
       prof(g, [[-0.16, 0.074], [-0.5, 0.074], ['q', -0.51, 0.074, -0.51, 0.06], [-0.51, 0.036], [-0.16, 0.036]], 0.036, M.dark, 0, 0.004);   // heat shield
       for (let i = 0; i < 7; i++) for (const s of [-1, 1]) box(g, 0.003, 0.014, 0.022, M.black, s * 0.0185, 0.056, -0.19 - i * 0.045);
@@ -1951,6 +2219,21 @@ function buildGunInner(model, S, att, g) {
       break;
     }
   }
+  // ------------------------------------------------------------- attachments that reshape the gun itself
+  const zt = GUN_REF.zt;
+  if (zt !== null && att.barrel === 'short' && muzzleZ < zt - 0.3) {
+    const cut = muzzleZ + (zt - muzzleZ) * 0.5, map = shortenBarrel(g, cut, 0.5);
+    muzzleZ = map(muzzleZ); left = [left[0], left[1], map(left[2])];
+    if (irons) irons.zf = map(irons.zf);
+    if (under) under.z = map(under.z);
+    if (spot) { spot.z = map(spot.z); spot.rz0 = map(spot.rz0); spot.rz1 = map(spot.rz1); }
+    for (const p of Object.values(parts)) if (p.position.z < cut) p.position.z = map(p.position.z);
+  }
+  if (zt !== null && (att.stock === 'nostock' || att.stock === 'light' || att.stock === 'heavy')) {
+    const gr = GUN_REF.grip;
+    stockAttachment(g, att.stock, Math.max(zt + 0.1, gr ? gr.z + gr.back + 0.012 : -Infinity));
+  }
+  if (att.grip === 'tape' || att.grip === 'stippled') gripAttachment(g, att.grip);
   // ------------------------------------------------------------- sights / optics
   // attachment camo (att.attSkin): 'black' (default), 'match' (same finish as the gun) or any weapon camo
   const attMat = att.attSkin && att.attSkin !== 'black' ? (att.attSkin === 'match' ? S : weaponSkinMaterial(att.attSkin)) : null;
@@ -2002,6 +2285,7 @@ function buildGunInner(model, S, att, g) {
   M.dark = M_DARK; M.grip = M_GRIP;
   // ------------------------------------------------------------- magazine
   if (magObj && att.mag === 'ext') { magObj.scale.y *= 1.4; }
+  else if (att.mag === 'big' || att.mag === 'fast') magAttachment(g, magObj, att.mag);
   // ------------------------------------------------------------- merge static parts, keep moving parts separate
   if (magObj && !Object.values(parts).includes(magObj)) parts.mag = magObj;
   for (const p of Object.values(parts)) p.traverse(o => { if (o.isMesh) keep.add(o); });
@@ -2097,7 +2381,7 @@ const gloveTex = texCanvas(64, (x, s) => {
   speckle(x, s, 10);
 });
 
-export function buildArms(skinId, gun) {
+export function buildArms(skinId, gun, rightOnly = false) {
   const sk = charSkin(skinId);
   const shade = (hex, f) => '#' + new THREE.Color(hex).multiplyScalar(f).getHexString();
   // sleeves are toned down a little: viewmodel lights are strong and flat bright fabric looks plastic
@@ -2137,6 +2421,7 @@ export function buildArms(skinId, gun) {
   box(r, 0.02, 0.02, 0.05, glove, -0.03, -0.05, 0.04, 0.4, 0, 0);                           // thumb
   forearm(r, 0.012, -0.11, 0.09, 0.95, 0.15, 0.4);
   arms.add(r);
+  if (rightOnly) { gun.userData.leftHand = null; ROUND = prevRound; return arms; }
   // left hand on the handguard
   const [lx, ly, lz] = gun.userData.left;
   const l = new THREE.Group();

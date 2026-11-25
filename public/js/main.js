@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildMap, MAPS, MAP_ORDER } from '/shared/maps.js';
+import { buildMap, MAPS, MAP_ORDER, registerCustomMap } from '/shared/maps.js';
+import { createBuilder } from './builder.js';
 import { WEAPONS, PRIMARIES, SECONDARIES, CLASS_NAMES, LETHALS, TACTICALS, THROWABLE_KINDS, falloffMult, recoilStep } from '/shared/weapons.js';
 import { moveBody, canStand, raycastBoxes, PLAYER } from '/shared/physics.js';
 import { THEMES, getMaterial, MAT_COLORS, WEAPON_SKINS, CHAR_SKINS, RARITY_COLORS, charSkin, radialSprite, flashSprite, decalTexture, nameTagTexture } from './textures.js';
@@ -33,6 +34,20 @@ cfg.perks = cleanPerks(cfg.perks); cfg.streaks = cleanStreaks(cfg.streaks);
 if (cfg.announcer === undefined) cfg.announcer = true;
 Announcer.setEnabled(cfg.announcer); Announcer.setVolume(Math.min(1, cfg.vol * 1.4));
 if (!TACTICALS.includes(cfg.tactical)) cfg.tactical = 'smoke';
+// Key binds (Settings → Controls). Each action has one key; crouch has a second one.
+const BIND_DEFAULTS = { fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sprint: 'ShiftLeft', crouch: 'ControlLeft', crouch2: 'KeyC',
+  reload: 'KeyR', lethal: 'KeyG', tactical: 'KeyQ', melee: 'KeyV', primary: 'Digit1', secondary: 'Digit2', knife: 'Digit3',
+  streak1: 'Digit5', streak2: 'Digit6', streak3: 'Digit7', chat: 'KeyT', score: 'Tab' };
+const BIND_NAMES = { fwd: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right', jump: 'Jump / climb', sprint: 'Sprint', crouch: 'Crouch / slide', crouch2: 'Crouch (2nd key)',
+  reload: 'Reload', lethal: 'Lethal throwable', tactical: 'Tactical throwable', melee: 'Quick knife', primary: 'Primary weapon', secondary: 'Secondary weapon', knife: 'Knife',
+  streak1: 'Killstreak 1', streak2: 'Killstreak 2', streak3: 'Killstreak 3', chat: 'Chat', score: 'Scoreboard' };
+cfg.binds = { ...BIND_DEFAULTS, ...(cfg.binds && typeof cfg.binds === 'object' ? cfg.binds : {}) };
+for (const k in cfg.binds) if (!(k in BIND_DEFAULTS) || typeof cfg.binds[k] !== 'string') delete cfg.binds[k];
+const B = a => cfg.binds[a] || BIND_DEFAULTS[a];
+const keyLabel = code => !code ? '—' : code.startsWith('Key') ? code.slice(3) : code.startsWith('Digit') ? code.slice(5) : code.startsWith('Numpad') ? 'Num ' + code.slice(6)
+  : ({ ShiftLeft: 'L-Shift', ShiftRight: 'R-Shift', ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'L-Alt', AltRight: 'R-Alt', Space: 'Space', Tab: 'Tab', CapsLock: 'Caps',
+    Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Backslash: '\\', Comma: ',', Period: '.', Slash: '/',
+    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Enter', Backspace: 'Backspace' }[code] || code);
 setReticle(cfg.reticle, cfg.reticleColor);
 // Loadouts: five saved sets of primary, secondary, throwables, perks and killstreaks (attachments stay with each gun).
 // cfg.primary etc. are always the equipped loadout; saveCfg copies them back into cfg.loadouts[cfg.activeLoadout].
@@ -562,7 +577,7 @@ function mapThumb(id) {
 // ================================================================ local player
 const me = { id: null, pos: [0, 0, 0], vel: [0, 0, 0], onGround: false, height: PLAYER.height, eyeH: PLAYER.eye, yaw: 0, pitch: 0, alive: false, hp: 100, crouch: false, slot: 0, weapons: [], streak: 0 };
 let inGame = false, ws = null, myName = cfg.name, room = null, lobbies = [], online = 0;
-let vmRoll = 0, adsT = 0, drawT = 0, bloom = 0, recoilAcc = 0, shake = 0, kickZ = 0, bobPhase = 0, stepDist = 0, swayX = 0, swayY = 0;
+let vmRoll = 0, adsT = 0, drawT = 0, bloom = 0, recoilAcc = 0, shake = 0, kickZ = 0, kickZ2 = 0, bobPhase = 0, stepDist = 0, swayX = 0, swayY = 0;
 let sprintLock = 0, meleeAnim = 0, lastShotTime = 0, deathTime = 0, respawnAt = 0, timeLeft = 600, scoreLimit = 30, matchEnded = false, endBackAt = 0;
 const scores = new Map();
 let uavAdvanced = false, jamUntil = 0, myStreaks = [], streakReady = [], myArmor = 0;
@@ -585,7 +600,7 @@ const perkDef = (d) => {
   if (hasPerk('quickdraw')) d.ads *= 0.65;
   return d;
 };
-const makeWeapon = id => { const def = perkDef(mode === 'gungame' || WEAPONS[id]?.slot === 'streak' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' || mode === 'roulette' ? 999 : Math.round(def.reserve * (hasPerk('bandolier') ? 1.5 : 1)), reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
+const makeWeapon = id => { const def = perkDef(mode === 'gungame' || WEAPONS[id]?.slot === 'streak' ? PR.attachedDef(id, {}) : PR.attachedDef(id)); return { def, ammo: def.mag, reserve: mode === 'gungame' || mode === 'roulette' || mode === 'range' ? 999 : Math.round(def.reserve * (hasPerk('bandolier') ? 1.5 : 1)), reloadT: 0, nextFire: 0, burstLeft: 0, actT: 0, reloadTotal: 0 }; };
 // Minigun killstreak: a temporary extra weapon slot that disappears when the time or ammo runs out
 function giveMinigun() {
   me.weapons = me.weapons.filter(x => x.def.slot !== 'streak');
@@ -612,14 +627,23 @@ function equipViewmodel() {
   for (const c of [...vmHolder.children]) disposeObject(c);
   vmHolder.clear();
   const w = curW(); if (!w) return;
-  const gun = buildWeapon(w.def, gunSkin(w.def.id), { ...(w.def.att || {}), attSkin: attSkinFor(w.def.id) });
-  gun.add(buildArms(cfg.cskin, gun));
-  gun.traverse(o => { if (o.isMesh) o.castShadow = false; });
-  const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flash, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-  fl.scale.setScalar(w.def.model === 'rocket' ? 0.5 : w.def.suppressed ? 0.12 : 0.28); fl.visible = false;
-  gun.userData.muzzle.add(fl);
+  const ak = !!w.def.akimbo;
+  const mk = () => {
+    const gun = buildWeapon(w.def, gunSkin(w.def.id), { ...(w.def.att || {}), attSkin: attSkinFor(w.def.id) });
+    gun.add(buildArms(cfg.cskin, gun, ak));
+    gun.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flash, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    fl.scale.setScalar(w.def.model === 'rocket' ? 0.5 : w.def.suppressed ? 0.12 : 0.28); fl.visible = false;
+    gun.userData.muzzle.add(fl);
+    return [gun, fl];
+  };
+  const [gun, fl] = mk();
   vmHolder.add(gun);
   vm = { gun, flash: fl, flashT: 0 };
+  if (ak) { // akimbo: a mirrored copy in the left hand (the mirror group flips it, hand and all)
+    const [gun2, fl2] = mk(), mirror = new THREE.Group(); mirror.scale.x = -1; mirror.add(gun2); vmHolder.add(mirror);
+    Object.assign(vm, { gun2, flash2: fl2, flash2T: 0 });
+  }
   drawT = w.def.swap ? 0.2 : 0.35;
 }
 function switchSlot(n) {
@@ -686,9 +710,18 @@ function removeRemote(id) {
   remotes.delete(id);
 }
 function clearRemotes() { for (const id of [...remotes.keys()]) removeRemote(id); }
-function setRemoteGun(r, wid) {
-  if (r.gunId === wid || !WEAPONS[wid]) return;
+function setRemoteGun(r, wid, ak = r.ak) {
+  ak = !!ak && WEAPONS[wid]?.slot === 'secondary';
+  if ((r.gunId === wid && !!r.ak === ak) || !WEAPONS[wid]) return;
   const mount = r.model.userData.gunMount;
+  if (r.gun2) { r.gun2.parent?.remove(r.gun2); disposeObject(r.gun2); r.gun2 = null; }
+  r.ak = ak;
+  if (ak) { // akimbo: a mirrored copy of the gun in the soldier's left hand
+    const m2 = new THREE.Group(); m2.scale.x = -1;
+    const g2 = buildWeapon(WEAPONS[wid], r.info.wskin); g2.position.copy(mount.position); g2.rotation.copy(mount.rotation);
+    m2.add(g2); mount.parent.add(m2); r.gun2 = m2;
+  }
+  if (r.gunId === wid) return;
   const old = r.gun;
   r.gun = buildWeapon(WEAPONS[wid], r.info.wskin);
   r.gun.userData.muzzle.add(r.flash); // moves the shared flash sprite off the old gun
@@ -727,6 +760,10 @@ const THROW_LOOK = {
 };
 const throwMats = {};
 function makeNadeMesh(kind = 'frag') {
+  if (kind === 'tknife') { // the same knife as in your hand, a bit bigger so it reads at a distance; blade along +z (lookAt)
+    const g = new THREE.Group(), k = throwableModel('tknife'); k.rotation.y = Math.PI; k.scale.setScalar(1.6); g.add(k);
+    g.userData.kind = kind; return g;
+  }
   const [col, size, led] = THROW_LOOK[kind] || THROW_LOOK.frag;
   const mat = throwMats[col] || (throwMats[col] = Object.assign(new THREE.MeshStandardMaterial({ color: col, roughness: 0.55, metalness: 0.3 }), { userData: { shared: true } }));
   const g = new THREE.Group();
@@ -809,6 +846,43 @@ function laserBeam(from, to, color, width = 1) {
   spriteFx(to, TEX.glow, 0.25 * width, 3, 0.15, 1, null, true);
   flashLight(from, color, 18 * width, 0.05, 6);
 }
+// arc cannon: a jagged bolt of lightning (bright core + coloured glow) with a couple of forks
+function lightning(from, to, color = '#8fdcff', width = 1, forks = 2) {
+  const dir = to.clone().sub(from), dist = dir.length(); if (dist < 0.2) return;
+  dir.divideScalar(dist);
+  const side = new THREE.Vector3().crossVectors(dir, Math.abs(dir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)).normalize();
+  const up = new THREE.Vector3().crossVectors(side, dir);
+  const n = Math.max(4, Math.min(28, Math.ceil(dist / 0.7))), pts = [from.clone()];
+  for (let i = 1; i < n; i++) {
+    const t = i / n, amp = Math.min(0.55, dist * 0.06) * Math.sin(Math.PI * t) * width;
+    pts.push(from.clone().addScaledVector(dir, dist * t).addScaledVector(side, (Math.random() - 0.5) * 2 * amp).addScaledVector(up, (Math.random() - 0.5) * 2 * amp));
+  }
+  pts.push(to.clone());
+  const seg = (a, b, w, life) => {
+    const d = a.distanceTo(b);
+    for (const [r, op, col] of [[0.012 * w, 1, '#ffffff'], [0.05 * w, 0.55, color]]) {
+      const m = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.position.copy(a); m.lookAt(b); m.scale.set(r, r, d); scene.add(m); beams.push({ m, life, max: life, op });
+    }
+  };
+  for (let i = 0; i < pts.length - 1; i++) seg(pts[i], pts[i + 1], width, 0.22);
+  for (let f = 0; f < forks && pts.length > 4; f++) {             // short forks breaking off the main bolt
+    let a = pts[1 + Math.floor(Math.random() * (pts.length - 3))];
+    for (let k = 0; k < 3; k++) { const b = a.clone().addScaledVector(dir, 0.3 + Math.random() * 0.5).addScaledVector(side, (Math.random() - 0.5) * 0.9).addScaledVector(up, (Math.random() - 0.6) * 0.9); seg(a, b, width * 0.5, 0.16); a = b; }
+  }
+  spriteFx(to, TEX.glow, 0.9 * width, 4, 0.25, 1, null, true);
+  spriteFx(from, TEX.glow, 0.35 * width, 2, 0.12, 1, null, true);
+  flashLight(to, color, 70 * width, 0.12, 12);
+  flashLight(from, color, 30 * width, 0.06, 6);
+}
+// bolts from where an arc-cannon shot landed to everyone close enough to get zapped (visual only; the server does the damage)
+function arcSplash(at, def, shooterId) {
+  const list = [];
+  for (const r of remotes.values()) if (r.alive && r.id !== shooterId && !(shooterId === me.id && r.mate)) list.push(new THREE.Vector3(r.model.position.x, r.model.position.y + 1.1, r.model.position.z));
+  if (me.alive && shooterId !== me.id && !isMate(shooterId)) list.push(new THREE.Vector3(me.pos[0], me.pos[1] + 1.1, me.pos[2]));
+  for (const c of list) { const d = c.distanceTo(at); if (d > 0.6 && d < def.splash) lightning(at, c, def.laser, 0.55, 1); }
+  for (let i = 0; i < 10; i++) particle(at, new THREE.Vector3((Math.random() - 0.5) * 6, Math.random() * 4, (Math.random() - 0.5) * 6), '#cfefff', 0.02, 0.35, 4);
+}
 // flamethrower jet: short-lived additive fire sprites flying forward
 let myFlame = null;
 function flameStream(from, dir, len, count = 8) {
@@ -869,7 +943,8 @@ function updateZonesFx(dt, now) {
   }
   // screen effects: flashbang, stun, burning
   const fl = Math.max(0, (flashUntil - now) / 3500);
-  $('flashfx').style.opacity = fl > 0 ? Math.min(1, fl * 1.4) * flashPower : 0;
+  $('flashfx').style.opacity = fl > 0 ? Math.min(cfg.safeFlash ? 0.88 : 1, fl * 1.4) * flashPower : 0;
+  $('flashfx').classList.toggle('safe', !!cfg.safeFlash);
   $('stunfx').style.opacity = now < stunUntil ? 0.55 : 0;
   $('frostfx').style.opacity = now < frostUntil ? Math.min(1, (frostUntil - now) / 600) : 0;
   $('burnfx').style.opacity = now < burnUntil ? 0.7 + Math.sin(now * 0.02) * 0.2 : 0;
@@ -1003,22 +1078,27 @@ document.addEventListener('keydown', e => {
     else if (e.key === 'Escape') closeChat();
     return;
   }
-  if (!inGame) return;
-  if (e.code === 'Tab') { e.preventDefault(); showBoard = true; renderScoreboard(); }
+  if (!inGame || bindWait) return;
+  const is = a => e.code === B(a);
+  if (e.code === 'Tab') e.preventDefault();
+  if (is('score')) { e.preventDefault(); showBoard = true; renderScoreboard(); }
   if (!locked) return;
   keys[e.code] = true;
-  if (e.code === 'KeyR') startReload();
-  if (e.code === 'Digit1') switchSlot(0);
-  if (e.code === 'Digit2') switchSlot(1);
-  if (e.code === 'Digit3') switchSlot(2);
-  if (e.code === 'KeyV') { switchSlot(me.weapons.length - 1); drawT = 0.05; mouseL = true; setTimeout(() => { mouseL = false; }, 60); }
-  if (e.code === 'Digit5' || e.code === 'Digit6' || e.code === 'Digit7') useStreak(myStreaks[+e.code.slice(5) - 5]);
-  if (e.code === 'KeyG') throwNade('lethal');
-  if (e.code === 'KeyQ') throwNade('tactical');
-  if (e.code === 'KeyT' || e.code === 'Enter') { e.preventDefault(); openChat(); }
-  if (e.code === 'Space' || e.code === 'ControlLeft') e.preventDefault();
+  if (e.repeat) return;
+  if (is('reload')) startReload();
+  if (is('primary')) switchSlot(0);
+  if (is('secondary')) switchSlot(1);
+  if (is('knife')) switchSlot(2);
+  if (is('melee')) { switchSlot(me.weapons.length - 1); drawT = 0.05; mouseL = true; setTimeout(() => { mouseL = false; }, 60); }
+  for (let i = 0; i < 3; i++) if (is('streak' + (i + 1))) useStreak(myStreaks[i]);
+  if (is('lethal')) throwNade('lethal');
+  if (is('tactical')) throwNade('tactical');
+  if (is('chat') || e.code === 'Enter') { e.preventDefault(); openChat(); }
+  if (is('jump') || is('crouch') || is('crouch2') || e.code === 'Space' || e.code === 'ControlLeft') e.preventDefault();
 });
-document.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Tab') { showBoard = false; $('scoreboard').classList.add('hidden'); } });
+document.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === B('score')) { showBoard = false; $('scoreboard').classList.add('hidden'); } });
+// held-key checks by action
+const K = a => !!keys[B(a)];
 document.addEventListener('mousemove', e => {
   // keep the trigger in sync with the real button state, so a lost mousedown/mouseup
   // (e.g. the window briefly dropping mouse capture) can't stop automatic fire mid-spray
@@ -1077,9 +1157,15 @@ function currentSpread(def) {
   if (me.crouch) s *= 0.75;
   return s;
 }
+const rangeStats = { shots: 0, hits: 0, kills: 0, last: null, dmgLog: [] };
+let lastHitDist = 0;
+const rangeRay = new THREE.Raycaster();
 function fireShot(w, now) {
   const def = w.def;
-  w.ammo--;
+  w.ammo--; w.lastShot = now; w.chg = 0;
+  if (def.recharge && w.ammo < 1) { w.over = true; SFX.click(); }                 // battery flat: overheat until it recovers
+  // akimbo: shots alternate between the two guns
+  const akSide = def.akimbo ? (w.akSide = (w.akSide || 0) ^ 1) : 0;
   w.nextFire = now + 60000 / def.rpm;
   // shot number in the current spray (drives the gun's own recoil pattern); resets after a short pause
   w.sprayN = now - lastShotTime > Math.max(220, 60000 / def.rpm * 1.8) || curW() !== w ? 0 : (w.sprayN || 0) + 1;
@@ -1088,10 +1174,10 @@ function fireShot(w, now) {
   const origin = camera.position.clone();
   const muzzleWorld = origin.clone().addScaledVector(f, 0.7).addScaledVector(r, 0.14 * (1 - adsT)).addScaledVector(u, -0.09);
   const spread = currentSpread(def);
-  if (vm && (def.flame || def.dart || def.laser)) {
+  if (vm && (def.flame || def.dart || def.laser || akSide)) {
     // The gun is drawn with its own camera/FOV, so take the nozzle's on-screen position and put the effect
     // start just in front of the eye along that screen ray (matches what the player sees).
-    const v = new THREE.Vector3(); vm.gun.userData.muzzle.getWorldPosition(v);
+    const v = new THREE.Vector3(); ((akSide && vm.gun2) ? vm.gun2 : vm.gun).userData.muzzle.getWorldPosition(v);
     const ndc = v.project(vmCamera);
     const p = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera).sub(origin).normalize();
     muzzleWorld.copy(origin).addScaledVector(p, 0.75);
@@ -1129,7 +1215,7 @@ function fireShot(w, now) {
         end = hit.point;
         const pid = hit.object.userData.pid;
         if (pid) {
-          const head = hit.object.userData.head;
+          const head = hit.object.userData.head; lastHitDist = hit.distance;
           const h = hitMap.get(pid) || { id: pid, dmg: 0, h: 0 };
           const close = def.dmgClose && hit.distance < def.falloff[0] ? 1 + def.dmgClose : 1;
           h.dmg += def.dmg * close * falloffMult(def, hit.distance) * (head ? def.head : hit.object.userData.limb ? 0.85 : 1); if (head) h.h = 1;
@@ -1138,11 +1224,17 @@ function fireShot(w, now) {
         } else impact(hit.point, hit.face.normal.clone().transformDirection(hit.object.matrixWorld), def.dart ? '#ff9a3a' : undefined);
       } else end = origin.clone().addScaledVector(dir, def.range);
       ends.push(end.toArray().map(n => +n.toFixed(2)));
-      if (def.laser) laserBeam(muzzleWorld, end, def.laser, def.dmg > 80 ? 2 : 1);
+      if (def.arc) { lightning(muzzleWorld, end, def.laser, 1.4, 3); arcSplash(end, def, me.id); }
+      else if (def.laser) laserBeam(muzzleWorld, end, def.laser, def.beam ?? (def.dmg > 80 ? 2 : 1));
       else if (def.dart) tracer(muzzleWorld, end, true);
       else if (!def.suppressed && (p < 3 || Math.random() < 0.4)) tracer(muzzleWorld, end);
     }
-    send({ t: 'fire', w: def.id, e: ends, s: def.suppressed ? 1 : 0, inc: def.incendiary ? 1 : 0, hits: [...hitMap.values()].map(h => ({ id: h.id, dmg: Math.round(h.dmg), h: h.h })) });
+    if (mode === 'range') { // practice stats: last hit, distance, accuracy
+      rangeStats.shots++;
+      const hs = [...hitMap.values()];
+      if (hs.length) { rangeStats.hits++; rangeStats.last = { dmg: Math.round(hs.reduce((a, h) => a + h.dmg, 0)), head: hs.some(h => h.h), dist: lastHitDist, t: now }; rangeStats.dmgLog.push([now, rangeStats.last.dmg]); }
+    }
+    send({ t: 'fire', w: def.id, e: ends, s: def.suppressed ? 1 : 0, inc: def.incendiary ? 1 : 0, ak: def.akimbo ? 1 : undefined, hits: [...hitMap.values()].map(h => ({ id: h.id, dmg: Math.round(h.dmg), h: h.h })) });
   }
   const kick = def.recoil * (1 - adsT * 0.4) * (me.crouch ? 0.8 * (def.crouchRecoil || 1) : 1);
   const [rv, rh] = recoilStep(def, w.sprayN || 0);
@@ -1151,8 +1243,10 @@ function fireShot(w, now) {
   recoilAcc += kick * rv * 0.75;
   vmRoll += (rh >= 0 ? 1 : -1) * Math.min(0.05, kick * 0.9);
   bloom = Math.min(0.06, bloom + def.recoil * 0.25 * (def.bloomMul || 1));
-  kickZ = Math.min(0.12, kickZ + (def.flame ? 0.004 : 0.03 + def.recoil * 0.6));
-  if (vm && !def.flame && !def.dart && !def.laser) { vm.flash.visible = true; vm.flash.material.rotation = Math.random() * 6.28; vm.flashT = 0.05; }
+  if (akSide) kickZ2 = Math.min(0.12, kickZ2 + 0.03 + def.recoil * 0.6);
+  else kickZ = Math.min(0.12, kickZ + (def.flame ? 0.004 : 0.03 + def.recoil * 0.6));
+  const vfl = akSide && vm?.flash2 ? vm.flash2 : vm?.flash;
+  if (vm && !def.flame && !def.dart && !def.laser) { vfl.visible = true; vfl.material.rotation = Math.random() * 6.28; if (akSide) vm.flash2T = 0.05; else vm.flashT = 0.05; }
   if (!def.flame && !def.dart && !def.laser) flashLight(muzzleWorld, '#ffb060', def.projectile ? 80 : def.suppressed ? 6 : 25, 0.06);
   if (def.flame) SFX.flame?.(); else SFX.shot(def.snd, def.suppressed ? 0.45 : 1, 0);
   if (def.bolt || def.pump) { w.actT = def.bolt || Math.min(0.55, 60 / def.rpm * 0.85); w.actTotal = w.actT; setTimeout(() => SFX.click(), 140); }
@@ -1185,6 +1279,16 @@ function updateWeapon(dt, now) {
     if (!want && before >= def.spinup && w.spin < def.spinup) SFX.spin?.(false, 0.7);
     const sp = vm?.gun.userData.parts?.spin; if (sp) sp.rotation.z += dt * 40 * (w.spin / def.spinup);
   }
+  if (def.recharge) { // battery weapons refill on their own a moment after you stop firing (no reloads)
+    if (now - (w.lastShot || 0) > def.rechargeDelay * 1000 && w.ammo < def.mag) w.ammo = Math.min(def.mag, w.ammo + def.recharge * dt * (w.over ? 1.4 : 1));
+    if (w.over && w.ammo >= def.mag * 0.25) w.over = false;
+  }
+  if (def.charge) { // arc cannon: hold the trigger to charge the coil; it fires when full
+    const want = mouseL && me.alive && !matchEnded && drawT <= 0 && w.reloadT <= 0 && w.ammo > 0 && now >= w.nextFire && !throwAnim && !isSprinting();
+    if (want) { if (!w.chg) SFX.charge?.(def.charge); w.chg = (w.chg || 0) + dt; } else w.chg = Math.max(0, (w.chg || 0) - dt * 2);
+    const cm = vm?.gun.userData.chargeMat, k = Math.min(1, (w.chg || 0) / def.charge);
+    if (cm) cm.emissiveIntensity = 2.6 + 7 * k * k + (k > 0 ? Math.random() * 1.5 * k : 0);
+  }
   if (drawT > 0) drawT -= dt;
   if (w.actT > 0) w.actT = Math.max(0, w.actT - dt);
   // shotguns loading shell-by-shell can fire mid-reload
@@ -1214,8 +1318,8 @@ function updateWeapon(dt, now) {
     if (isSprinting()) sprintLock = 0.25;
     else if (drawT <= 0 && w.reloadT <= 0) {
       if (def.melee) { if (now >= w.nextFire) melee(w, now); }
-      else if (w.burstLeft === 0 && now >= w.nextFire && (def.auto || triggerFresh) && (!def.spinup || w.spin >= def.spinup)) {
-        if (w.ammo <= 0) { if (triggerFresh) { SFX.click(); if (w.reserve > 0) startReload(); } }
+      else if (w.burstLeft === 0 && now >= w.nextFire && (def.auto || triggerFresh) && (!def.spinup || w.spin >= def.spinup) && (!def.charge || (w.chg || 0) >= def.charge)) {
+        if (w.ammo < 1 || w.over) { if (triggerFresh) { SFX.click(); if (w.reserve > 0) startReload(); } }
         else if (def.burst) w.burstLeft = def.burst;
         else fireShot(w, now);
       }
@@ -1226,7 +1330,7 @@ function updateWeapon(dt, now) {
   const rec = Math.min(recoilAcc, dt * (recoilAcc * 6 + 0.02));
   if (now - lastShotTime > 90) { me.pitch -= rec; recoilAcc -= rec; }
 }
-const isSprinting = () => keys.ShiftLeft && keys.KeyW && !keys.KeyS && !me.crouch && adsT < 0.3 && me.onGround && sprintLock <= 0;
+const isSprinting = () => K('sprint') && K('fwd') && !K('back') && !me.crouch && adsT < 0.3 && me.onGround && sprintLock <= 0;
 
 // ================================================================ movement (with slide)
 let wasGround = true, fallVel = 0, padFlight = false, stepOff = 0;
@@ -1291,7 +1395,7 @@ function throwNade(which) {
     const { f } = camVectors();
     const o = camera.position.clone().addScaledVector(f, 0.5);
     const knife = kind === 'tknife';
-    const v = knife ? f.clone().multiplyScalar(30) : f.clone().multiplyScalar(15).add(new THREE.Vector3(me.vel[0] * 0.5, 3.2, me.vel[2] * 0.5));
+    const v = knife ? f.clone().multiplyScalar(38) : f.clone().multiplyScalar(15).add(new THREE.Vector3(me.vel[0] * 0.5, 3.2, me.vel[2] * 0.5));
     send({ t: 'nade', k: kind, o: o.toArray().map(n => +n.toFixed(2)), v: v.toArray().map(n => +n.toFixed(2)) });
     SFX.swish(); kickZ += 0.05;
   });
@@ -1306,7 +1410,17 @@ function throwableModel(kind) {
   else if (kind === 'molotov') { add(new THREE.CylinderGeometry(0.03, 0.032, 0.11, 12), mat('#2f6b3a', { transparent: true, opacity: 0.85, roughness: 0.1 })); add(new THREE.CylinderGeometry(0.011, 0.016, 0.05, 10), mat('#2f6b3a', { roughness: 0.1 }), 0, 0.078); add(new THREE.BoxGeometry(0.02, 0.05, 0.02), mat('#f0e2c0', { emissive: new THREE.Color('#ff7a1a'), emissiveIntensity: 0.6 }), 0, 0.12); }
   else if (kind === 'present') { add(new THREE.BoxGeometry(0.07, 0.06, 0.07), mat('#c8102e', { metalness: 0.05 })); add(new THREE.BoxGeometry(0.072, 0.062, 0.014), mat('#f2c14e', { metalness: 0.8 })); add(new THREE.BoxGeometry(0.014, 0.062, 0.072), mat('#f2c14e', { metalness: 0.8 })); for (const k of [-1, 1]) add(new THREE.TorusGeometry(0.012, 0.004, 6, 10), mat('#f2c14e', { metalness: 0.8 }), k * 0.01, 0.04, 0, 0, 0); }
   else if (kind === 'snowball') { add(new THREE.IcosahedronGeometry(0.036, 1), mat('#f4f8fc', { roughness: 0.95, metalness: 0 })); }
-  else if (kind === 'tknife') { add(new THREE.BoxGeometry(0.006, 0.02, 0.13), mat('#c9ced4', { metalness: 1, roughness: 0.2 }), 0, 0, -0.06); add(new THREE.BoxGeometry(0.012, 0.022, 0.06), mat('#1b1d20'), 0, 0, 0.035); }
+  else if (kind === 'tknife') { // balanced throwing knife: double-edged spear-point blade, small guard, cord-wrapped handle, ring pommel
+    const steel = mat('#c9ced4', { metalness: 1, roughness: 0.18 }), dark = mat('#1b1d20'), cord = mat('#3a3f2a', { roughness: 0.9, metalness: 0 });
+    const blade = new THREE.Shape(); blade.moveTo(0, -0.012); blade.lineTo(0.1, -0.009); blade.lineTo(0.135, 0); blade.lineTo(0.1, 0.009); blade.lineTo(0, 0.012); blade.closePath();
+    const bg = new THREE.ExtrudeGeometry(blade, { depth: 0.003, bevelEnabled: true, bevelThickness: 0.0012, bevelSize: 0.0012, bevelSegments: 1 }); bg.translate(0, 0, -0.0015); bg.rotateY(Math.PI / 2);
+    const bm = new THREE.Mesh(bg, steel); bm.position.set(0, 0, -0.01); g.add(bm);
+    add(new THREE.BoxGeometry(0.0045, 0.003, 0.1), mat('#7d838b', { metalness: 1, roughness: 0.3 }), 0, 0, -0.06);   // fuller
+    add(new THREE.BoxGeometry(0.012, 0.034, 0.008), dark, 0, 0, -0.006);                                          // guard
+    add(new THREE.BoxGeometry(0.011, 0.02, 0.07), cord, 0, 0, 0.032);                                              // handle
+    for (let i = 0; i < 5; i++) add(new THREE.BoxGeometry(0.0125, 0.0215, 0.003), dark, 0, 0, 0.004 + i * 0.014);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.0025, 6, 14), steel); ring.position.set(0, 0, 0.074); ring.rotation.y = Math.PI / 2; g.add(ring);
+  }
   else { const col = kind === 'smoke' ? '#7b8188' : kind === 'flash' ? '#2b2f35' : '#2d4f86'; add(new THREE.CylinderGeometry(0.028, 0.028, 0.1, 14), mat(col)); add(new THREE.CylinderGeometry(0.029, 0.029, 0.014, 14), mat(kind === 'flash' ? '#d8d23a' : '#e6e6e6'), 0, 0.02); add(new THREE.CylinderGeometry(0.012, 0.014, 0.02, 10), mat('#8a8f96', { metalness: 0.8 }), 0, 0.06); }
   return g;
 }
@@ -1318,6 +1432,7 @@ function startThrowAnim(kind, release) {
   const glove = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.07, 0.09), new THREE.MeshStandardMaterial({ color: '#2a2c2f', roughness: 0.8 }));
   glove.position.set(0, 0.0, -0.03);
   const nade = throwableModel(kind); nade.position.set(0, 0.045, -0.06);
+  if (kind === 'tknife') { nade.position.set(0.0, 0.03, -0.03); nade.rotation.set(-0.2, 0, Math.PI / 2); }   // flat of the blade toward you   // pinched by the handle, blade forward
   g.add(sleeve, glove, nade); g.scale.setScalar(0.8); vmScene.add(g);
   throwAnim = { t: 0, g, nade, release, released: false, kind };
   if (kind !== 'tknife') setTimeout(() => SFX.reloadSfx?.('pin'), 120);
@@ -1325,6 +1440,16 @@ function startThrowAnim(kind, release) {
 function updateThrowAnim(dt) {
   const a = throwAnim; if (!a) return 0;
   a.t += dt;
+  if (a.kind === 'tknife') { // quick overhand flick: raise beside the head, cock the wrist back, snap forward
+    const T = 0.46, p = a.t / T;
+    if (!a.released && a.t >= 0.27) { a.released = true; a.nade.visible = false; a.release(); }
+    const up = ease(seg(p, 0, 0.35)), cock = ease(seg(p, 0.2, 0.5)), snap = ease(seg(p, 0.5, 0.66)), away = ease(seg(p, 0.74, 1));
+    a.g.position.set(0.2 - 0.05 * snap, -0.4 + 0.36 * up - 0.06 * snap - 0.4 * away, -0.4 + 0.1 * cock - 0.32 * snap);
+    a.g.rotation.set(-0.2 + 1.1 * cock - 1.9 * snap, 0.18 - 0.15 * snap, -0.25 + 0.15 * cock);
+    a.nade.rotation.x = -0.2 + 0.7 * cock - 0.9 * snap; a.nade.rotation.z = Math.PI / 2;
+    if (p >= 1) { vmScene.remove(a.g); disposeObject(a.g); throwAnim = null; drawT = 0.22; return 0; }
+    return Math.sin(Math.PI * Math.min(1, p * 1.3)) * 0.8;
+  }
   const p = a.t / THROW_TIME;
   if (!a.released && a.t >= THROW_RELEASE) { a.released = true; a.nade.visible = false; a.release(); }
   // arm path: raise into view (0-0.3), pull back over the shoulder (0.3-0.55), whip forward (0.55-0.75), drop away
@@ -1339,12 +1464,12 @@ function updateMovement(dt) {
   const w = curW();
   const near = nearBoxes(me.pos[0], me.pos[2]);
   if (mantle) { updateMantle(dt); return; }
-  const spaceEdge = keys.Space && !spaceWas; spaceWas = !!keys.Space;
-  if (keys.KeyW && (spaceEdge || (keys.Space && !me.onGround && me.vel[1] < 2))) { const m = probeMantle(near); if (m) { startMantle(m); return; } }
-  if ((probeT -= dt) <= 0) { probeT = 0.15; $('vaulthint').classList.toggle('hidden', !(keys.KeyW && probeMantle(near))); }
-  const wantCrouch = !!(keys.KeyC || keys.ControlLeft);
+  const spaceEdge = K('jump') && !spaceWas; spaceWas = K('jump');
+  if (K('fwd') && (spaceEdge || (K('jump') && !me.onGround && me.vel[1] < 2))) { const m = probeMantle(near); if (m) { startMantle(m); return; } }
+  if ((probeT -= dt) <= 0) { probeT = 0.15; const vh = $('vaulthint'); vh.textContent = keyLabel(B('jump')).toUpperCase() + ' — CLIMB'; vh.classList.toggle('hidden', !(K('fwd') && probeMantle(near))); }
+  const wantCrouch = K('crouch') || K('crouch2');
   const hsNow = Math.hypot(me.vel[0], me.vel[2]);
-  if (wantCrouch && !slide.wasCrouchKey && slide.t <= 0 && slide.cd <= 0 && me.onGround && keys.ShiftLeft && hsNow > 6) {
+  if (wantCrouch && !slide.wasCrouchKey && slide.t <= 0 && slide.cd <= 0 && me.onGround && K('sprint') && hsNow > 6) {
     slide.t = SLIDE_TIME; slide.cd = 0.5;
     slide.dir = [me.vel[0] / hsNow, me.vel[2] / hsNow];
     SFX.slide();
@@ -1355,7 +1480,7 @@ function updateMovement(dt) {
   else if (me.crouch && canStand(me, near)) me.crouch = false;
   me.height = me.crouch ? PLAYER.crouchHeight : PLAYER.height;
 
-  const fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), str = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const fwd = (K('fwd') ? 1 : 0) - (K('back') ? 1 : 0), str = (K('right') ? 1 : 0) - (K('left') ? 1 : 0);
   const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
   let wx = -sy * fwd + cy * str, wz = -cy * fwd - sy * str;
   const wl = Math.hypot(wx, wz); if (wl > 0) { wx /= wl; wz /= wl; }
@@ -1376,7 +1501,7 @@ function updateMovement(dt) {
       const l = Math.hypot(slide.dir[0], slide.dir[1]) || 1; slide.dir[0] /= l; slide.dir[1] /= l;
     }
     me.vel[0] = slide.dir[0] * sp; me.vel[2] = slide.dir[1] * sp;
-    if (keys.Space && me.onGround) { slide.t = 0; me.vel[1] = PLAYER.jump; me.onGround = false; }
+    if (K('jump') && me.onGround) { slide.t = 0; me.vel[1] = PLAYER.jump; me.onGround = false; }
     if (me.blocked) slide.t = 0;
     if (Math.random() < 0.6) particle(new THREE.Vector3(me.pos[0], me.pos[1] + 0.05, me.pos[2]), new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2), snowyGround() ? '#ffffff' : '#9a9080', 0.04, 0.4, 4);
   } else {
@@ -1516,7 +1641,7 @@ function updateCamera(dt, now) {
   }
   if (shake > 0) { camera.rotation.x += (Math.random() - 0.5) * shake * 0.1; camera.rotation.y += (Math.random() - 0.5) * shake * 0.1; shake = Math.max(0, shake - dt * 1.5); }
   sky.position.copy(camera.position);
-  const wantAds = mouseR && me.alive && def && !def.melee && w.reloadT <= 0 && drawT <= 0.1 && !(def.bolt && def.scope && w.actT > 0.08);
+  const wantAds = mouseR && me.alive && def && !def.melee && !def.akimbo && w.reloadT <= 0 && drawT <= 0.1 && !(def.bolt && def.scope && w.actT > 0.08);
   adsT = clamp(adsT + (wantAds ? dt : -dt) / (def?.ads || 0.17), 0, 1);
   const zoom = (def ? lerp(1, def.zoom, adsT) : 1) * (mouseM && me.alive ? 1.2 : 1);
   const targetFov = (inGame ? cfg.fov / zoom + (isSprinting() ? 6 : 0) + slide.roll * 10 : 60);
@@ -1526,12 +1651,13 @@ function updateCamera(dt, now) {
   if (!vm || !def) return;
   vmHolder.visible = inGame && me.alive && !scoped;
   const g = vm.gun, sightY = g.userData.sightY;
-  const hip = def.model === 'rocket' ? [0.24, -0.16, -0.32] : def.melee ? [0.22, -0.2, -0.32] : [0.2, -0.2, -0.42];
+  const hip = def.model === 'rocket' ? [0.24, -0.16, -0.32] : def.melee ? [0.22, -0.2, -0.32] : def.akimbo ? [0.16, -0.17, -0.4] : [0.2, -0.2, -0.42];
   const ads = def.model === 'rocket' ? [0.085, -0.12, -0.3] : [0, -sightY, g.userData.adsZ ?? -0.3];
   const hs = Math.hypot(me.vel[0], me.vel[2]);
   const bobAmt = me.onGround ? Math.min(1, hs / 6) * (1 - adsT * 0.85) * (slide.t > 0 ? 0.2 : 1) : 0;
   const bx = Math.sin(bobPhase) * 0.012 * bobAmt, by = -Math.abs(Math.cos(bobPhase)) * 0.012 * bobAmt;
   kickZ = Math.max(0, kickZ - dt * 0.6); kickZ *= Math.pow(0.0001, dt); vmRoll *= Math.pow(0.0005, dt);
+  kickZ2 = Math.max(0, kickZ2 - dt * 0.6); kickZ2 *= Math.pow(0.0001, dt);
   swayX *= Math.pow(0.002, dt); swayY *= Math.pow(0.002, dt);
   g.userData.sprintK = lerp(g.userData.sprintK || 0, isSprinting() ? 1 : 0, Math.min(1, dt * 10));
   const sk = g.userData.sprintK, draw = Math.max(0, drawT) / 0.35;
@@ -1548,6 +1674,11 @@ function updateCamera(dt, now) {
     g.position.x -= k * 0.18; g.position.z -= k * 0.15; g.rotation.y += k * 1.2; g.rotation.z -= k * 0.6;
   }
   if (vm.flashT > 0) { vm.flashT -= dt; if (vm.flashT <= 0) vm.flash.visible = false; }
+  if (vm.gun2) { // left-hand gun mirrors the right one, with its own recoil kick
+    const g2 = vm.gun2; g2.position.copy(g.position); g2.rotation.copy(g.rotation);
+    g2.position.z += kickZ2 - kickZ; g2.rotation.x += (kickZ2 - kickZ) * 0.8; g2.rotation.z = -g.rotation.z * 0.3;
+    if (vm.flash2T > 0) { vm.flash2T -= dt; if (vm.flash2T <= 0) vm.flash2.visible = false; }
+  }
   if (g.userData.skin.userData.pulse) g.userData.skin.emissiveIntensity = 1.2 + Math.sin(now * 0.004) * 0.6;
 }
 
@@ -1728,6 +1859,7 @@ function handle(m) {
     case 'pong': { const rtt = performance.now() - m.c; perfStats.ping = perfStats.ping ? perfStats.ping * 0.7 + rtt * 0.3 : rtt; break; }
     case 'room': {
       const wasNull = !room;
+      if (m.room?.custom) registerCustomMap(m.room.custom);                      // a map made in the Map Builder
       room = m.room;
       if (!inGame && room.state === 'lobby' && (wasNull || !['scr-lobby', 'pnl-loadout', 'pnl-skins', 'pnl-settings'].includes(currentScreen))) { closeCreate(); go('scr-lobby'); }
       renderLobby();
@@ -1903,14 +2035,27 @@ function handle(m) {
       }
       for (const [id, rk] of fx.rockets) if (!seen.has(id)) { scene.remove(rk); disposeObject(rk); fx.rockets.delete(id); }
       const seenN = new Set();
-      for (const [id, x, y, z, ki] of m.g || []) {
+      for (const [id, x, y, z, ki, stuck] of m.g || []) {
         seenN.add(id);
         let gm = fx.nades.get(id);
         if (!gm) { gm = makeNadeMesh(THROWABLE_KINDS[ki] || 'frag'); scene.add(gm); fx.nades.set(id, gm); }
         const prev = gm.position.clone();
         gm.position.set(x, y, z);
-        if (gm.userData.kind === 'tknife') { const d = gm.position.clone().sub(prev); if (d.lengthSq() > 1e-4) gm.lookAt(gm.position.clone().add(d)); gm.rotateX(performance.now() * 0.03); }
-        else gm.rotation.x += 0.5;
+        if (gm.userData.kind === 'tknife') {
+          const d = gm.position.clone().sub(prev);
+          if (stuck) { // stuck in a wall or lying where it dropped: point along the throw, with a soft glint so it can be found
+            if (!gm.userData.stuck) {
+              gm.userData.stuck = true;
+              const dir = gm.userData.dir || new THREE.Vector3(0, -0.3, 1);
+              if (stuck === 2) { gm.rotation.set(0, Math.random() * 6.28, 0); gm.rotateX(Math.PI / 2 - 0.1); } // dropped on the floor
+              else gm.lookAt(gm.position.clone().add(dir));
+              const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: '#fff3c4', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }));
+              glint.scale.setScalar(0.3); gm.add(glint); gm.userData.glint = glint;
+            }
+            if (gm.userData.glint) gm.userData.glint.material.opacity = 0.35 + 0.3 * Math.sin(performance.now() * 0.006);
+          } else if (d.lengthSq() > 1e-4) { gm.userData.dir = d.clone().normalize(); gm.lookAt(gm.position.clone().add(d)); gm.rotateX(performance.now() * 0.03); }
+        }
+        else if (gm.userData.kind !== 'tknife') gm.rotation.x += 0.5;
         if (gm.userData.kind === 'smoke' && Math.random() < 0.5) spriteFx(gm.position.clone(), TEX.smoke, 0.3, 3, 0.8, 0.5, new THREE.Vector3(0, 0.8, 0));
       }
       syncSmokes(m.sm); syncFires(m.fz);
@@ -1948,7 +2093,7 @@ function handle(m) {
     case 'fx': {
       if (!inGame || m.id === me.id) break;
       const r = remotes.get(m.id); if (!r) break;
-      setRemoteGun(r, m.w);
+      setRemoteGun(r, m.w, !!m.ak);
       r.lastFired = now;
       const def = WEAPONS[m.w];
       const mz = new THREE.Vector3();
@@ -1964,7 +2109,8 @@ function handle(m) {
       if (!def?.dart && !def?.laser) { r.flash.visible = true; r.flash.material.rotation = Math.random() * 6.28; r.flashT = 0.05; flashLight(mz, '#ffb060', quiet ? 5 : 20, 0.06); }
       for (const e of m.e || []) {
         const end = new THREE.Vector3(...e);
-        if (def?.laser) laserBeam(mz, end, def.laser, def.dmg > 80 ? 2 : 1); else if (def?.dart) tracer(mz, end, true); else if (!quiet) tracer(mz, end);
+        if (def?.arc) { lightning(mz, end, def.laser, 1.4, 3); arcSplash(end, def, m.id); }
+        else if (def?.laser) laserBeam(mz, end, def.laser, def.beam ?? (def.dmg > 80 ? 2 : 1)); else if (def?.dart) tracer(mz, end, true); else if (!quiet) tracer(mz, end);
         if (end.distanceTo(camera.position) > 1.5) for (let i = 0; i < 2; i++) particle(end, new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3), def?.dart ? '#ff9a3a' : '#ffcf6a', 0.025, 0.25);
       }
       if (def) { const [vol, pan, d] = spatial(mz); SFX.shot(def.snd, vol * (quiet ? 0.4 : 1), pan, d > 45); }
@@ -1982,12 +2128,29 @@ function handle(m) {
       break;
     }
     case 'stun': {
+      if (inGame) { const sp = new THREE.Vector3(...m.p); flashLight(sp, cfg.safeFlash ? '#6f8fb8' : '#cfe6ff', cfg.safeFlash ? 30 : 140, 0.18, 14); spriteFx(sp, TEX.glow, 1.2, 6, 0.3, cfg.safeFlash ? 0.4 : 1, null, true); }
       if (!inGame || !me.alive) break;
       const p = new THREE.Vector3(...m.p), eye = camera.position, d = p.distanceTo(eye);
-      if (d > 10) break;
+      if (d > 14) break;
       const dir = p.clone().sub(eye).normalize();
       if (raycastBoxes(eye.toArray(), dir.toArray(), d - 0.2, world.map.query(Math.min(eye.x, p.x), Math.min(eye.z, p.z), Math.max(eye.x, p.x), Math.max(eye.z, p.z)))) break;
-      stunUntil = performance.now() + 4000 * (hasPerk('tacmask') ? 0.3 : 1); shake = Math.max(shake, 0.4);
+      const k = clamp(1.15 - d / 14, 0.3, 1) * (hasPerk('tacmask') ? 0.3 : 1), tnow = performance.now();
+      stunUntil = Math.max(stunUntil, tnow + 5000 * k);
+      if (tnow > flashUntil) flashPower = 0;
+      flashPower = Math.max(flashPower, 0.85 * k); flashUntil = Math.max(flashUntil, tnow + 2600 * k);
+      SFX.flashbang?.(); SFX.deafen?.(4.5 * k, Math.min(1, k + 0.2));
+      if (!cfg.safeFlash) shake = Math.max(shake, 0.6 * k);
+      break;
+    }
+    case 'zapped': { // hit by an arc cannon's lightning: a jolt
+      if (!inGame || !me.alive) break;
+      stunUntil = Math.max(stunUntil, performance.now() + 1100);
+      if (!cfg.safeFlash) shake = Math.max(shake, 0.35);
+      break;
+    }
+    case 'knife': { // picked my throwing knife back up
+      nadesLeft = Math.min(hasPerk('bandolier') ? 3 : 2, nadesLeft + 1);
+      SFX.uiBlip(); xpPopup('KNIFE RECOVERED', 0);
       break;
     }
     case 'confetti': if (inGame) { confettiBurst(scene, m.p); SFX.jingle(0.35); } break;
@@ -2058,6 +2221,7 @@ function onKill(m) {
   if (m.k === me.id && m.v !== me.id) {
     hitmarker('kill'); SFX.killConfirm();
     me.streak = m.st; renderStreakHud();
+    if (mode === 'range') { rangeStats.kills++; subAnnounce(`${m.h ? 'HEADSHOT — ' : ''}TARGET DOWN`); return; }
     if (hasPerk('scavenger')) {
       for (const w of me.weapons) if (!w.def.melee && w.reserve < 999) w.reserve = Math.min(w.def.reserve * 2, w.reserve + w.def.mag);
       nadesLeft = Math.min(2, nadesLeft + 1);
@@ -2248,7 +2412,21 @@ function updateProfileUI() {
   const nearest = PR.profile.challenges.reduce((a, c) => (c.progress / c.goal > a.progress / a.goal ? c : a), PR.profile.challenges[0]);
   if (nearest) $('chHint').textContent = `${PR.challengeText(nearest)} (${Math.min(nearest.progress, nearest.goal)}/${nearest.goal})`;
 }
+function renderRangeHud(now) {
+  const el = $('rangehud'); if (!el || !me.alive) return;
+  rangeRay.set(camera.position, camVectors().f); rangeRay.far = 300;
+  const aim = rangeRay.intersectObjects(hitTargets(), false)[0];
+  const L = rangeStats.last, acc = rangeStats.shots ? Math.round(100 * rangeStats.hits / rangeStats.shots) : 0;
+  rangeStats.dmgLog = rangeStats.dmgLog.filter(([t]) => now - t < 3000);
+  const dps = Math.round(rangeStats.dmgLog.reduce((a, [, d]) => a + d, 0) / 3);
+  el.innerHTML = `<b>SHOOTING RANGE</b><span>Aim distance <i>${aim ? aim.distance.toFixed(1) + ' m' : '—'}</i></span>`
+    + `<span>Last hit <i>${L ? `${L.dmg} dmg · ${L.dist.toFixed(1)} m${L.head ? ' · HEAD' : ''}` : '—'}</i></span>`
+    + `<span>Accuracy <i>${rangeStats.hits}/${rangeStats.shots} (${acc}%)</i></span><span>Damage / sec <i>${dps}</i></span><span>Targets down <i>${rangeStats.kills}</i></span>`
+    + `<small>Esc → LOADOUT to swap guns or attachments: they change as soon as you resume. Endless ammo, no XP.</small>`;
+}
 function setupModeHud() {
+  $('rangehud').classList.toggle('hidden', mode !== 'range');
+  if (mode === 'range') Object.assign(rangeStats, { shots: 0, hits: 0, kills: 0, last: null, dmgLog: [] });
   $('zonebar').classList.toggle('hidden', mode !== 'hardpoint');
   $('ggbar').classList.toggle('hidden', mode !== 'gungame');
   if (mode === 'gungame') $('ggbar').innerHTML = GUNGAME_LADDER.map(() => '<i></i>').join('');
@@ -2276,12 +2454,13 @@ function updateHud(now) {
   $('lowhp').classList.toggle('pulse', me.alive && hp < 30);
   if (w) {
     $('wname').textContent = w.def.name.toUpperCase();
-    $('mag').textContent = w.def.melee ? '∞' : w.ammo;
-    $('mag').classList.toggle('low', !w.def.melee && w.ammo <= Math.ceil(w.def.mag * 0.25));
-    $('reserve').textContent = w.def.melee ? '' : '/ ' + w.reserve;
+    $('mag').textContent = w.def.melee ? '∞' : w.over ? 'HOT' : Math.floor(w.ammo);
+    $('mag').classList.toggle('low', !w.def.melee && (w.over || w.ammo <= Math.ceil(w.def.mag * 0.25)));
+    $('reserve').textContent = w.def.melee ? '' : w.def.recharge ? '⚡ ' + Math.round(100 * w.ammo / w.def.mag) + '%' : '/ ' + w.reserve;
     $('slots').innerHTML = me.weapons.map((x, i) => `<span class="${i === me.slot ? 'on' : ''}">${i + 1} ${x.def.type}</span>`).join('');
   }
-  $('timer').textContent = `${Math.floor(timeLeft / 60)}:${String(Math.floor(timeLeft % 60)).padStart(2, '0')}`;
+  $('timer').textContent = mode === 'range' ? 'PRACTICE' : `${Math.floor(timeLeft / 60)}:${String(Math.floor(timeLeft % 60)).padStart(2, '0')}`;
+  if (mode === 'range') renderRangeHud(now);
   const L1 = $('lead'), L2 = $('lead2');
   if (teamsMode()) {
     const mt = Math.max(0, myTeam), ot = 1 - mt;
@@ -2309,7 +2488,7 @@ function updateHud(now) {
     $('ggbar').querySelectorAll('i').forEach((el, i) => { el.className = i < lvl ? 'done' : i === lvl ? 'cur' : ''; });
   }
   const pips = n => '●'.repeat(Math.max(0, n)) + '○'.repeat(Math.max(0, 2 - n));
-  $('nades').innerHTML = `G — ${esc(WEAPONS[cfg.lethal].name.toUpperCase())} <b>${pips(nadesLeft)}</b> &nbsp; Q — ${esc(WEAPONS[cfg.tactical].name.toUpperCase())} <b>${pips(tacsLeft)}</b>`;
+  $('nades').innerHTML = `${esc(keyLabel(B('lethal')))} — ${esc(WEAPONS[cfg.lethal].name.toUpperCase())} <b>${pips(nadesLeft)}</b> &nbsp; ${esc(keyLabel(B('tactical')))} — ${esc(WEAPONS[cfg.tactical].name.toUpperCase())} <b>${pips(tacsLeft)}</b>`;
   $('uavtag').classList.toggle('hidden', now > uavUntil);
   $('powerups').innerHTML = (isZombie() ? '<div class="zmb">☣ INFECTED — KNIFE THEM</div>' : '') +
     (now < ddUntil ? `<div class="dd">✦ DOUBLE DAMAGE ${Math.ceil((ddUntil - now) / 1000)}s</div>` : '') +
@@ -2394,6 +2573,7 @@ function updatePerf(now, frameMs) {
 }
 function frame(now) {
   requestAnimationFrame(frame);
+  if (builder?.isOpen()) { lastFrame = now; return; }
   updatePerf(now, now - lastFrame);
   const dt = Math.min(0.05, (now - lastFrame) / 1000);
   lastFrame = now;
@@ -2525,7 +2705,7 @@ function renderLobbyList() {
   const el = $('lobbyList');
   if (!lobbies.length) { el.innerHTML = `<div class="empty"><b>NO LOBBIES YET</b>Create one and invite your friend.</div>`; return; }
   el.innerHTML = lobbies.map(l => {
-    const mapName = l.map === 'random' ? 'Random' : MAPS[l.map]?.name || l.map;
+    const mapName = l.map === 'random' ? 'Random' : MAPS[l.map]?.name || l.mapName || l.map;
     const full = l.players >= l.max;
     return `<div class="lobby-row"><div class="lname"><b>${esc(l.name)}<span class="mode-pill">${MODES[l.mode]?.name.toUpperCase() || ''}</span></b><small>Host: ${devHTML(l.host, l.hdev)} · ${l.bots} bots${l.remote ? " · friend's game" : ''}</small></div>
       <div class="lmap"><img src="${mapThumb(l.map)}" alt=""><span>${esc(mapName)}</span></div>
@@ -2551,7 +2731,7 @@ const LABELS = { bots: 'BOTS', difficulty: 'BOT DIFFICULTY', scoreLimit: 'KILLS 
 function settingsForm(el, s, editable, onChange, showMaps = true) {
   const chipRow = k => `<div><label>${LABELS[k]}</label><div class="chips">${CHOICES[k].map(v => `<button data-k="${k}" data-v="${v}" class="${s[k] == v ? 'on' : ''}" ${editable ? '' : 'disabled'}>${typeof v === 'string' ? v[0].toUpperCase() + v.slice(1) : v}</button>`).join('')}</div></div>`;
   el.innerHTML = `<label>GAME MODE</label><div class="modegrid">${MODE_ORDER.map(id => `<button class="modecard ${s.mode === id ? 'on' : ''}" data-k="mode" data-v="${id}" ${editable ? '' : 'disabled'}><b>${MODES[id].name.toUpperCase()}</b><small>${MODES[id].desc}</small></button>`).join('')}</div>` +
-    (showMaps ? `<label>MAP</label><div class="mapgrid">${['random', ...MAP_ORDER].map(id => `<button class="mapcard ${s.map === id ? 'on' : ''}" data-k="map" data-v="${id}" ${editable ? '' : 'disabled'}><img src="${mapThumb(id)}" alt=""><span>${id === 'random' ? 'Random' : MAPS[id].name}</span></button>`).join('')}</div>` : '') +
+    (showMaps ? `<label>MAP</label><div class="mapgrid">${[...(MAPS[s.map]?.special ? [s.map] : []), 'random', ...MAP_ORDER].map(id => `<button class="mapcard ${s.map === id ? 'on' : ''}" data-k="map" data-v="${id}" ${editable ? '' : 'disabled'}><img src="${mapThumb(id)}" alt=""><span>${id === 'random' ? 'Random' : MAPS[id].name}</span></button>`).join('')}</div>` : '') +
     `<div class="formgrid">${['bots', 'difficulty', 'scoreLimit', 'timeLimit', 'maxPlayers'].map(chipRow).join('')}</div>`;
   el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
     if (!editable) return;
@@ -2611,7 +2791,32 @@ $('codePill').addEventListener('click', () => { try { navigator.clipboard.writeT
 $('lobbyChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) send({ t: 'chat', m: v }); e.target.value = ''; } });
 
 // ---------- pause
-$('btnResume').addEventListener('click', () => { SFX.initAudio(cfg.vol); lockPointer(); });
+// ---------- shooting range + map builder (home menu)
+$('btnRange').addEventListener('click', () => {
+  SFX.initAudio(cfg.vol); SFX.uiBlip();
+  if (!ws || ws.readyState !== 1) { toast('Still connecting to the game server…'); return; }
+  send({ t: 'create', name: `${cfg.name}'s range`, settings: { ...createSettings, mode: 'range', map: 'range', bots: 0 }, private: true, range: true });
+  toast('Opening the shooting range…');
+});
+let builder = null;
+$('btnBuilder').addEventListener('click', () => {
+  SFX.initAudio(cfg.vol); SFX.uiBlip();
+  builder ||= createBuilder({
+    store: PR.store, toast, blip: () => SFX.uiBlip(), playerName: () => cfg.name,
+    onExit: () => {},
+    onPlay: (d, pub) => {
+      if (!ws || ws.readyState !== 1) { toast('Still connecting to the game server…'); return; }
+      builder.exit();
+      send({ t: 'create', name: d.name, settings: { ...createSettings, map: 'random' }, private: !pub, custom: d });
+      toast(`Hosting a lobby on "${d.name}". Friends can join with the lobby code.`);
+    },
+  });
+  builder.show();
+});
+$('btnResume').addEventListener('click', () => {
+  SFX.initAudio(cfg.vol); lockPointer();
+  if (inGame && mode === 'range' && me.alive) { me.weapons = makeWeapons(); me.slot = Math.min(me.slot, me.weapons.length - 1); equipViewmodel(); sendLoadout(); nadesLeft = hasPerk('bandolier') ? 3 : 2; tacsLeft = 2; }
+});
 $('btnQuit').addEventListener('click', () => send({ t: 'leave' }));
 // End the match and close the pause menu (re-grabbing the mouse right after Esc is refused by the browser, which
 // used to leave the pause menu covering the end screen)
@@ -2993,6 +3198,28 @@ bindRange('sens', 'sens', v => v.toFixed(2));
 bindRange('fov', 'fov', v => v + '°');
 bindRange('vol', 'vol', v => Math.round(v * 100) + '%', () => { SFX.setVolume(cfg.vol); Announcer.setVolume(Math.min(1, cfg.vol * 1.4)); });
 $('invert').checked = cfg.invert;
+// Controls: click an action, then press the key you want for it (Esc cancels). A key already used elsewhere swaps over.
+let bindWait = null;
+function renderBinds() {
+  const kl = a => esc(keyLabel(B(a)));
+  const ch = document.querySelector('.controls-hint');
+  if (ch) ch.innerHTML = `${kl('fwd')}${kl('left')}${kl('back')}${kl('right')} move · ${kl('sprint')} sprint · <b>${kl('sprint')} + ${kl('crouch2')} slide</b> · ${kl('jump')} jump / <b>climb &amp; vault windows</b> · <b>${kl('lethal')} grenade</b> · ${kl('reload')} reload · Right-click aim · Middle-click zoom · ${kl('chat')} chat · ${kl('score')} scores`;
+  $('binds').innerHTML = Object.keys(BIND_DEFAULTS).map(a => `<div class="bindrow"><span>${esc(BIND_NAMES[a])}</span><button data-bind="${a}" class="${bindWait === a ? 'wait' : ''}">${bindWait === a ? 'Press a key…' : esc(keyLabel(B(a)))}</button></div>`).join('');
+  $('binds').querySelectorAll('button').forEach(b => b.onclick = () => { bindWait = bindWait === b.dataset.bind ? null : b.dataset.bind; renderBinds(); });
+}
+document.addEventListener('keydown', e => {
+  if (!bindWait) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.code !== 'Escape') {
+    const clash = Object.keys(BIND_DEFAULTS).find(a => a !== bindWait && B(a) === e.code);
+    if (clash) cfg.binds[clash] = B(bindWait);                       // swap so no two actions share a key
+    cfg.binds[bindWait] = e.code; saveCfg();
+    if (clash) toast(`${BIND_NAMES[clash]} moved to ${keyLabel(cfg.binds[clash])}`);
+  }
+  bindWait = null; renderBinds();
+}, true);
+$('bindsReset').addEventListener('click', () => { cfg.binds = { ...BIND_DEFAULTS }; bindWait = null; saveCfg(); renderBinds(); toast('Controls reset to the defaults'); });
+renderBinds();
 $('invert').addEventListener('change', () => { cfg.invert = $('invert').checked; saveCfg(); });
 $('shutup').checked = !cfg.announcer;
 $('shutup').addEventListener('change', () => {
@@ -3016,6 +3243,8 @@ document.querySelectorAll('#gstyle button').forEach(b => b.addEventListener('cli
 }));
 updateStyleChips();
 if (cfg.gore === undefined) cfg.gore = false;
+$('safeFlashOn').checked = !!cfg.safeFlash;
+$('safeFlashOn').addEventListener('change', () => { cfg.safeFlash = $('safeFlashOn').checked; saveCfg(); });
 $('goreOn').checked = !!cfg.gore;
 $('goreOn').addEventListener('change', () => { cfg.gore = $('goreOn').checked; saveCfg(); });
 $('snowOn').checked = cfg.snow !== false; $('snowGroundOn').checked = cfg.snowGround !== false; $('santaOn').checked = cfg.santa !== false;
@@ -3152,7 +3381,8 @@ function renderGunSheet(ids, cols = 5, attFor = () => ({}), W = 300, H = 150) {
   r.dispose();
   return out.toDataURL('image/png');
 }
-window.__strike = { handle, renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT, getPost: () => post };
+window.__strike = { handle, renderGunSheet, fx, renderer, loadMap, me, remotes, camera, keys, slide, vmHolder, go, send, getRoom: () => room, getTeamScore: () => teamScore, tagCount: () => fx.tags.size, fire: () => fireShot(curW(), performance.now()), setAds: v => { mouseR = v; }, setLocked: v => { locked = v; }, getAds: () => adsT, getPost: () => post,
+  curW, switchSlot, throwNade, cfg, PR, getMode: () => mode, setMouseL: v => { mouseL = v; if (!v) triggerFresh = true; }, equip: () => { me.weapons = makeWeapons(); me.slot = 0; equipViewmodel(); }, rangeStats, getNades: () => nadesLeft };
 if (!PR.isUnlocked(cfg.primary)) cfg.primary = 'falcon';
 if (!PR.isUnlocked(cfg.secondary)) cfg.secondary = 'viper';
 if (!PR.isUnlocked(cfg.lethal)) cfg.lethal = 'frag';

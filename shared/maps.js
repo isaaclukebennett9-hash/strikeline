@@ -168,6 +168,72 @@ function militaryBase() {
 }
 
 
+// ================================================================ shooting range (practice: no XP, endless ammo)
+// Covered firing line at the south end, seven lanes running north with dummies at 10/25/50/75/100 m and two moving
+// targets, a close-quarters house on the west side and an explosives pit on the east. ctx.spawns pins everyone to
+// the firing line; ctx.dummies are where the server stands its target dummies.
+function shootingRange() {
+  const c = newCtx(), FL = 44;                                   // firing line z
+  c.dummies = []; c.spawns = []; c.noPickups = true;
+  const lanes = [-24, -16, -8, 0, 8, 16, 24];
+  // firing point: concrete pad, roof on steel posts, booths with benches and dividers, back wall
+  push(c.deco, R(-31, 0, FL - 2, 31, 0.06, 58, 'concrete'));
+  push(c.boxes, R(-31, 3.7, FL - 1, 31, 4.0, 58, 'metal_roof'));
+  push(c.deco, R(-31.1, 3.62, FL - 1.1, 31.1, 3.72, 58.1, 'metal_dark'));
+  for (let x = -30; x <= 30; x += 10) for (const z of [FL - 0.6, 57.6]) push(c.boxes, B(x, z, 0.3, 0.3, 3.7, 'metal_dark'));
+  push(c.boxes, R(-31, 0, 58, 31, 3.7, 58.5, 'concrete_panel'));
+  for (const x of lanes) {
+    push(c.boxes, B(x, FL + 0.6, 3.2, 0.9, 0.95, 'wood'));                 // shooting bench
+    push(c.deco, B(x, FL + 0.6, 3.3, 1.0, 0.06, 'metal_dark', 0.95));
+    push(c.deco, B(x - 1.1, FL + 0.55, 0.5, 0.35, 0.18, 'crate', 1.01));     // ammo box on the bench
+    push(c.deco, B(x + 1.2, FL + 0.6, 0.25, 0.25, 0.4, 'metal', 1.01));      // spotting scope
+    c.spawns.push([x, 0, FL + 4.5], [x, 0, FL + 8.5]);
+  }
+  for (let i = 0; i <= lanes.length; i++) {                                  // booth dividers
+    const x = -28 + i * 8;
+    push(c.boxes, R(x - 0.08, 0, FL - 0.2, x + 0.08, 2.0, FL + 2.6, 'wood'));
+    push(c.deco, R(x - 0.1, 2.0, FL - 0.25, x + 0.1, 2.08, FL + 2.65, 'metal_dark'));
+  }
+  // lanes: alternating dirt and grass strips, low sandbag walls between them, white distance lines + marker boards
+  lanes.forEach((x, i) => push(c.deco, R(x - 3.9, 0, -52, x + 3.9, 0.03, FL - 2, i % 2 ? 'grass' : 'dirt')));
+  for (let i = 0; i <= lanes.length; i++) push(c.boxes, R(-28 + i * 8 - 0.35, 0, -50, -28 + i * 8 + 0.35, 0.7, FL - 3, 'sandbag'));
+  [10, 25, 50, 75, 100].forEach((d, k) => {
+    const z = FL - d;
+    push(c.deco, R(-28, 0.035, z - 0.12, 28, 0.05, z + 0.12, 'paint_white'));
+    for (const x of [-29.4, 29.4]) {
+      push(c.boxes, B(x, z, 0.14, 0.14, 1.6, 'metal_dark'));
+      push(c.deco, B(x, z, 0.12, 1.4, 0.9, 'paint_white', 1.2));
+      for (let s = 0; s <= k; s++) push(c.deco, B(x + (x < 0 ? 0.07 : -0.07), z - 0.5 + s * 0.25, 0.02, 0.14, 0.6, 'barrier', 1.35)); // red stripes = which distance
+    }
+  });
+  // stop butt (earth berm) at the far end with a timber face
+  push(c.boxes, R(-31, 0, -60, 31, 5, -54, 'dirt'));
+  push(c.boxes, R(-31, 5, -60, 31, 8, -57, 'dirt'));
+  push(c.deco, R(-31, 0, -54.1, 31, 4.6, -53.9, 'wood'));
+  for (let x = -30; x <= 30; x += 3) push(c.deco, B(x, -53.85, 0.12, 0.12, 4.6, 'bark'));
+  // target dummies: static at each distance, two strafing ones, each in front of a wooden target frame
+  const frame = (x, z) => { push(c.deco, B(x, z - 0.9, 1.6, 0.12, 0.12, 'wood', 2.1)); for (const s of [-0.75, 0.75]) push(c.deco, B(x + s, z - 0.9, 0.12, 0.12, 2.2, 'wood')); };
+  [[-24, 10], [-16, 25], [-8, 50], [0, 75], [8, 100]].forEach(([x, d]) => { c.dummies.push({ x, z: FL - d, label: `${d} m` }); frame(x, FL - d); });
+  c.dummies.push({ x: 16, z: FL - 30, move: 2.6, speed: 1.6, label: 'Moving 30 m' }); push(c.deco, R(13, 0.04, FL - 30.2, 19, 0.06, FL - 29.8, 'metal_dark'));
+  c.dummies.push({ x: 24, z: FL - 60, move: 2.6, speed: 2.2, label: 'Moving 60 m' }); push(c.deco, R(21, 0.04, FL - 60.2, 27, 0.06, FL - 59.8, 'metal_dark'));
+  // west: close-quarters house (rooms + doorways), dummies inside at close range
+  push(c.deco, R(-58, 0, -20, -36, 0.05, 20, 'concrete'));
+  const wall = (x0, z0, x1, z1) => push(c.boxes, R(x0, 0, z0, x1, 3, z1, 'plaster_white'));
+  wall(-56, -18, -38, -17.7); wall(-56, 17.7, -38, 18);                      // north/south walls
+  wall(-56.3, -18, -56, 18);                                                 // west wall
+  wall(-38.3, -18, -38, -2); wall(-38.3, 2, -38, 18);                        // east wall with the entrance
+  wall(-47.15, -18, -46.85, -6); wall(-47.15, -2, -46.85, 6); wall(-47.15, 10, -46.85, 18);   // middle wall + doorways
+  wall(-56, -0.15, -50, 0.15); wall(-46.85, -0.15, -42, 0.15);               // room splits
+  for (const [x, z] of [[-42, -10], [-42, 10], [-52, -9], [-52, 9], [-44, 4]]) c.dummies.push({ x, z, label: 'Close quarters' });
+  for (const [x, z] of [[-50, -14], [-41, 14]]) push(c.boxes, B(x, z, 1.2, 1.2, 1.0, 'crate'));
+  // east: explosives pit, a sandbag ring with a tight group of dummies (grenades, rockets, the arc cannon)
+  push(c.deco, R(36, 0, -16, 58, 0.04, 16, 'sand'));
+  for (let a = 0; a < 16; a++) { const t = a / 16 * Math.PI * 2; if (Math.abs(t - Math.PI) < 0.3) continue; push(c.boxes, B(47 + Math.cos(t) * 9, Math.sin(t) * 9, 2.4, 2.4, 1.0, 'sandbag')); }
+  for (const [x, z] of [[45.5, -1.5], [48.5, -1.5], [47, 1.5], [45, 2.5], [49, 2.5]]) c.dummies.push({ x, z, label: 'Explosives pit' });
+  push(c.deco, R(-31, 0, -54, 31, 0.03, FL - 2, 'grass'));
+  return c;
+}
+
 export const MAPS = {
   shipyard:  { name: 'Shipyard',      size: 184, theme: 'shipyard', build: shipyard,  desc: 'MASSIVE · Boardable ship in dry dock, container yard, cranes, warehouses', big: true },
   suburbs:   { name: 'Suburbs',       size: 176, theme: 'suburb',   build: suburbs,   desc: 'MASSIVE · Houses with yards & pools, mall, school, park, church', big: true },
@@ -185,6 +251,7 @@ export const MAPS = {
   classic_town:      { name: 'Old Town (Classic)',  size: 72, theme: 'town',      build: townClassic,      desc: 'The original Old Town' },
   classic_harbor:    { name: 'Harbor (Classic)',    size: 80, theme: 'harbor',    build: harborClassic,    desc: 'The original Harbor' },
   classic_killhouse: { name: 'Killhouse (Classic)', size: 38, theme: 'killhouse', build: killhouseClassic, desc: 'The original Killhouse' },
+  range:     { name: 'Shooting Range', size: 120, theme: 'base', build: shootingRange, desc: 'Practice lanes from 10 to 100 m, moving targets, a close-quarters house and an explosives pit', special: true },
 };
 export const MAP_ORDER = ['ridgeline', 'shipyard', 'suburbs', 'canyon', 'downtown', 'base', 'town', 'harbor', 'neon', 'frost', 'dune', 'construction', 'killhouse', 'classic_town', 'classic_harbor', 'classic_killhouse'];
 
@@ -213,8 +280,8 @@ export function buildMap(id) {
     for (let z = -half + 2.5; z <= half - 2.5; z += 2.5)
       if (ctx.ground) { const g = ctx.ground(x, z); if (g < 7 && !boxes.some(b => x + 0.9 > b.min[0] && x - 0.9 < b.max[0] && z + 0.9 > b.min[2] && z - 0.9 < b.max[2] && b.min[1] < g + 3.5 && b.max[1] > g + 0.05)) cands.push([x, g, z]); }
       else if (!overlapsAny(x, z, 0.9, 3.5, boxes)) cands.push([x, 0, z]);
-  const spawns = [];
-  if (cands.length) {
+  const spawns = ctx.spawns ? ctx.spawns.map(s => [...s]) : [];
+  if (!ctx.spawns && cands.length) {
     spawns.push(cands.reduce((a, c) => (c[0] + c[2] < a[0] + a[2] ? c : a)));
     while (spawns.length < Math.min(def.size > 150 ? 44 : def.big ? 36 : 24, cands.length)) {
       let best = null, bestD = -1;
@@ -226,6 +293,7 @@ export function buildMap(id) {
       spawns.push(best);
     }
   }
+  if (!spawns.length) spawns.push(cands[0] || [0, 0, 0]);                       // a custom map with no open ground
   // spatial grid so physics / line-of-sight only look at nearby boxes
   const CELL = 6, grid = new Map();
   boxes.forEach((b, i) => {
@@ -251,7 +319,7 @@ export function buildMap(id) {
   // pickups: power-ups near the middle, health & ammo spread around
   const pool = cands.filter(p => Math.abs(p[0]) < half - 4 && Math.abs(p[2]) < half - 4 && !spawns.some(s => Math.hypot(s[0] - p[0], s[2] - p[2]) < 3));
   const pickups = [];
-  if (pool.length) {
+  if (pool.length && !ctx.noPickups) {
     const picked = [pool.reduce((a, p) => (Math.hypot(p[0], p[2]) < Math.hypot(a[0], a[2]) ? p : a))];
     const n = def.size > 150 ? 22 : def.big ? 16 : def.size < 45 ? 5 : 9;
     while (picked.length < Math.min(n, pool.length)) {
@@ -263,5 +331,49 @@ export function buildMap(id) {
     picked.forEach((p, i) => pickups.push({ id: i, kind: kinds[i] || (i % 2 ? 'health' : 'ammo'), x: p[0], y: p[1] || 0, z: p[2] }));
     if (def.size < 45) pickups[1].kind = 'health';
   }
-  return (cache[id] = { id, name: def.name, size: def.size, big: !!def.big, theme: def.theme, boxes, deco: ctx.deco, spawns, waypoints: cands, query, pickups });
+  return (cache[id] = { id, name: def.name, size: def.size, big: !!def.big, theme: def.theme, boxes, deco: ctx.deco, spawns, waypoints: cands, query, pickups, dummies: ctx.dummies || [] });
 }
+
+// ================================================================ custom maps (made in the Map Builder)
+// A custom map is just { name, by, size, theme, boxes: [[x0, y0, z0, x1, y1, z1, material], ...] }. It travels with
+// the lobby (from the host's game to the server to everyone who joins), so it is cleaned the same way everywhere and
+// gets an id from its contents: the same map always has the same id on every PC.
+export const CUSTOM_MATS = ['concrete', 'concrete_panel', 'concrete_dark', 'brick', 'brick_dark', 'plaster_white', 'plaster_yellow', 'plaster_dark', 'stone', 'sandstone', 'mudbrick',
+  'wood', 'crate', 'metal', 'metal_dark', 'metal_corr', 'metal_grate', 'panel_white', 'bunker', 'container_red', 'container_blue', 'container_green', 'sandbag', 'barrier',
+  'roof_red', 'roof_slate', 'siding_white', 'siding_blue', 'hedge', 'rock', 'rock_grey', 'grass', 'dirt', 'sand', 'asphalt', 'snowpile', 'ice', 'glass', 'neon_cyan', 'neon_pink', 'jumppad'];
+export const CUSTOM_THEMES = ['town', 'city', 'base', 'harbor', 'neon', 'snow', 'desert', 'construction', 'suburb', 'canyon', 'shipyard', 'killhouse'];
+export const CUSTOM_SIZES = [40, 60, 80, 100, 120];
+export const CUSTOM_MAX_BOXES = 1500, CUSTOM_MAX_H = 30;
+export function cleanCustomMap(d) {
+  if (!d || typeof d !== 'object') return null;
+  const size = CUSTOM_SIZES.includes(+d.size) ? +d.size : 60, half = size / 2;
+  const theme = CUSTOM_THEMES.includes(d.theme) ? d.theme : 'town';
+  const name = String(d.name || '').replace(/[^\w \-'!.]/g, '').replace(/\s+/g, ' ').trim().slice(0, 24) || 'Custom Map';
+  const by = String(d.by || '').replace(/[^\w \-\[\]\.!?']/g, '').trim().slice(0, 16);
+  const q = (v, a, b) => Math.max(a, Math.min(b, Math.round(v * 20) / 20)); // 5 cm grid, inside the map
+  const boxes = [];
+  for (const b of Array.isArray(d.boxes) ? d.boxes.slice(0, CUSTOM_MAX_BOXES) : []) {
+    if (!Array.isArray(b) || b.length < 7) continue;
+    const v = b.slice(0, 6).map(Number);
+    if (!v.every(Number.isFinite)) continue;
+    const x0 = q(Math.min(v[0], v[3]), -half, half), x1 = q(Math.max(v[0], v[3]), -half, half);
+    const y0 = q(Math.min(v[1], v[4]), 0, CUSTOM_MAX_H), y1 = q(Math.max(v[1], v[4]), 0, CUSTOM_MAX_H);
+    const z0 = q(Math.min(v[2], v[5]), -half, half), z1 = q(Math.max(v[2], v[5]), -half, half);
+    if (x1 - x0 < 0.05 || y1 - y0 < 0.05 || z1 - z0 < 0.05) continue;
+    boxes.push([x0, y0, z0, x1, y1, z1, CUSTOM_MATS.includes(b[6]) ? b[6] : 'concrete']);
+  }
+  return { name, by, size, theme, boxes };
+}
+const hashStr = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+// Adds the map to MAPS (if it isn't there yet) and returns its id, or null if it's not a map.
+export function registerCustomMap(raw) {
+  const d = cleanCustomMap(raw); if (!d) return null;
+  const id = 'c_' + hashStr(JSON.stringify(d));
+  if (!MAPS[id]) MAPS[id] = {
+    name: d.name, size: d.size, theme: d.theme, custom: d, special: true,
+    desc: `Custom map${d.by ? ' by ' + d.by : ''} · made in the Map Builder`,
+    build: () => { const c = newCtx(); for (const b of d.boxes) push(c.boxes, R(b[0], b[1], b[2], b[3], b[4], b[5], b[6])); return c; },
+  };
+  return id;
+}
+

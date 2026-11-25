@@ -2,7 +2,7 @@
 // Gunshots are built in layers like a real recording: a sharp supersonic crack, the muzzle blast (distorted
 // noise), a low chest thump, the action cycling, and the report echoing off the surroundings (a generated
 // reverb + slapback delay). Distant shots lose their highs and are mostly echo.
-let ctx = null, master = null, noiseBuf = null, verb = null, slap = null, drive = null;
+let ctx = null, master = null, noiseBuf = null, verb = null, slap = null, drive = null, deaf = null;
 
 export function initAudio(volume = 0.6) {
   if (ctx) { ctx.resume(); return; }
@@ -11,7 +11,8 @@ export function initAudio(volume = 0.6) {
   master.gain.value = volume;
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 5; comp.attack.value = 0.002; comp.release.value = 0.18;
-  master.connect(comp); comp.connect(ctx.destination);
+  deaf = ctx.createBiquadFilter(); deaf.type = 'lowpass'; deaf.frequency.value = 22000; deaf.Q.value = 0.5; // muffles everything while stunned
+  master.connect(deaf); deaf.connect(comp); comp.connect(ctx.destination); comp_ = comp;
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -37,6 +38,24 @@ export function initAudio(volume = 0.6) {
   for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; drive[i] = Math.tanh(x * 3.2) / Math.tanh(3.2); }
 }
 export function setVolume(v) { if (master) master.gain.value = v; }
+// stun grenade: the world goes muffled with a ringing in the ears, then slowly comes back
+export function deafen(sec = 3, amount = 1) {
+  if (!ctx) return; const t = ctx.currentTime, f = deaf.frequency;
+  f.cancelScheduledValues(t); f.setValueAtTime(Math.min(f.value, 22000), t);
+  f.exponentialRampToValueAtTime(Math.max(260, 2400 * (1 - amount)), t + 0.05);
+  f.setValueAtTime(Math.max(260, 2400 * (1 - amount)), t + sec * 0.55);
+  f.exponentialRampToValueAtTime(22000, t + sec);
+  const o = ctx.createGain(); o.gain.setValueAtTime(0.0001, t); o.gain.exponentialRampToValueAtTime(0.09 * amount, t + 0.08); o.gain.exponentialRampToValueAtTime(0.0001, t + sec);
+  o.connect(comp_ || ctx.destination);
+  const osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = 3300; osc.connect(o); osc.start(t); osc.stop(t + sec + 0.05);
+}
+let comp_ = null;
+// arc cannon charging: a rising capacitor whine (dur seconds)
+export function charge(dur = 0.5) {
+  if (!ctx) return; const t = ctx.currentTime, o = out(0.3, 0, 0.05);
+  tone(o, t, dur, 220, 1900, 'sawtooth', 0.22); tone(o, t, dur, 440, 3800, 'sine', 0.18);
+  noiseBurst(o, t, dur, 4000, 'bandpass', 4, 0.18);
+}
 
 // output bus: dry level, stereo pan, how much goes into the echo/reverb
 function out(vol, pan, wet = 0) {
@@ -127,6 +146,11 @@ function laser(snd, vol, pan) {
   tone(o, t, 0.22 * (snd.len || 1), f * 0.25, f * 0.18, 'sine', 0.5);
   noiseBurst(o, t, 0.05, 6000, 'highpass', 0.7, 0.4);
   noiseBurst(o, t + 0.01, 0.12 * (snd.len || 1), 2500, 'bandpass', 2, 0.25);
+  if (snd.arc) { // lightning: a sharp crack, crackling arcs and a rolling low thunder
+    noiseBurst(o, t, 0.06, 5000, 'highpass', 0.5, 1);
+    for (let i = 0; i < 6; i++) noiseBurst(o, t + 0.03 + i * 0.045 + Math.random() * 0.02, 0.025, 2000 + Math.random() * 4000, 'bandpass', 3, 0.5);
+    noiseBurst(o, t + 0.04, 0.9, 180, 'lowpass', 0.8, 0.7, 0.05);
+  }
 }
 // foam blasters: a pneumatic "thwip" and a plastic clack (no gunpowder)
 function foam(snd, vol, pan) {
